@@ -1,0 +1,45 @@
+---
+description: CLIRabbit project architecture and conventions
+alwaysApply: true
+---
+
+# CLIRabbit Architecture
+
+## Monorepo Structure (Bun Workspaces)
+
+- `apps/electron/` - Electron desktop app
+- `packages/core/` - Shared TypeScript types (@clirabbit/core)
+- `packages/shared/` - Business logic (@clirabbit/shared)
+
+## electron-vite Folder Convention
+
+- `src/main/` - Electron main process (Node.js environment)
+- `src/preload/` - Context bridge scripts (isolated context)
+- `src/renderer/` - React UI (browser environment, Vite-powered)
+
+## Package Dependencies
+
+Use `"workspace:*"` for inter-package dependencies:
+
+```json
+{
+  "dependencies": {
+    "@clirabbit/core": "workspace:*",
+    "@clirabbit/shared": "workspace:*"
+  }
+}
+```
+
+## Key Commands
+
+- `bun install` - Install all workspace dependencies
+- `bun run dev` - Start development with hot reload
+- `bun run build` - Build all packages
+- `bun run typecheck:all` - Type check entire monorepo
+- `bun run --filter @clirabbit/electron dev` - Run specific workspace
+
+## Import Conventions
+
+- Types from `@clirabbit/core`
+- Business logic from `@clirabbit/shared`
+- UI components from `@/components/ui` (shadcn)

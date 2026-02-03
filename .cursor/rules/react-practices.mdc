@@ -1,0 +1,181 @@
+---
+description: React fundamentals, component patterns, shadcn/ui, Tailwind CSS, and Electron IPC integration
+globs: apps/electron/src/renderer/**/*.tsx
+alwaysApply: false
+---
+
+# React Patterns & Best Practices
+
+## React Fundamentals
+
+- Components and hooks must be pure functions
+- Import from `"react"` directly (e.g., `import { useState } from "react"`), never use UMD `React.` references
+- Use `useCallback` for functions passed as props or dependencies to other hooks
+- Use `useMemo` for expensive computations, not for simple object creation
+- Avoid premature optimization - only memoize when profiling shows a performance benefit
+- Exception: Functions returned from custom hooks should typically be wrapped with `useCallback`
+- Refs are escape hatches - use sparingly and prefer state when possible
+
+## Component Patterns
+
+- Components use named exports (not default exports)
+- Props interfaces defined with TSDoc comments
+- Use shadcn/ui components from `@/components/ui/`
+- Use `cn()` utility from `@/lib/utils` for className merging
+
+```typescript
+import { useState } from "react"
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+
+/**
+ * Props for the ChatInput component.
+ */
+interface ChatInputProps {
+  /** Callback when message is sent. */
+  onSend: (message: string) => void
+  /** Whether input is disabled. */
+  disabled?: boolean
+}
+
+/**
+ * Chat input component with send button.
+ */
+export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
+  const [value, setValue] = useState("")
+  
+  const handleSend = useCallback(() => {
+    if (value.trim()) {
+      onSend(value)
+      setValue("")
+    }
+  }, [value, onSend])
+  
+  return (
+    <div className={cn("flex gap-2 p-4", disabled && "opacity-50")}>
+      <input 
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        disabled={disabled}
+        className="flex-1 rounded border px-3 py-2"
+      />
+      <Button onClick={handleSend} disabled={disabled}>Send</Button>
+    </div>
+  )
+}
+```
+
+## shadcn/ui Configuration
+
+```json
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "new-york",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/renderer/src/styles/globals.css",
+    "baseColor": "neutral",
+    "cssVariables": true
+  },
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils",
+    "ui": "@/components/ui"
+  },
+  "iconLibrary": "lucide"
+}
+```
+
+## Tailwind CSS Patterns
+
+- Use utility classes directly in components (utility-first approach)
+- Extract repeated patterns into reusable components, not custom CSS classes
+- Use mobile-first responsive design (`sm:`, `md:`, `lg:` for larger screens)
+- Map props to complete class names statically (not dynamically constructed)
+- Prefer Tailwind classnames; only use inline `style` for truly dynamic values
+
+## Naming Conventions
+
+- **Hooks**: `use` prefix with camelCase (e.g., `useAgentStream`)
+- **Components**: PascalCase (e.g., `ChatMessage`)
+- **Files**: kebab-case (e.g., `chat-message.tsx`)
+- **Constants**: `SCREAMING_SNAKE_CASE` (e.g., `MAX_MESSAGE_LENGTH`)
+
+## Import Organization
+
+```typescript
+// 1. React imports
+import { useState, useEffect, useCallback } from "react"
+
+// 2. Third-party imports
+import { useQuery } from "@tanstack/react-query"
+
+// 3. Local imports - components
+import { Button } from "@/components/ui/button"
+
+// 4. Local imports - utilities
+import { cn } from "@/lib/utils"
+
+// 5. Local imports - types
+import type { Message } from "@clirabbit/core"
+```
+
+## Electron IPC Integration
+
+```typescript
+export function Chat() {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [isStreaming, setIsStreaming] = useState(false)
+  
+  useEffect(() => {
+    // Listen for streamed responses
+    window.electronAPI.onAgentStream((chunk) => {
+      if (chunk.type === 'text') {
+        setMessages(prev => appendToLast(prev, chunk.text))
+      } else if (chunk.type === 'complete') {
+        setIsStreaming(false)
+      }
+    })
+  }, [])
+  
+  const sendMessage = useCallback(async (content: string) => {
+    setIsStreaming(true)
+    await window.electronAPI.sendMessage(content)
+  }, [])
+  
+  return (
+    <div className="flex min-h-svh flex-col">
+      <MessageList messages={messages} />
+      <ChatInput onSend={sendMessage} disabled={isStreaming} />
+    </div>
+  )
+}
+```
+
+## Type Safety for IPC
+
+```typescript
+// src/renderer/src/types/electron.d.ts
+interface ElectronAPI {
+  sendMessage: (message: string) => Promise<void>
+  onAgentStream: (callback: (chunk: StreamChunk) => void) => void
+  getPermissionMode: () => Promise<PermissionMode>
+  setPermissionMode: (mode: PermissionMode) => Promise<void>
+}
+
+declare global {
+  interface Window {
+    electronAPI: ElectronAPI
+  }
+}
+```
+
+## Anti-Patterns (Avoid These)
+
+- **Don't mutate state directly** - Always use setter functions or return new objects
+- **Don't construct Tailwind classes dynamically** - Use complete static class names
+- **Don't use `React.FC`** - Use regular function declarations with typed props
+- **Don't use default exports** - Use named exports for components
+- **Don't fetch data in useEffect** - Use TanStack Query for data fetching

@@ -1,0 +1,13 @@
+{
+  "name": "clirabbit",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "bun run --filter @clirabbit/electron dev",
+    "build": "bun run --workspaces build",
+    "typecheck:all": "bun run --workspaces typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

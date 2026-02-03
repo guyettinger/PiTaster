@@ -1,0 +1,153 @@
+---
+description: TanStack Query patterns for data fetching, mutations, and cache management
+globs:
+  - "**/hooks/**"
+  - "**/queries.ts"
+  - "**/mutations.ts"
+alwaysApply: false
+---
+
+# React Query Patterns (TanStack Query)
+
+Use `@tanstack/react-query` for all data fetching in the renderer process.
+
+## Query Hook Pattern
+
+Query hooks use `useQuery` with typed response interfaces and `queryOptions` helper:
+
+```typescript
+import { useQuery, queryOptions } from "@tanstack/react-query"
+
+/**
+ * Response data for workspace sessions.
+ */
+interface SessionsResponse {
+  /** List of session objects. */
+  sessions: Session[]
+  /** Total count of sessions. */
+  total: number
+}
+
+/**
+ * Creates query options for fetching workspace sessions.
+ * @param workspaceId - The workspace identifier
+ */
+const sessionsQueryOptions = (workspaceId: string) =>
+  queryOptions({
+    queryKey: ["sessions", "list", workspaceId],
+    queryFn: async () => {
+      return window.electronAPI.getSessions(workspaceId) as Promise<SessionsResponse>
+    },
+    staleTime: 30 * 1000, // 30 seconds
+  })
+
+/**
+ * Hook to fetch workspace sessions.
+ * @param workspaceId - The workspace identifier
+ */
+export function useSessions(workspaceId: string) {
+  return useQuery(sessionsQueryOptions(workspaceId))
+}
+```
+
+## Mutation Hook Pattern
+
+Mutations use `useMutation` and invalidate related queries:
+
+```typescript
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+
+/**
+ * Parameters for creating a new session.
+ */
+interface CreateSessionParams {
+  /** The workspace identifier. */
+  workspaceId: string
+  /** Optional session title. */
+  title?: string
+}
+
+/**
+ * Hook to create a new chat session.
+ */
+export function useCreateSession() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (params: CreateSessionParams) => {
+      return window.electronAPI.createSession(params)
+    },
+    onSuccess: (data, variables) => {
+      // Invalidate sessions list
+      void queryClient.invalidateQueries({
+        queryKey: ["sessions", "list", variables.workspaceId],
+      })
+    },
+  })
+}
+```
+
+## Optimistic Updates
+
+For better UX, use optimistic updates when appropriate:
+
+```typescript
+export function useUpdateSessionTitle() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (params: { sessionId: string; title: string }) => {
+      return window.electronAPI.updateSession(params)
+    },
+    onMutate: async (newData) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({
+        queryKey: ["sessions", "detail", newData.sessionId],
+      })
+
+      // Snapshot previous value
+      const previousSession = queryClient.getQueryData<Session>([
+        "sessions", "detail", newData.sessionId,
+      ])
+
+      // Optimistically update
+      queryClient.setQueryData(
+        ["sessions", "detail", newData.sessionId],
+        (old: Session | undefined) =>
+          old ? { ...old, title: newData.title } : undefined
+      )
+
+      return { previousSession }
+    },
+    onError: (err, newData, context) => {
+      // Rollback on error
+      if (context?.previousSession) {
+        queryClient.setQueryData(
+          ["sessions", "detail", newData.sessionId],
+          context.previousSession
+        )
+      }
+    },
+  })
+}
+```
+
+## Query Key Structure
+
+Query keys follow hierarchical structure: `["domain", "resource", ...params]`
+
+```typescript
+queryKey: ["sessions", "list", workspaceId]
+queryKey: ["sessions", "detail", sessionId]
+queryKey: ["sources", "list", workspaceId]
+queryKey: ["skills", "list", workspaceId]
+```
+
+## Key Patterns Checklist
+
+- Configure `staleTime` appropriately (30s-5min based on data volatility)
+- Use `enabled` option to conditionally enable queries
+- Use `queryOptions` helper for reusable query configurations
+- Invalidate queries in mutation `onSuccess` callbacks
+- Use `mutateAsync` for promise-based mutations when composing side effects
+- **Don't fetch data in `useEffect`** - Use TanStack Query hooks

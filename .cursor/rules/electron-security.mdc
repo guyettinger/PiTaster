@@ -1,0 +1,94 @@
+---
+description: Electron security best practices
+globs: apps/electron/**/*.ts
+alwaysApply: false
+---
+
+# Electron Security Best Practices
+
+## BrowserWindow Configuration
+
+Always set these webPreferences:
+
+```typescript
+new BrowserWindow({
+  webPreferences: {
+    preload: path.join(__dirname, '../preload/index.js'),
+    contextIsolation: true,  // REQUIRED - isolates preload from renderer
+    nodeIntegration: false,  // REQUIRED - no Node.js in renderer
+    sandbox: true            // RECOMMENDED - OS-level sandboxing
+  }
+})
+```
+
+## Preload Script Patterns
+
+### BAD - Never expose raw ipcRenderer
+
+```typescript
+// DANGEROUS: Exposes full IPC capabilities
+contextBridge.exposeInMainWorld('electronAPI', {
+  on: ipcRenderer.on
+})
+
+// DANGEROUS: Leaks event object
+contextBridge.exposeInMainWorld('electronAPI', {
+  onUpdate: (callback) => ipcRenderer.on('update', callback)
+})
+```
+
+### GOOD - Expose specific functions, filter events
+
+```typescript
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Use invoke for request/response
+  sendMessage: (msg: string) => ipcRenderer.invoke('agent:message', msg),
+  
+  // Filter event data - never pass raw event
+  onStream: (callback: (data: string) => void) => {
+    ipcRenderer.on('agent:stream', (_event, data) => callback(data))
+  }
+})
+```
+
+## IPC Handler Security
+
+Validate all inputs in main process:
+
+```typescript
+ipcMain.handle('agent:message', async (event, message) => {
+  if (typeof message !== 'string' || message.length > 100000) {
+    throw new Error('Invalid message')
+  }
+  // Process validated input
+})
+```
+
+## Environment Variable Filtering
+
+Block sensitive vars when spawning subprocesses:
+
+```typescript
+const BLOCKED_ENV_VARS = [
+  'ANTHROPIC_API_KEY',
+  'OPENAI_API_KEY', 
+  'AWS_SECRET_ACCESS_KEY',
+  'GITHUB_TOKEN'
+]
+
+const filteredEnv = Object.fromEntries(
+  Object.entries(process.env)
+    .filter(([key]) => !BLOCKED_ENV_VARS.includes(key))
+)
+```
+
+## Credential Storage
+
+Use Electron's safeStorage for sensitive data:
+
+```typescript
+import { safeStorage } from 'electron'
+
+const encrypted = safeStorage.encryptString(apiKey)
+const decrypted = safeStorage.decryptString(encrypted)
+```
