@@ -10,3 +10,5 @@ yarn-error.log*
 
 .vscode/*
 /.idea/
+/apps/electron/node_modules/*
+/apps/electron/out/*
