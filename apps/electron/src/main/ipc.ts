@@ -8,9 +8,9 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { promises as fs } from 'node:fs'
 import { runAgentQuery, setProjectRoot, getProjectRoot } from './agent'
-import { VersionManager, SourceManager, SkillsLoader } from '@anyapp/shared'
+import { VersionManager, SourceManager, SkillsLoader, AppManager } from '@anyapp/shared'
 import type { PermissionMode, StreamChunk, MessageParam } from './agent'
-import type { Skill } from '@anyapp/core'
+import type { Skill, CreateAppParams, SubApp } from '@anyapp/core'
 
 /** Tool approval request sent to renderer. */
 interface ToolApprovalRequest {
@@ -51,6 +51,12 @@ const sourceManager = new SourceManager(configDir)
 
 /** Skills loader instance. */
 const skillsLoader = new SkillsLoader(join(configDir, 'skills'))
+
+/** App manager instance. */
+const appManager = new AppManager()
+
+/** Currently active app ID for agent context. */
+let activeAppId: string | null = null
 
 /** Path to config file. */
 const configPath = join(configDir, 'config.json')
@@ -139,6 +145,21 @@ function getVersionManager(): VersionManager {
 }
 
 /**
+ * Get the currently active app ID.
+ */
+export function getActiveAppId(): string | null {
+  return activeAppId
+}
+
+/**
+ * Get the currently active app.
+ */
+export async function getActiveApp(): Promise<SubApp | null> {
+  if (!activeAppId) return null
+  return appManager.getApp(activeAppId)
+}
+
+/**
  * Set up all IPC handlers for the main window.
  * @param mainWindow - The main BrowserWindow instance
  */
@@ -216,13 +237,17 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     }
 
     try {
+      // Get the currently active app for scoped operations
+      const activeApp = await getActiveApp()
+      
       // Run the agent query and update conversation history
       conversationHistory = await runAgentQuery({
         prompt,
         permissionMode: currentPermissionMode,
         requestApproval,
         onStream,
-        conversationHistory
+        conversationHistory,
+        activeApp
       })
     } catch (error) {
       const err = error as Error
@@ -240,51 +265,124 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   })
 
   // Version control IPC handlers
-  ipcMain.handle('version:get-state', async () => {
-    const vm = getVersionManager()
+  ipcMain.handle('version:get-state', async (_, appPath?: string) => {
+    const path = appPath ?? (await getActiveApp())?.path
+    if (!path) throw new Error('No app selected')
+    const vm = new VersionManager(path)
     return vm.getState()
   })
 
-  ipcMain.handle('version:get-branches', async () => {
-    const vm = getVersionManager()
+  ipcMain.handle('version:get-branches', async (_, appPath?: string) => {
+    const path = appPath ?? (await getActiveApp())?.path
+    if (!path) throw new Error('No app selected')
+    const vm = new VersionManager(path)
     return vm.listBranches()
   })
 
-  ipcMain.handle('version:get-history', async (_, depth?: number) => {
-    const vm = getVersionManager()
+  ipcMain.handle('version:get-history', async (_, depth?: number, appPath?: string) => {
+    const path = appPath ?? (await getActiveApp())?.path
+    if (!path) throw new Error('No app selected')
+    const vm = new VersionManager(path)
     return vm.getHistory({ depth })
   })
 
-  ipcMain.handle('version:switch-branch', async (_, name: string) => {
+  ipcMain.handle('version:switch-branch', async (_, name: string, appPath?: string) => {
     if (typeof name !== 'string' || name.length === 0) {
       throw new Error('Invalid branch name')
     }
-    const vm = getVersionManager()
+    const path = appPath ?? (await getActiveApp())?.path
+    if (!path) throw new Error('No app selected')
+    const vm = new VersionManager(path)
     return vm.switchBranch(name)
   })
 
-  ipcMain.handle('version:create-branch', async (_, name: string) => {
+  ipcMain.handle('version:create-branch', async (_, name: string, appPath?: string) => {
     if (typeof name !== 'string' || name.length === 0) {
       throw new Error('Invalid branch name')
     }
-    const vm = getVersionManager()
+    const path = appPath ?? (await getActiveApp())?.path
+    if (!path) throw new Error('No app selected')
+    const vm = new VersionManager(path)
     return vm.createBranch({ name })
   })
 
-  ipcMain.handle('version:rollback', async (_, oid: string) => {
+  ipcMain.handle('version:rollback', async (_, oid: string, appPath?: string) => {
     if (typeof oid !== 'string' || oid.length === 0) {
       throw new Error('Invalid commit OID')
     }
-    const vm = getVersionManager()
+    const path = appPath ?? (await getActiveApp())?.path
+    if (!path) throw new Error('No app selected')
+    const vm = new VersionManager(path)
     return vm.rollback(oid)
   })
 
-  ipcMain.handle('version:diff', async (_, from: string, to: string) => {
+  ipcMain.handle('version:diff', async (_, from: string, to: string, appPath?: string) => {
     if (typeof from !== 'string' || typeof to !== 'string') {
       throw new Error('Invalid commit OIDs')
     }
-    const vm = getVersionManager()
+    const path = appPath ?? (await getActiveApp())?.path
+    if (!path) throw new Error('No app selected')
+    const vm = new VersionManager(path)
     return vm.diff(from, to)
+  })
+
+  // App management IPC handlers
+  ipcMain.handle('apps:list', async () => {
+    return appManager.listApps()
+  })
+
+  ipcMain.handle('apps:get', async (_, id: string) => {
+    if (typeof id !== 'string' || id.length === 0) {
+      throw new Error('Invalid app ID')
+    }
+    return appManager.getApp(id)
+  })
+
+  ipcMain.handle('apps:create', async (_, params: CreateAppParams) => {
+    if (!params || typeof params.name !== 'string' || params.name.length === 0) {
+      throw new Error('Invalid app name')
+    }
+    if (!params.template) {
+      throw new Error('Template is required')
+    }
+    return appManager.createApp(params)
+  })
+
+  ipcMain.handle('apps:delete', async (_, id: string) => {
+    if (typeof id !== 'string' || id.length === 0) {
+      throw new Error('Invalid app ID')
+    }
+    // Clear active if deleting active app
+    if (activeAppId === id) {
+      activeAppId = null
+    }
+    return appManager.deleteApp(id)
+  })
+
+  ipcMain.handle('apps:update', async (_, id: string, updates: { name?: string; description?: string }) => {
+    if (typeof id !== 'string' || id.length === 0) {
+      throw new Error('Invalid app ID')
+    }
+    if (!updates || typeof updates !== 'object') {
+      throw new Error('Invalid updates')
+    }
+    return appManager.updateApp(id, updates)
+  })
+
+  ipcMain.handle('apps:set-active', async (_, id: string | null) => {
+    if (id !== null && (typeof id !== 'string' || id.length === 0)) {
+      throw new Error('Invalid app ID')
+    }
+    activeAppId = id
+    return activeAppId
+  })
+
+  ipcMain.handle('apps:get-active', async () => {
+    return activeAppId
+  })
+
+  ipcMain.handle('apps:get-active-details', async () => {
+    return getActiveApp()
   })
 
   // Sources IPC handlers
@@ -388,6 +486,16 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('version:rollback')
   ipcMain.removeHandler('version:diff')
 
+  // App management handlers
+  ipcMain.removeHandler('apps:list')
+  ipcMain.removeHandler('apps:get')
+  ipcMain.removeHandler('apps:create')
+  ipcMain.removeHandler('apps:delete')
+  ipcMain.removeHandler('apps:update')
+  ipcMain.removeHandler('apps:set-active')
+  ipcMain.removeHandler('apps:get-active')
+  ipcMain.removeHandler('apps:get-active-details')
+
   // Sources handlers
   ipcMain.removeHandler('sources:list')
   ipcMain.removeHandler('sources:load-configs')
@@ -408,6 +516,9 @@ export function cleanupIpcHandlers(): void {
   
   // Reset version manager
   versionManager = null
+
+  // Reset active app
+  activeAppId = null
 
   // Disconnect all sources
   sourceManager.disconnectAll().catch(() => {})

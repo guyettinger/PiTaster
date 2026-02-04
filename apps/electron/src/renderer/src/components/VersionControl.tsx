@@ -5,14 +5,16 @@ import type { Branch, Commit, VersionState } from '../types/electron'
  * Props for the VersionControl component.
  */
 interface VersionControlProps {
+  /** Whether version control panel is visible. */
+  isVisible: boolean
+  /** Path to the app directory for git operations. */
+  appPath: string
   /** Callback when rollback is triggered. */
   onRollback: (commitId: string) => void
   /** Callback when branch is switched. */
   onBranchSwitch: (branchName: string) => void
   /** Callback when new branch is created. */
   onBranchCreate: (name: string) => void
-  /** Whether version control panel is visible. */
-  isVisible: boolean
 }
 
 /**
@@ -33,10 +35,11 @@ function formatTime(iso: string): string {
  * Version control panel component showing branches and commit history.
  */
 export function VersionControl({
+  isVisible,
+  appPath,
   onRollback,
   onBranchSwitch,
-  onBranchCreate,
-  isVisible
+  onBranchCreate
 }: VersionControlProps) {
   const [state, setState] = useState<VersionState | null>(null)
   const [branches, setBranches] = useState<Branch[]>([])
@@ -47,13 +50,15 @@ export function VersionControl({
   const [error, setError] = useState<string | null>(null)
 
   const loadVersionData = useCallback(async () => {
+    if (!isVisible || !appPath) return
+    
     try {
       setIsLoading(true)
       setError(null)
       const [versionState, branchList, commitHistory] = await Promise.all([
-        window.electronAPI.getVersionState(),
-        window.electronAPI.getBranches(),
-        window.electronAPI.getHistory(20)
+        window.electronAPI.getVersionState(appPath),
+        window.electronAPI.getBranches(appPath),
+        window.electronAPI.getHistory(20, appPath)
       ])
       setState(versionState)
       setBranches(branchList)
@@ -64,7 +69,7 @@ export function VersionControl({
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [isVisible, appPath])
 
   useEffect(() => {
     if (isVisible) {
@@ -75,7 +80,7 @@ export function VersionControl({
   const handleBranchSwitch = useCallback(
     async (branchName: string) => {
       try {
-        await window.electronAPI.switchBranch(branchName)
+        await window.electronAPI.switchBranch(branchName, appPath)
         onBranchSwitch(branchName)
         await loadVersionData()
       } catch (err) {
@@ -83,14 +88,14 @@ export function VersionControl({
         setError(errorMessage)
       }
     },
-    [onBranchSwitch, loadVersionData]
+    [appPath, onBranchSwitch, loadVersionData]
   )
 
   const handleCreateBranch = useCallback(async () => {
     if (!newBranchName.trim()) return
 
     try {
-      await window.electronAPI.createBranch(newBranchName)
+      await window.electronAPI.createBranch(newBranchName, appPath)
       onBranchCreate(newBranchName)
       setNewBranchName('')
       setIsCreatingBranch(false)
@@ -99,12 +104,12 @@ export function VersionControl({
       const errorMessage = err instanceof Error ? err.message : 'Failed to create branch'
       setError(errorMessage)
     }
-  }, [newBranchName, onBranchCreate, loadVersionData])
+  }, [newBranchName, appPath, onBranchCreate, loadVersionData])
 
   const handleRollback = useCallback(
     async (commitOid: string) => {
       try {
-        await window.electronAPI.rollback(commitOid)
+        await window.electronAPI.rollback(commitOid, appPath)
         onRollback(commitOid)
         await loadVersionData()
       } catch (err) {
@@ -112,7 +117,7 @@ export function VersionControl({
         setError(errorMessage)
       }
     },
-    [onRollback, loadVersionData]
+    [appPath, onRollback, loadVersionData]
   )
 
   if (!isVisible) return null

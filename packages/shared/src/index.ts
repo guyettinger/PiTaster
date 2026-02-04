@@ -18,3 +18,7 @@ export { McpClient } from './sources/mcp-client'
 
 // Skills
 export { SkillsLoader, extractSkillMentions, buildSystemPrompt } from './skills/loader'
+
+// Apps
+export { AppManager } from './apps/manager'
+export { getTemplate, getTemplates } from './apps/templates'

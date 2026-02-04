@@ -95,6 +95,30 @@ interface AppConfig {
   autoCommit: boolean
 }
 
+/** App template types. */
+type AppTemplate = 'react-vite' | 'node-cli' | 'node-server' | 'static-site' | 'blank'
+
+/** Sub-app definition. */
+interface SubApp {
+  id: string
+  name: string
+  description: string
+  template: AppTemplate
+  status: 'ready' | 'creating' | 'error' | 'building'
+  path: string
+  createdAt: string
+  updatedAt: string
+  currentBranch?: string
+  hasChanges?: boolean
+}
+
+/** Parameters for creating a new sub-app. */
+interface CreateAppParams {
+  name: string
+  description?: string
+  template: AppTemplate
+}
+
 /**
  * Electron API exposed to the renderer process.
  * 
@@ -182,57 +206,64 @@ const electronAPI = {
 
   /**
    * Get current version control state.
+   * @param appPath - Optional app path (defaults to active app)
    */
-  getVersionState: (): Promise<VersionState> => {
-    return ipcRenderer.invoke('version:get-state')
+  getVersionState: (appPath?: string): Promise<VersionState> => {
+    return ipcRenderer.invoke('version:get-state', appPath)
   },
 
   /**
    * Get all branches.
+   * @param appPath - Optional app path (defaults to active app)
    */
-  getBranches: (): Promise<Branch[]> => {
-    return ipcRenderer.invoke('version:get-branches')
+  getBranches: (appPath?: string): Promise<Branch[]> => {
+    return ipcRenderer.invoke('version:get-branches', appPath)
   },
 
   /**
    * Get commit history.
    * @param depth - Maximum number of commits to return
+   * @param appPath - Optional app path (defaults to active app)
    */
-  getHistory: (depth?: number): Promise<Commit[]> => {
-    return ipcRenderer.invoke('version:get-history', depth)
+  getHistory: (depth?: number, appPath?: string): Promise<Commit[]> => {
+    return ipcRenderer.invoke('version:get-history', depth, appPath)
   },
 
   /**
    * Switch to a branch.
    * @param name - Branch name to switch to
+   * @param appPath - Optional app path (defaults to active app)
    */
-  switchBranch: (name: string): Promise<void> => {
-    return ipcRenderer.invoke('version:switch-branch', name)
+  switchBranch: (name: string, appPath?: string): Promise<void> => {
+    return ipcRenderer.invoke('version:switch-branch', name, appPath)
   },
 
   /**
    * Create a new branch.
    * @param name - Name for the new branch
+   * @param appPath - Optional app path (defaults to active app)
    */
-  createBranch: (name: string): Promise<Branch> => {
-    return ipcRenderer.invoke('version:create-branch', name)
+  createBranch: (name: string, appPath?: string): Promise<Branch> => {
+    return ipcRenderer.invoke('version:create-branch', name, appPath)
   },
 
   /**
    * Rollback to a specific commit.
    * @param oid - Commit SHA to rollback to
+   * @param appPath - Optional app path (defaults to active app)
    */
-  rollback: (oid: string): Promise<void> => {
-    return ipcRenderer.invoke('version:rollback', oid)
+  rollback: (oid: string, appPath?: string): Promise<void> => {
+    return ipcRenderer.invoke('version:rollback', oid, appPath)
   },
 
   /**
    * Get diff between two commits.
    * @param from - Source commit SHA
    * @param to - Target commit SHA
+   * @param appPath - Optional app path (defaults to active app)
    */
-  getDiff: (from: string, to: string): Promise<FileDiff[]> => {
-    return ipcRenderer.invoke('version:diff', from, to)
+  getDiff: (from: string, to: string, appPath?: string): Promise<FileDiff[]> => {
+    return ipcRenderer.invoke('version:diff', from, to, appPath)
   },
 
   // Sources methods
@@ -331,6 +362,70 @@ const electronAPI = {
    */
   saveConfig: (config: AppConfig): Promise<void> => {
     return ipcRenderer.invoke('config:save', config)
+  },
+
+  // App management methods
+
+  /**
+   * List all sub-apps.
+   */
+  listApps: (): Promise<SubApp[]> => {
+    return ipcRenderer.invoke('apps:list')
+  },
+
+  /**
+   * Get a sub-app by ID.
+   * @param id - The app ID
+   */
+  getApp: (id: string): Promise<SubApp | null> => {
+    return ipcRenderer.invoke('apps:get', id)
+  },
+
+  /**
+   * Create a new sub-app from template.
+   * @param params - Creation parameters
+   */
+  createApp: (params: CreateAppParams): Promise<SubApp> => {
+    return ipcRenderer.invoke('apps:create', params)
+  },
+
+  /**
+   * Delete a sub-app.
+   * @param id - The app ID to delete
+   */
+  deleteApp: (id: string): Promise<void> => {
+    return ipcRenderer.invoke('apps:delete', id)
+  },
+
+  /**
+   * Update a sub-app's metadata.
+   * @param id - The app ID
+   * @param updates - Fields to update
+   */
+  updateApp: (id: string, updates: { name?: string; description?: string }): Promise<SubApp> => {
+    return ipcRenderer.invoke('apps:update', id, updates)
+  },
+
+  /**
+   * Set the active app for agent context.
+   * @param id - The app ID to set as active, or null to clear
+   */
+  setActiveApp: (id: string | null): Promise<string | null> => {
+    return ipcRenderer.invoke('apps:set-active', id)
+  },
+
+  /**
+   * Get the active app ID.
+   */
+  getActiveApp: (): Promise<string | null> => {
+    return ipcRenderer.invoke('apps:get-active')
+  },
+
+  /**
+   * Get the active app details.
+   */
+  getActiveAppDetails: (): Promise<SubApp | null> => {
+    return ipcRenderer.invoke('apps:get-active-details')
   }
 }
 

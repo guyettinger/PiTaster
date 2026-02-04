@@ -1,18 +1,52 @@
 /**
- * Claude Agent integration with self-modification tools.
+ * Claude Agent integration with scoped self-modification tools.
+ * All file operations are sandboxed to the active sub-app directory.
  */
 
 import Anthropic from '@anthropic-ai/sdk'
 import { promises as fs } from 'node:fs'
-import { resolve, join } from 'node:path'
+import { resolve, join, dirname } from 'node:path'
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { homedir } from 'node:os'
+import * as git from 'isomorphic-git'
+import nodeFs from 'node:fs'
 import { VersionManager, SkillsLoader, extractSkillMentions, buildSystemPrompt } from '@anyapp/shared'
-import type { Commit, Branch, Skill } from '@anyapp/core'
+import type { Commit, Branch, Skill, SubApp, AppTemplate } from '@anyapp/core'
 
 /** Permission mode type for tool execution. */
 export type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
+
+/** Default author for git commits. */
+const AUTHOR = { name: 'anyapp Agent', email: 'agent@anyapp.local' }
+
+/** Blocked shell command patterns for safety. */
+const BLOCKED_COMMANDS = ['rm -rf /', 'sudo', '> /dev', 'dd if=', 'mkfs', ':(){']
+
+/**
+ * Normalize and validate a path to prevent directory traversal.
+ * Returns null if the path would escape the root.
+ * @param rootPath - The root directory path
+ * @param relativePath - The relative path to normalize
+ * @returns The normalized full path, or null if invalid
+ */
+function normalizePath(rootPath: string, relativePath: string): string | null {
+  // Remove leading slashes and ../ patterns
+  const cleaned = relativePath
+    .replace(/^\/+/, '')
+    .split('/')
+    .filter(segment => segment !== '..' && segment !== '.')
+    .join('/')
+  
+  const fullPath = resolve(rootPath, cleaned)
+  
+  // Ensure the resolved path is still within root
+  if (!fullPath.startsWith(rootPath)) {
+    return null
+  }
+  
+  return fullPath
+}
 
 /** Stream chunk from agent response. */
 export interface StreamChunk {
@@ -63,7 +97,387 @@ export function getProjectRoot(): string {
 }
 
 /**
+ * Tool definition with its handler function.
+ */
+interface ScopedTool {
+  definition: Tool
+  handler: (input: Record<string, unknown>) => Promise<string>
+}
+
+/**
+ * Create scoped tools for the active app.
+ * Returns limited tools if no app is selected.
+ * @param app - The active sub-app, or null if none selected
+ * @returns Array of scoped tool definitions and handlers
+ */
+export function createScopedTools(app: SubApp | null): ScopedTool[] {
+  // No app selected - return minimal tool set
+  if (!app) {
+    return [{
+      definition: {
+        name: 'no_app_selected',
+        description: 'Display message when no app is selected',
+        input_schema: {
+          type: 'object' as const,
+          properties: {}
+        }
+      },
+      handler: async () => 'No app is currently selected. Please select an app from the Apps panel to begin working.'
+    }]
+  }
+
+  const rootPath = app.path
+  const versionMgr = new VersionManager(rootPath)
+
+  return [
+    // File reading
+    {
+      definition: {
+        name: 'read_file',
+        description: 'Read a file from the current app',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            path: { type: 'string', description: 'Relative path within the app' }
+          },
+          required: ['path']
+        }
+      },
+      handler: async (input) => {
+        const path = input.path as string
+        const fullPath = normalizePath(rootPath, path)
+        if (!fullPath) {
+          return 'Error: Invalid path - cannot access files outside the app'
+        }
+        try {
+          return await fs.readFile(fullPath, 'utf-8')
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          return `Error reading file: ${message}`
+        }
+      }
+    },
+
+    // File writing with auto-commit
+    {
+      definition: {
+        name: 'write_file',
+        description: 'Write content to a file in the current app (auto-commits to git)',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            path: { type: 'string', description: 'Relative path within the app' },
+            content: { type: 'string', description: 'File content to write' },
+            message: { type: 'string', description: 'Git commit message describing the change' }
+          },
+          required: ['path', 'content', 'message']
+        }
+      },
+      handler: async (input) => {
+        const path = input.path as string
+        const content = input.content as string
+        const commitMessage = input.message as string
+        const fullPath = normalizePath(rootPath, path)
+        if (!fullPath) {
+          return 'Error: Invalid path - cannot write files outside the app'
+        }
+        try {
+          // Ensure directory exists
+          await fs.mkdir(dirname(fullPath), { recursive: true })
+          
+          // Write file
+          await fs.writeFile(fullPath, content)
+          
+          // Git add and commit
+          const relativePath = fullPath.replace(rootPath + '/', '')
+          await git.add({ fs: nodeFs, dir: rootPath, filepath: relativePath })
+          
+          const oid = await git.commit({
+            fs: nodeFs,
+            dir: rootPath,
+            message: commitMessage,
+            author: AUTHOR
+          })
+          
+          return `Wrote ${relativePath} (committed: ${oid.slice(0, 7)})`
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          return `Error writing file: ${message}`
+        }
+      }
+    },
+
+    // List files
+    {
+      definition: {
+        name: 'list_files',
+        description: 'List files in a directory of the current app',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            path: { type: 'string', description: 'Relative path (default: root)' }
+          }
+        }
+      },
+      handler: async (input) => {
+        const path = (input.path as string) ?? '.'
+        const fullPath = normalizePath(rootPath, path)
+        if (!fullPath) {
+          return 'Error: Invalid path'
+        }
+        try {
+          const entries = await fs.readdir(fullPath, { withFileTypes: true })
+          const files = entries
+            .filter(e => e.name !== '.git' && e.name !== 'node_modules' && !e.name.startsWith('.anyapp'))
+            .map(e => `${e.isDirectory() ? '📁' : '📄'} ${e.name}`)
+            .join('\n')
+          return files || '(empty directory)'
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          return `Error listing files: ${message}`
+        }
+      }
+    },
+
+    // Delete file
+    {
+      definition: {
+        name: 'delete_file',
+        description: 'Delete a file from the current app (commits the deletion)',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            path: { type: 'string', description: 'Relative path to delete' },
+            message: { type: 'string', description: 'Git commit message' }
+          },
+          required: ['path', 'message']
+        }
+      },
+      handler: async (input) => {
+        const path = input.path as string
+        const commitMessage = input.message as string
+        const fullPath = normalizePath(rootPath, path)
+        if (!fullPath) {
+          return 'Error: Invalid path'
+        }
+        try {
+          const relativePath = fullPath.replace(rootPath + '/', '')
+          
+          // Remove file
+          await fs.rm(fullPath)
+          
+          // Git remove and commit
+          await git.remove({ fs: nodeFs, dir: rootPath, filepath: relativePath })
+          
+          const oid = await git.commit({
+            fs: nodeFs,
+            dir: rootPath,
+            message: commitMessage,
+            author: AUTHOR
+          })
+          
+          return `Deleted ${relativePath} (committed: ${oid.slice(0, 7)})`
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+          return `Error deleting file: ${errorMessage}`
+        }
+      }
+    },
+
+    // Create branch
+    {
+      definition: {
+        name: 'create_branch',
+        description: 'Create a new git branch in the current app',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            name: { type: 'string', description: 'Branch name (e.g., "feature-dark-mode")' }
+          },
+          required: ['name']
+        }
+      },
+      handler: async (input) => {
+        const name = input.name as string
+        try {
+          await versionMgr.createBranch({ name })
+          return `Created and switched to branch '${name}'`
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          return `Error: ${message}`
+        }
+      }
+    },
+
+    // Switch branch
+    {
+      definition: {
+        name: 'switch_branch',
+        description: 'Switch to a different branch',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            name: { type: 'string', description: 'Branch name to switch to' }
+          },
+          required: ['name']
+        }
+      },
+      handler: async (input) => {
+        const name = input.name as string
+        try {
+          await versionMgr.switchBranch(name)
+          return `Switched to branch '${name}'`
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          return `Error: ${message}`
+        }
+      }
+    },
+
+    // List branches
+    {
+      definition: {
+        name: 'list_branches',
+        description: 'List all branches in the current app',
+        input_schema: {
+          type: 'object' as const,
+          properties: {}
+        }
+      },
+      handler: async () => {
+        try {
+          const branches = await versionMgr.listBranches()
+          const formatted = branches
+            .map((b: Branch) => `${b.isCurrent ? '* ' : '  '}${b.name}`)
+            .join('\n')
+          return formatted || 'No branches'
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          return `Error: ${message}`
+        }
+      }
+    },
+
+    // Get history
+    {
+      definition: {
+        name: 'get_history',
+        description: 'Get recent commit history',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            count: { type: 'number', description: 'Number of commits (default: 10)' }
+          }
+        }
+      },
+      handler: async (input) => {
+        const count = (input.count as number) ?? 10
+        try {
+          const history = await versionMgr.getHistory({ depth: count })
+          const formatted = history
+            .map((c: Commit) => `${c.oid.slice(0, 7)} ${c.message}`)
+            .join('\n')
+          return formatted || 'No commits yet'
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          return `Error: ${message}`
+        }
+      }
+    },
+
+    // Rollback
+    {
+      definition: {
+        name: 'rollback',
+        description: 'Rollback to a previous commit',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            commit: { type: 'string', description: 'Commit SHA to rollback to (first 7 chars ok)' }
+          },
+          required: ['commit']
+        }
+      },
+      handler: async (input) => {
+        const commit = input.commit as string
+        try {
+          await versionMgr.rollback(commit)
+          return `Rolled back to ${commit}`
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          return `Error: ${message}`
+        }
+      }
+    },
+
+    // Git status
+    {
+      definition: {
+        name: 'git_status',
+        description: 'Get current git status',
+        input_schema: {
+          type: 'object' as const,
+          properties: {}
+        }
+      },
+      handler: async () => {
+        try {
+          const state = await versionMgr.getState()
+          let status = `Branch: ${state.currentBranch}\nHEAD: ${state.head.slice(0, 7)}`
+          if (state.hasChanges) {
+            status += `\n\nUncommitted changes:\n${state.modifiedFiles.map(f => `  - ${f}`).join('\n')}`
+          } else {
+            status += '\n\nNo uncommitted changes'
+          }
+          return status
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          return `Error: ${message}`
+        }
+      }
+    },
+
+    // Run command
+    {
+      definition: {
+        name: 'run_command',
+        description: 'Run a shell command in the app directory',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            command: { type: 'string', description: 'Command to run (e.g., "bun install", "bun run build")' }
+          },
+          required: ['command']
+        }
+      },
+      handler: async (input) => {
+        const command = input.command as string
+        
+        // Block dangerous patterns
+        if (BLOCKED_COMMANDS.some(b => command.includes(b))) {
+          return 'Error: Command blocked for safety'
+        }
+        
+        try {
+          const { stdout, stderr } = await execAsync(command, {
+            cwd: rootPath,
+            timeout: 60000 // 1 minute timeout
+          })
+          
+          const output = stdout || stderr || '(no output)'
+          return output
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          return `Error: ${message}`
+        }
+      }
+    }
+  ]
+}
+
+/**
  * Self-modification tools available to the agent.
+ * @deprecated Use createScopedTools() instead for app-scoped operations
  */
 export const selfModifyTools: Tool[] = [
   {
@@ -400,8 +814,20 @@ export function checkPermission(
 
   // Accept edits mode: allow file operations and version control, ask for others
   if (permissionMode === 'acceptEdits') {
-    const fileTools = ['read_source', 'write_source', 'list_files']
-    const versionTools = [
+    // New scoped file tools
+    const scopedFileTools = ['read_file', 'write_file', 'list_files', 'delete_file']
+    // New scoped version control tools
+    const scopedVersionTools = [
+      'create_branch',
+      'switch_branch',
+      'list_branches',
+      'get_history',
+      'rollback',
+      'git_status'
+    ]
+    // Legacy tool names (for backward compatibility)
+    const legacyFileTools = ['read_source', 'write_source']
+    const legacyVersionTools = [
       'version_create_branch',
       'version_switch_branch',
       'version_rollback',
@@ -410,7 +836,13 @@ export function checkPermission(
       'version_merge',
       'version_status'
     ]
-    if (fileTools.includes(toolName) || versionTools.includes(toolName)) {
+    // Always allow no_app_selected (it's informational)
+    if (toolName === 'no_app_selected') {
+      return { behavior: 'allow' }
+    }
+    const allFileTools = [...scopedFileTools, ...legacyFileTools]
+    const allVersionTools = [...scopedVersionTools, ...legacyVersionTools]
+    if (allFileTools.includes(toolName) || allVersionTools.includes(toolName)) {
       return { behavior: 'allow' }
     }
   }
@@ -433,42 +865,103 @@ function getSkillsLoader(): SkillsLoader {
   return skillsLoader
 }
 
-/** Base system prompt for the self-modifying agent. */
-const BASE_SYSTEM_PROMPT = `You are anyapp, a self-modifying AI assistant embedded in an Electron app. You can read and modify your own source code using the available tools.
+/** Template-specific hints for the system prompt. */
+const TEMPLATE_HINTS: Record<AppTemplate, string> = {
+  'react-vite': `
+## File Structure
+- src/main.tsx - Entry point
+- src/App.tsx - Main component
+- src/index.css - Tailwind styles
+- vite.config.ts - Vite configuration
+- index.html - HTML template
 
-You have access to these tools:
+## Commands
+- \`bun install\` - Install dependencies
+- \`bun run dev\` - Start dev server
+- \`bun run build\` - Production build`,
 
-File Operations:
-- read_source: Read source files from the project
-- write_source: Write/modify source files (auto-commits changes)
-- list_files: List directory contents
+  'node-cli': `
+## File Structure
+- src/index.ts - CLI entry point
 
-Build Tools:
-- rebuild_app: Build the project
-- run_typecheck: Run TypeScript type checking
+## Commands
+- \`bun run src/index.ts\` - Run the CLI
+- \`bun run build\` - Compile TypeScript`,
 
-Version Control:
-- version_create_branch: Create a new branch for experiments
-- version_switch_branch: Switch to a different branch
-- version_rollback: Rollback to a previous commit
-- version_history: View commit history
-- version_list_branches: List all branches
-- version_merge: Merge a branch into current
-- version_status: Get current version control status
+  'node-server': `
+## File Structure
+- src/index.ts - Server entry (Hono framework)
 
-When modifying code:
-1. Always read the file first to understand the current state
-2. Make targeted, minimal changes
-3. Run typecheck after modifications
-4. Explain what you changed and why
+## Commands
+- \`bun install\` - Install dependencies
+- \`bun run dev\` - Start with watch mode
+- \`bun run start\` - Start server`,
 
-For experimental changes:
-1. Create a new branch first
-2. Make your changes
-3. If successful, merge back to main
-4. If unsuccessful, switch back to main (changes are preserved in the branch)
+  'static-site': `
+## File Structure
+- index.html - Main HTML
+- styles.css - Stylesheet
+- script.js - JavaScript
 
-Be helpful but cautious with modifications. Always explain your reasoning.`
+## Commands
+- \`npx serve .\` - Local dev server`,
+
+  'blank': `
+## File Structure
+This is a blank project. Create files as needed.`
+}
+
+/**
+ * Generate system prompt based on active app context.
+ * @param app - The active sub-app, or null if none selected
+ * @returns The system prompt string
+ */
+export function getSystemPrompt(app: SubApp | null): string {
+  if (!app) {
+    return `You are anyapp, an AI assistant that helps users create and manage applications.
+
+Currently, no app is selected. You should guide the user to:
+1. Select an existing app from the Apps panel
+2. Create a new app using the "New App" button
+
+Once an app is selected, you'll be able to help modify its code, manage versions, and run commands.`
+  }
+
+  return `You are anyapp, an AI assistant helping develop "${app.name}".
+
+## Current App Context
+- **Name**: ${app.name}
+- **Template**: ${app.template}
+- **Description**: ${app.description || '(no description)'}
+- **Branch**: ${app.currentBranch || 'main'}
+${app.hasChanges ? '- **Status**: Uncommitted changes present' : ''}
+
+## Available Tools
+- \`read_file\` - Read file contents
+- \`write_file\` - Create/modify files (auto-commits)
+- \`list_files\` - List directory contents
+- \`delete_file\` - Remove files (commits deletion)
+- \`create_branch\` - Create new branch
+- \`switch_branch\` - Switch branches
+- \`list_branches\` - Show all branches
+- \`get_history\` - View commit history
+- \`rollback\` - Restore previous state
+- \`git_status\` - Check uncommitted changes
+- \`run_command\` - Run shell commands
+${TEMPLATE_HINTS[app.template]}
+
+## Guidelines
+1. **Read before writing**: Always read a file before modifying it
+2. **Use branches for experiments**: Create a branch before risky changes
+3. **Keep changes focused**: One logical change per commit
+4. **Explain your actions**: Tell the user what you're doing and why
+5. **Test when possible**: Run the app after changes to verify they work`
+}
+
+/** Base system prompt for the self-modifying agent (legacy, for backward compatibility). */
+const BASE_SYSTEM_PROMPT = `You are anyapp, a self-modifying AI assistant embedded in an Electron app.
+
+You can help users create and manage applications. Select an app from the Apps panel to begin working on it.`
 
 /**
  * Parameters for running an agent query.
@@ -486,6 +979,8 @@ export interface RunAgentQueryParams {
   conversationHistory?: MessageParam[]
   /** Abort signal for cancellation. */
   signal?: AbortSignal
+  /** The currently active sub-app, or null if none selected. */
+  activeApp?: SubApp | null
 }
 
 /**
@@ -494,7 +989,7 @@ export interface RunAgentQueryParams {
  * @returns Updated conversation history
  */
 export async function runAgentQuery(params: RunAgentQueryParams): Promise<MessageParam[]> {
-  const { prompt, permissionMode, requestApproval, onStream, conversationHistory = [], signal } = params
+  const { prompt, permissionMode, requestApproval, onStream, conversationHistory = [], signal, activeApp = null } = params
 
   const client = new Anthropic()
   
@@ -514,8 +1009,14 @@ export async function runAgentQuery(params: RunAgentQueryParams): Promise<Messag
     }
   }
   
-  // Build system prompt with loaded skills
-  const systemPrompt = buildSystemPrompt(BASE_SYSTEM_PROMPT, loadedSkills)
+  // Generate dynamic system prompt based on active app
+  const basePrompt = getSystemPrompt(activeApp)
+  const systemPrompt = buildSystemPrompt(basePrompt, loadedSkills)
+  
+  // Create scoped tools for the active app
+  const scopedTools = createScopedTools(activeApp)
+  const toolDefinitions = scopedTools.map(t => t.definition)
+  const toolHandlers = new Map(scopedTools.map(t => [t.definition.name, t.handler]))
   
   // Build messages with conversation history
   const messages: MessageParam[] = [
@@ -530,12 +1031,12 @@ export async function runAgentQuery(params: RunAgentQueryParams): Promise<Messag
     continueLoop = false
     
     try {
-      // Create streaming message
+      // Create streaming message with scoped tools
       const stream = client.messages.stream({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 8192,
         system: systemPrompt,
-        tools: selfModifyTools,
+        tools: toolDefinitions,
         messages
       })
 
@@ -598,12 +1099,16 @@ export async function runAgentQuery(params: RunAgentQueryParams): Promise<Messag
             } else if (permission.behavior === 'ask') {
               const approved = await requestApproval(toolName, toolInput)
               if (approved) {
-                result = await executeTool(toolName, toolInput)
+                // Execute using scoped tool handler
+                const handler = toolHandlers.get(toolName)
+                result = handler ? await handler(toolInput) : `Unknown tool: ${toolName}`
               } else {
                 result = 'Tool denied by user'
               }
             } else {
-              result = await executeTool(toolName, toolInput)
+              // Execute using scoped tool handler
+              const handler = toolHandlers.get(toolName)
+              result = handler ? await handler(toolInput) : `Unknown tool: ${toolName}`
             }
 
             toolResults.push({

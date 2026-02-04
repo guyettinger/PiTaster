@@ -2,6 +2,8 @@
  * Type definitions for the Electron API exposed via preload script.
  */
 
+import type { SubApp, CreateAppParams, AppTemplate } from '@anyapp/core'
+
 /** Permission mode type for tool execution. */
 type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
 
@@ -122,19 +124,19 @@ interface ElectronAPI {
   
   // Version control methods
   /** Get current version control state. */
-  getVersionState: () => Promise<VersionState>
+  getVersionState: (appPath?: string) => Promise<VersionState>
   /** Get all branches. */
-  getBranches: () => Promise<Branch[]>
+  getBranches: (appPath?: string) => Promise<Branch[]>
   /** Get commit history. */
-  getHistory: (depth?: number) => Promise<Commit[]>
+  getHistory: (depth?: number, appPath?: string) => Promise<Commit[]>
   /** Switch to a branch. */
-  switchBranch: (name: string) => Promise<void>
+  switchBranch: (name: string, appPath?: string) => Promise<void>
   /** Create a new branch. */
-  createBranch: (name: string) => Promise<Branch>
+  createBranch: (name: string, appPath?: string) => Promise<Branch>
   /** Rollback to a specific commit. */
-  rollback: (oid: string) => Promise<void>
+  rollback: (oid: string, appPath?: string) => Promise<void>
   /** Get diff between two commits. */
-  getDiff: (from: string, to: string) => Promise<FileDiff[]>
+  getDiff: (from: string, to: string, appPath?: string) => Promise<FileDiff[]>
 
   // Sources methods
   /** Get all connected sources with their state. */
@@ -165,6 +167,24 @@ interface ElectronAPI {
   getConfig: () => Promise<AppConfig>
   /** Save the application configuration. */
   saveConfig: (config: AppConfig) => Promise<void>
+
+  // Apps methods
+  /** List all sub-apps. */
+  listApps: () => Promise<SubApp[]>
+  /** Create a new sub-app from template. */
+  createApp: (params: CreateAppParams) => Promise<SubApp>
+  /** Delete a sub-app by ID. */
+  deleteApp: (id: string) => Promise<void>
+  /** Get a single sub-app by ID. */
+  getApp: (id: string) => Promise<SubApp | null>
+  /** Update a sub-app's metadata. */
+  updateApp: (id: string, updates: { name?: string; description?: string }) => Promise<SubApp>
+  /** Set the active app for agent context. */
+  setActiveApp: (id: string | null) => Promise<string | null>
+  /** Get the active app ID. */
+  getActiveApp: () => Promise<string | null>
+  /** Get the active app details. */
+  getActiveAppDetails: () => Promise<SubApp | null>
 }
 
 declare global {
@@ -186,5 +206,8 @@ export type {
   SourceConfig,
   ConnectedSource,
   Skill,
-  AppConfig
+  AppConfig,
+  SubApp,
+  CreateAppParams,
+  AppTemplate
 }

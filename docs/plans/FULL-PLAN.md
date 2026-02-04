@@ -789,6 +789,17 @@ const versionTools = [
 - Create skills management UI
 - Allow agent to create/edit skills
 
+### Phase 7: Sub-Apps (Sandboxed Self-Modification)
+
+- Make outer Electron container immutable
+- Create AppManager for sub-app lifecycle (create, list, delete)
+- Implement app templates (React, Node CLI, Node Server, Static, Blank)
+- Each sub-app gets isolated git repository in `~/.anyapp/apps/`
+- Build App Listing UI for managing sub-apps
+- Scope agent context to active sub-app only
+- Prevent path traversal outside app directory
+- Dynamic system prompts based on active app context
+
 ## Key Files to Create
 
 1. `apps/electron/src/main/agent.ts` - Claude Agent SDK wrapper with custom tools
@@ -800,6 +811,10 @@ const versionTools = [
 7. `packages/shared/src/versions/manager.ts` - VersionManager wrapping isomorphic-git
 8. `apps/electron/src/renderer/components/VersionControl.tsx` - Version control UI panel
 9. `apps/electron/src/renderer/components/DiffViewer.tsx` - Side-by-side diff viewer
+10. `packages/core/src/apps.ts` - Sub-app type definitions (SubApp, AppTemplate, etc.)
+11. `packages/shared/src/apps/manager.ts` - AppManager for sub-app lifecycle
+12. `apps/electron/src/renderer/components/AppListing.tsx` - App management UI
+13. `apps/electron/src/renderer/components/AppHeader.tsx` - Active app context header
 
 ## Streaming Implementation (Claude Agent SDK)
 

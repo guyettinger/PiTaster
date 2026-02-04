@@ -6,7 +6,7 @@ This project implements a **self-modifying Electron app** using the Anthropic SD
 
 ## Implementation Strategy
 
-The implementation is split into **5 independent sessions**, each resulting in a working checkpoint that can be committed. This approach:
+The implementation is split into **6 independent sessions**, each resulting in a working checkpoint that can be committed. This approach:
 
 - Prevents context window overflow
 - Allows parallel subagent usage within sessions
@@ -28,6 +28,20 @@ The implementation is split into **5 independent sessions**, each resulting in a
 | [3. Version Control](SESSION-3-VERSION-CONTROL.md) | isomorphic-git | Branching, rollback, history | Complete | [Notes](SESSION-3-NOTES.md) |
 | [4. Sources + Skills](SESSION-4-SOURCES-SKILLS.md) | MCP + Skills | External connections + reusable instructions | Complete | [Notes](SESSION-4-NOTES.md) |
 | [5. Polish](SESSION-5-POLISH.md) | UI + Integration | Complete, polished application | Complete | [Notes](SESSION-5-NOTES.md) |
+| [6. Sub-Apps](SESSION-6-SUB-APPS.md) | Sandboxed Apps | App management with isolated self-modification | Planned | 6 sub-sessions |
+
+## Session 6 Sub-Sessions
+
+Session 6 is larger and broken into 6 sub-sessions to fit within agent context limits:
+
+| Sub-Session | Focus |
+|-------------|-------|
+| [6.1](SESSION-6.1-TYPES-AND-MANAGER.md) | Type definitions + AppManager base |
+| [6.2](SESSION-6.2-APP-TEMPLATES.md) | App templates + createApp |
+| [6.3](SESSION-6.3-APP-LISTING-UI.md) | App listing UI components |
+| [6.4](SESSION-6.4-IPC-INTEGRATION.md) | IPC handlers + preload API |
+| [6.5](SESSION-6.5-AGENT-SCOPING.md) | Agent scoping + security |
+| [6.6](SESSION-6.6-INTEGRATION.md) | Main app integration |
 
 ## How to Use
 
@@ -68,20 +82,24 @@ Launch subagents with specific, scoped tasks. They work best for:
 ```
 anyapp/
 ├── apps/
-│   └── electron/           # Electron desktop app
+│   └── electron/           # Electron desktop app (IMMUTABLE)
 │       └── src/
 │           ├── main/       # Main process (Node.js)
 │           ├── preload/    # Context bridge
 │           └── renderer/   # React UI (Vite)
 ├── packages/
-│   ├── core/              # Shared TypeScript types
-│   └── shared/            # Business logic
+│   ├── core/              # Shared TypeScript types (IMMUTABLE)
+│   └── shared/            # Business logic (IMMUTABLE)
 │       └── src/
+│           ├── apps/      # AppManager for sub-apps
 │           ├── versions/  # VersionManager (isomorphic-git)
 │           ├── sources/   # MCP client, source manager
 │           └── skills/    # Skills loader
-└── docs/
-    └── plans/             # These session documents
+├── docs/
+│   └── plans/             # These session documents
+└── ~/.anyapp/
+    └── apps/              # Sub-apps directory (SANDBOXED)
+        └── {app-id}/      # Each app has isolated git versioning
 ```
 
 ## Tech Stack
@@ -103,6 +121,7 @@ graph LR
     S2 --> S3[Session 3: Version Control]
     S3 --> S4[Session 4: Sources + Skills]
     S4 --> S5[Session 5: Polish]
+    S5 --> S6[Session 6: Sub-Apps]
 ```
 
 Each session builds on the previous, but commits create stable checkpoints.
@@ -138,6 +157,8 @@ bun run typecheck:all
 | `packages/shared/src/versions/manager.ts` | Version control |
 | `packages/shared/src/sources/mcp-client.ts` | MCP connections |
 | `packages/shared/src/skills/loader.ts` | Skills system |
+| `packages/shared/src/apps/manager.ts` | Sub-app lifecycle management |
+| `packages/core/src/apps.ts` | Sub-app type definitions |
 
 ### Configuration
 
@@ -145,6 +166,7 @@ User data stored at `~/.anyapp/`:
 - `config.json` - App settings
 - `skills/` - User skills
 - `workspaces/` - Workspace data
+- `apps/` - Sub-apps (each with isolated git repo)
 
 ## Estimated Timeline
 
@@ -155,7 +177,8 @@ User data stored at `~/.anyapp/`:
 | Session 3 | 2-3 hours |
 | Session 4 | 2-3 hours |
 | Session 5 | 2-3 hours |
-| **Total** | **9-14 hours** |
+| Session 6 | 3-4 hours |
+| **Total** | **12-18 hours** |
 
 ## Getting Started
 
