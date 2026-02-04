@@ -1,5 +1,5 @@
 {
-  "name": "@clirabbit/shared",
+  "name": "@anyapp/shared",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@clirabbit/core": "workspace:*",
+    "@anyapp/core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.25.0",
     "isomorphic-git": "^1.27.0"
   },

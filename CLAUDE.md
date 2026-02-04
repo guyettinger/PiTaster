@@ -1,8 +1,8 @@
-# CLIRabbit - Self-Modifying Electron App
+# anyapp - Self-Modifying Electron App
 
 ## Project Overview
 
-CLIRabbit is a self-modifying Electron app built with Claude Agent SDK. The agent can read and modify its own source code with full version control.
+anyapp is a self-modifying Electron app built with Claude Agent SDK. The agent can read and modify its own source code with full version control.
 
 ## Architecture
 
@@ -41,4 +41,4 @@ Uses isomorphic-git for versioning. Every `write_source` auto-commits.
 
 ## Config Location
 
-User data stored at `~/.clirabbit/`
+User data stored at `~/.anyapp/`

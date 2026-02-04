@@ -1,5 +1,5 @@
 {
-  "name": "@clirabbit/electron",
+  "name": "@anyapp/electron",
   "version": "0.1.0",
   "private": true,
   "main": "out/main/index.js",
@@ -10,8 +10,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.0",
-    "@clirabbit/core": "workspace:*",
-    "@clirabbit/shared": "workspace:*",
+    "@anyapp/core": "workspace:*",
+    "@anyapp/shared": "workspace:*",
     "isomorphic-git": "^1.27.0",
     "nanoid": "^5.0.0",
     "zod": "^3.25.0"

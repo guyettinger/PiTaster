@@ -146,7 +146,7 @@ export * from './skills'  // Add next
 ```typescript
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import type { McpSourceConfig, McpTool } from '@clirabbit/core'
+import type { McpSourceConfig, McpTool } from '@anyapp/core'
 
 // Environment variables to filter out when spawning
 const BLOCKED_ENV_VARS = [
@@ -179,7 +179,7 @@ export class McpClient {
     
     // Create client
     this.client = new Client({
-      name: `clirabbit-${this.config.id}`,
+      name: `anyapp-${this.config.id}`,
       version: '1.0.0'
     })
     
@@ -247,7 +247,7 @@ export class McpClient {
 ```typescript
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
-import type { AnySourceConfig, ConnectedSource } from '@clirabbit/core'
+import type { AnySourceConfig, ConnectedSource } from '@anyapp/core'
 import { McpClient } from './mcp-client'
 
 export class SourceManager {
@@ -398,7 +398,7 @@ export interface SkillMention {
 ```typescript
 import { promises as fs } from 'node:fs'
 import { join, basename } from 'node:path'
-import type { Skill } from '@clirabbit/core'
+import type { Skill } from '@anyapp/core'
 
 /**
  * Parse skill frontmatter from content.
@@ -580,7 +580,7 @@ Add MCP SDK:
 
 ```tsx
 import { useState, useEffect } from 'react'
-import type { Skill } from '@clirabbit/core'
+import type { Skill } from '@anyapp/core'
 
 interface SkillsPanelProps {
   onSkillSelect: (skill: Skill) => void
@@ -644,7 +644,7 @@ export function SkillsPanel({ onSkillSelect }: SkillsPanelProps) {
 
 ```tsx
 import { useState, useEffect } from 'react'
-import type { ConnectedSource, McpSourceConfig } from '@clirabbit/core'
+import type { ConnectedSource, McpSourceConfig } from '@anyapp/core'
 
 export function SourcesPanel() {
   const [sources, setSources] = useState<ConnectedSource[]>([])
@@ -730,12 +730,12 @@ export function SourcesPanel() {
 ### Add to apps/electron/src/main/ipc.ts
 
 ```typescript
-import { SourceManager } from '@clirabbit/shared'
-import { SkillsLoader } from '@clirabbit/shared'
+import { SourceManager } from '@anyapp/shared'
+import { SkillsLoader } from '@anyapp/shared'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-const configDir = join(homedir(), '.clirabbit')
+const configDir = join(homedir(), '.anyapp')
 const sourceManager = new SourceManager(configDir)
 const skillsLoader = new SkillsLoader(join(configDir, 'skills'))
 
@@ -776,19 +776,19 @@ deleteSkill: (name: string) => ipcRenderer.invoke('skills:delete', name),
 
 ## Part 7: Create Initial Skills
 
-Create these skills in `~/.clirabbit/skills/`:
+Create these skills in `~/.anyapp/skills/`:
 
 ### self-modify/SKILL.md
 
 ```markdown
 ---
 name: self-modify
-description: Modify the CLIRabbit app's own source code safely. Use when the user wants to change app behavior, add features, or fix bugs.
+description: Modify the anyapp app's own source code safely. Use when the user wants to change app behavior, add features, or fix bugs.
 ---
 
 # Self-Modification
 
-When modifying CLIRabbit's source code:
+When modifying anyapp's source code:
 
 1. Read the current file before modifying
 2. Make incremental changes, not wholesale rewrites
@@ -810,7 +810,7 @@ When modifying CLIRabbit's source code:
 ```markdown
 ---
 name: debug-fix
-description: Debug issues and fix bugs in CLIRabbit. Use when user reports errors or unexpected behavior.
+description: Debug issues and fix bugs in anyapp. Use when user reports errors or unexpected behavior.
 ---
 
 # Debugging

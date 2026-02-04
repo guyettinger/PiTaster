@@ -140,7 +140,7 @@ export function SkillsPanel({ isVisible, onSkillSelect }: SkillsPanelProps) {
             <>
               <p className="text-sm text-neutral-500">No skills available</p>
               <p className="mt-1 text-xs text-neutral-600">
-                Add skills in ~/.clirabbit/skills/
+                Add skills in ~/.anyapp/skills/
               </p>
             </>
           ) : (

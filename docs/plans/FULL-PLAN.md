@@ -71,7 +71,7 @@ graph TB
 ## Project Structure (electron-vite conventions)
 
 ```
-CLIRabbit/
+anyapp/
 ├── apps/
 │   └── electron/
 │       ├── src/
@@ -92,14 +92,14 @@ CLIRabbit/
 │       ├── electron.vite.config.ts
 │       └── package.json
 ├── packages/
-│   ├── core/                   # @clirabbit/core - Shared types
+│   ├── core/                   # @anyapp/core - Shared types
 │   │   ├── src/
 │   │   │   ├── index.ts
 │   │   │   ├── agent.ts
 │   │   │   ├── sources.ts
 │   │   │   └── skills.ts
 │   │   └── package.json
-│   └── shared/                 # @clirabbit/shared - Business logic
+│   └── shared/                 # @anyapp/shared - Business logic
 │       ├── src/
 │       │   ├── agent/          # Claude Agent SDK wrapper
 │       │   ├── sources/        # MCP client, API handlers
@@ -117,11 +117,11 @@ CLIRabbit/
 
 ```json
 {
-  "name": "clirabbit",
+  "name": "anyapp",
   "private": true,
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "dev": "bun run --filter @clirabbit/electron dev",
+    "dev": "bun run --filter @anyapp/electron dev",
     "build": "bun run --workspaces build",
     "typecheck:all": "bun run --workspaces typecheck"
   }
@@ -133,18 +133,18 @@ CLIRabbit/
 ```json
 // packages/shared/package.json
 {
-  "name": "@clirabbit/shared",
+  "name": "@anyapp/shared",
   "dependencies": {
-    "@clirabbit/core": "workspace:*"
+    "@anyapp/core": "workspace:*"
   }
 }
 
 // apps/electron/package.json
 {
-  "name": "@clirabbit/electron",
+  "name": "@anyapp/electron",
   "dependencies": {
-    "@clirabbit/core": "workspace:*",
-    "@clirabbit/shared": "workspace:*"
+    "@anyapp/core": "workspace:*",
+    "@anyapp/shared": "workspace:*"
   }
 }
 ```
@@ -225,7 +225,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 export async function connectMcpSource(config: McpSourceConfig) {
   const client = new Client({
-    name: 'clirabbit-client',
+    name: 'anyapp-client',
     version: '1.0.0'
   });
 
@@ -249,7 +249,7 @@ export async function connectMcpSource(config: McpSourceConfig) {
 
 ### 3. Skills System
 
-Skills are markdown files with YAML frontmatter, stored in `~/.clirabbit/workspaces/{id}/skills/`:
+Skills are markdown files with YAML frontmatter, stored in `~/.anyapp/workspaces/{id}/skills/`:
 
 ```markdown
 ---
@@ -395,7 +395,7 @@ interface MergeConflict {
 import * as git from 'isomorphic-git'
 import fs from 'node:fs'
 
-const AUTHOR = { name: 'CLIRabbit Agent', email: 'agent@clirabbit.local' }
+const AUTHOR = { name: 'anyapp Agent', email: 'agent@anyapp.local' }
 
 export class VersionManager {
   constructor(private dir: string) {}
@@ -845,10 +845,10 @@ async function handleAgentQuery(prompt: string, webContents: WebContents) {
 
 ## Configuration Storage
 
-App configuration at `~/.clirabbit/`:
+App configuration at `~/.anyapp/`:
 
 ```
-~/.clirabbit/
+~/.anyapp/
 ├── config.json              # App settings, API keys
 ├── preferences.json         # UI preferences
 └── workspaces/
@@ -1004,17 +1004,17 @@ Create these rules in `.cursor/rules/` to provide consistent AI guidance during 
 
 ```markdown
 ---
-description: CLIRabbit project architecture and conventions
+description: anyapp project architecture and conventions
 alwaysApply: true
 ---
 
-# CLIRabbit Architecture
+# anyapp Architecture
 
 ## Monorepo Structure (Bun Workspaces)
 
 - `apps/electron/` - Electron desktop app
-- `packages/core/` - Shared TypeScript types (@clirabbit/core)
-- `packages/shared/` - Business logic (@clirabbit/shared)
+- `packages/core/` - Shared TypeScript types (@anyapp/core)
+- `packages/shared/` - Business logic (@anyapp/shared)
 
 ## electron-vite Folder Convention
 
@@ -1029,8 +1029,8 @@ Use `"workspace:*"` for inter-package dependencies:
 \`\`\`json
 {
   "dependencies": {
-    "@clirabbit/core": "workspace:*",
-    "@clirabbit/shared": "workspace:*"
+    "@anyapp/core": "workspace:*",
+    "@anyapp/shared": "workspace:*"
   }
 }
 \`\`\`
@@ -1041,12 +1041,12 @@ Use `"workspace:*"` for inter-package dependencies:
 - `bun run dev` - Start development with hot reload
 - `bun run build` - Build all packages
 - `bun run typecheck:all` - Type check entire monorepo
-- `bun run --filter @clirabbit/electron dev` - Run specific workspace
+- `bun run --filter @anyapp/electron dev` - Run specific workspace
 
 ## Import Conventions
 
-- Types from `@clirabbit/core`
-- Business logic from `@clirabbit/shared`
+- Types from `@anyapp/core`
+- Business logic from `@anyapp/shared`
 - UI components from `@/components/ui` (shadcn)
 ```
 
@@ -1301,7 +1301,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 \`\`\`typescript
 const client = new Client({
-  name: 'clirabbit-client',
+  name: 'anyapp-client',
   version: '1.0.0'
 })
 
@@ -1501,7 +1501,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 // 5. Local imports - types
-import type { Message } from "@clirabbit/core"
+import type { Message } from "@anyapp/core"
 \`\`\`
 
 ## Electron IPC Integration
@@ -1662,7 +1662,7 @@ async function logModification(path: string, backupPath: string) {
     action: 'update',
     success: true
   }
-  await appendJsonLine('~/.clirabbit/modifications.jsonl', log)
+  await appendJsonLine('~/.anyapp/modifications.jsonl', log)
 }
 \`\`\`
 
@@ -2042,7 +2042,7 @@ Create these skills in `.cursor/skills/` to enable specialized agent behaviors:
 ```yaml
 ---
 name: self-modify
-description: Modify the CLIRabbit app's own source code safely. Use when the user wants to change app behavior, add features, or fix bugs in the app itself.
+description: Modify the anyapp app's own source code safely. Use when the user wants to change app behavior, add features, or fix bugs in the app itself.
 ---
 ```
 
@@ -2074,7 +2074,7 @@ description: Connect to external data sources including MCP servers, REST APIs, 
 - For MCP: Check if server exists (npx, local binary)
 - For REST API: Look for OpenAPI spec or documentation
 - For filesystem: Get path and access permissions
-- Create source config in `~/.clirabbit/workspaces/{id}/sources/`
+- Create source config in `~/.anyapp/workspaces/{id}/sources/`
 - Test connection before saving
 - Handle OAuth flows for APIs that require it
 
@@ -2087,7 +2087,7 @@ description: Connect to external data sources including MCP servers, REST APIs, 
 ```yaml
 ---
 name: enhance-ui
-description: Improve the CLIRabbit user interface using shadcn/ui and Tailwind. Use when user requests UI changes, new components, or visual improvements.
+description: Improve the anyapp user interface using shadcn/ui and Tailwind. Use when user requests UI changes, new components, or visual improvements.
 ---
 ```
 
@@ -2109,13 +2109,13 @@ description: Improve the CLIRabbit user interface using shadcn/ui and Tailwind. 
 ```yaml
 ---
 name: debug-fix
-description: Debug issues and fix bugs in CLIRabbit. Use when user reports errors, unexpected behavior, or needs troubleshooting help.
+description: Debug issues and fix bugs in anyapp. Use when user reports errors, unexpected behavior, or needs troubleshooting help.
 ---
 ```
 
 **Instructions**:
 
-- Check logs at `~/Library/Logs/CLIRabbit/`
+- Check logs at `~/Library/Logs/anyapp/`
 - Read error stack traces carefully
 - Identify affected module (main, preload, renderer, shared)
 - Check IPC communication if cross-process issue
@@ -2132,14 +2132,14 @@ description: Debug issues and fix bugs in CLIRabbit. Use when user reports error
 ```yaml
 ---
 name: create-skill
-description: Create new skills for the CLIRabbit agent. Use when user wants to add new agent capabilities or specialized behaviors.
+description: Create new skills for the anyapp agent. Use when user wants to add new agent capabilities or specialized behaviors.
 ---
 ```
 
 **Instructions**:
 
 - Ask user for skill purpose and trigger scenarios
-- Create skill directory in `~/.clirabbit/workspaces/{id}/skills/`
+- Create skill directory in `~/.anyapp/workspaces/{id}/skills/`
 - Write SKILL.md with frontmatter and instructions
 - Keep instructions under 500 lines
 - Include concrete examples
@@ -2183,10 +2183,10 @@ description: Manage version control for app modifications. Use when user wants t
 Create a `CLAUDE.md` file in the project root for Claude Code / Agent SDK context:
 
 ```markdown
-# CLIRabbit - Self-Modifying Electron App
+# anyapp - Self-Modifying Electron App
 
 ## Project Overview
-CLIRabbit is a self-modifying Electron app built with Claude Agent SDK. The agent can read and modify its own source code.
+anyapp is a self-modifying Electron app built with Claude Agent SDK. The agent can read and modify its own source code.
 
 ## Architecture
 - **apps/electron/**: Electron app (main, preload, renderer)
@@ -2212,7 +2212,7 @@ The agent can modify files in this project. Always:
 4. Confirm with user before restart
 
 ## Config Location
-User data stored at `~/.clirabbit/`
+User data stored at `~/.anyapp/`
 ```
 
 This documentation ensures Claude has proper context when working on the project.

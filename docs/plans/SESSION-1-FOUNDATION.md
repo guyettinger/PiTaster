@@ -36,11 +36,11 @@ Main Agent (orchestrator)
 ```json
 // package.json
 {
-  "name": "clirabbit",
+  "name": "anyapp",
   "private": true,
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "dev": "bun run --filter @clirabbit/electron dev",
+    "dev": "bun run --filter @anyapp/electron dev",
     "build": "bun run --workspaces build",
     "typecheck:all": "bun run --workspaces typecheck"
   },
@@ -95,7 +95,7 @@ apps/electron/
 
 ```json
 {
-  "name": "@clirabbit/electron",
+  "name": "@anyapp/electron",
   "version": "0.1.0",
   "main": "dist/main/index.js",
   "scripts": {
@@ -104,8 +104,8 @@ apps/electron/
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@clirabbit/core": "workspace:*",
-    "@clirabbit/shared": "workspace:*"
+    "@anyapp/core": "workspace:*",
+    "@anyapp/shared": "workspace:*"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -201,10 +201,10 @@ Refer to the main plan file for full rule content:
 Create `CLAUDE.md` at project root:
 
 ```markdown
-# CLIRabbit - Self-Modifying Electron App
+# anyapp - Self-Modifying Electron App
 
 ## Project Overview
-CLIRabbit is a self-modifying Electron app built with Claude Agent SDK. The agent can read and modify its own source code with full version control.
+anyapp is a self-modifying Electron app built with Claude Agent SDK. The agent can read and modify its own source code with full version control.
 
 ## Architecture
 - **apps/electron/**: Electron app (main, preload, renderer)
@@ -236,7 +236,7 @@ Uses isomorphic-git for versioning. Every `write_source` auto-commits.
 4. User confirmation required in default mode
 
 ## Config Location
-User data stored at `~/.clirabbit/`
+User data stored at `~/.anyapp/`
 ```
 
 ---

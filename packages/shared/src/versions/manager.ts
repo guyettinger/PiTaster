@@ -7,10 +7,10 @@
 
 import * as git from 'isomorphic-git'
 import fs from 'node:fs'
-import type { Commit, Branch, VersionState, FileDiff, MergeResult } from '@clirabbit/core'
+import type { Commit, Branch, VersionState, FileDiff, MergeResult } from '@anyapp/core'
 
 /** Default author for commits. */
-const AUTHOR = { name: 'CLIRabbit Agent', email: 'agent@clirabbit.local' }
+const AUTHOR = { name: 'anyapp Agent', email: 'agent@anyapp.local' }
 
 /**
  * Options for creating a commit.

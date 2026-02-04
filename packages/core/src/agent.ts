@@ -1,5 +1,5 @@
 /**
- * Agent-related type definitions for CLIRabbit.
+ * Agent-related type definitions for anyapp.
  */
 
 import type { PermissionMode } from './permissions'

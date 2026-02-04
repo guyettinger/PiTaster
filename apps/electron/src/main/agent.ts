@@ -8,8 +8,8 @@ import { resolve, join } from 'node:path'
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { homedir } from 'node:os'
-import { VersionManager, SkillsLoader, extractSkillMentions, buildSystemPrompt } from '@clirabbit/shared'
-import type { Commit, Branch, Skill } from '@clirabbit/core'
+import { VersionManager, SkillsLoader, extractSkillMentions, buildSystemPrompt } from '@anyapp/shared'
+import type { Commit, Branch, Skill } from '@anyapp/core'
 
 /** Permission mode type for tool execution. */
 export type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
@@ -427,14 +427,14 @@ let skillsLoader: SkillsLoader | null = null
  */
 function getSkillsLoader(): SkillsLoader {
   if (!skillsLoader) {
-    const skillsDir = join(homedir(), '.clirabbit', 'skills')
+    const skillsDir = join(homedir(), '.anyapp', 'skills')
     skillsLoader = new SkillsLoader(skillsDir)
   }
   return skillsLoader
 }
 
 /** Base system prompt for the self-modifying agent. */
-const BASE_SYSTEM_PROMPT = `You are CLIRabbit, a self-modifying AI assistant embedded in an Electron app. You can read and modify your own source code using the available tools.
+const BASE_SYSTEM_PROMPT = `You are anyapp, a self-modifying AI assistant embedded in an Electron app. You can read and modify your own source code using the available tools.
 
 You have access to these tools:
 

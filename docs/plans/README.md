@@ -1,4 +1,4 @@
-# CLIRabbit Implementation Plan
+# anyapp Implementation Plan
 
 ## Overview
 
@@ -66,7 +66,7 @@ Launch subagents with specific, scoped tasks. They work best for:
 ## Architecture
 
 ```
-CLIRabbit/
+anyapp/
 ├── apps/
 │   └── electron/           # Electron desktop app
 │       └── src/
@@ -141,7 +141,7 @@ bun run typecheck:all
 
 ### Configuration
 
-User data stored at `~/.clirabbit/`:
+User data stored at `~/.anyapp/`:
 - `config.json` - App settings
 - `skills/` - User skills
 - `workspaces/` - Workspace data

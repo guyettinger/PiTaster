@@ -1,5 +1,5 @@
 /**
- * Message-related type definitions for CLIRabbit.
+ * Message-related type definitions for anyapp.
  */
 
 import type { ToolResult } from './agent'

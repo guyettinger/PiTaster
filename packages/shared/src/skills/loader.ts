@@ -4,7 +4,7 @@
 
 import { promises as fs } from 'node:fs'
 import { join, basename } from 'node:path'
-import type { Skill, SkillMention } from '@clirabbit/core'
+import type { Skill, SkillMention } from '@anyapp/core'
 
 /**
  * Parsed skill frontmatter.

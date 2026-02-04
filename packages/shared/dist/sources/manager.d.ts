@@ -1,7 +1,7 @@
 /**
  * Source Manager for managing external source connections.
  */
-import type { AnySourceConfig, ConnectedSource } from '@clirabbit/core';
+import type { AnySourceConfig, ConnectedSource } from '@anyapp/core';
 /**
  * Manages source configurations and connections.
  */
@@ -11,7 +11,7 @@ export declare class SourceManager {
     private mcpClients;
     /**
      * Creates a SourceManager instance.
-     * @param configDir - The configuration directory (e.g., ~/.clirabbit)
+     * @param configDir - The configuration directory (e.g., ~/.anyapp)
      */
     constructor(configDir: string);
     /**

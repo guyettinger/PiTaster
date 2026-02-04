@@ -1,5 +1,5 @@
 /**
- * Help component that explains how to use CLIRabbit to enhance the UI.
+ * Help component that explains how to use anyapp to enhance the UI.
  */
 
 import { useState } from 'react'
@@ -73,7 +73,7 @@ export function Help() {
           <span className="text-2xl">📚</span>
           <div>
             <h1 className="text-xl font-semibold text-neutral-100">Help & Documentation</h1>
-            <p className="text-sm text-neutral-400">Learn how to enhance CLIRabbit's UI through chat</p>
+            <p className="text-sm text-neutral-400">Learn how to enhance anyapp's UI through chat</p>
           </div>
         </div>
       </header>
@@ -86,7 +86,7 @@ export function Help() {
           <HelpSection title="🚀 Quick Start: Enhancing the UI" defaultExpanded={true}>
             <div className="space-y-4">
               <p className="text-neutral-300">
-                CLIRabbit is a self-modifying AI that can enhance its own user interface. 
+                anyapp is a self-modifying AI that can enhance its own user interface. 
                 Simply ask in the chat, and I'll read, modify, and improve the UI components in real-time.
               </p>
               
@@ -208,7 +208,7 @@ export function Help() {
           <HelpSection title="🎯 Design System & Components">
             <div className="space-y-4">
               <p className="text-neutral-300">
-                CLIRabbit uses a consistent design system. When requesting UI changes, 
+                anyapp uses a consistent design system. When requesting UI changes, 
                 I'll automatically follow these patterns:
               </p>
 
@@ -382,7 +382,7 @@ export function Help() {
             <h3 className="font-semibold text-neutral-200 mb-2">🎯 Ready to Get Started?</h3>
             <p className="text-sm text-neutral-300 mb-3">
               Head over to the chat and try asking me to enhance the UI. I'm here to help 
-              make CLIRabbit even better!
+              make anyapp even better!
             </p>
             <div className="flex gap-2 text-xs">
               <span className="rounded bg-blue-600/20 px-2 py-1 text-blue-300">@enhance-ui</span>

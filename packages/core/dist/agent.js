@@ -1,4 +1,4 @@
 /**
- * Agent-related type definitions for CLIRabbit.
+ * Agent-related type definitions for anyapp.
  */
 export {};

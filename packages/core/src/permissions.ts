@@ -1,5 +1,5 @@
 /**
- * Permission-related type definitions for CLIRabbit.
+ * Permission-related type definitions for anyapp.
  */
 
 /**

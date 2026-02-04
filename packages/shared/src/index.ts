@@ -1,5 +1,5 @@
 /**
- * @clirabbit/shared - Business logic for CLIRabbit
+ * @anyapp/shared - Business logic for anyapp
  *
  * This package contains shared business logic including:
  * - Agent wrapper (Claude Agent SDK)

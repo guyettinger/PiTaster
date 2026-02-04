@@ -8,9 +8,9 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { promises as fs } from 'node:fs'
 import { runAgentQuery, setProjectRoot, getProjectRoot } from './agent'
-import { VersionManager, SourceManager, SkillsLoader } from '@clirabbit/shared'
+import { VersionManager, SourceManager, SkillsLoader } from '@anyapp/shared'
 import type { PermissionMode, StreamChunk, MessageParam } from './agent'
-import type { Skill } from '@clirabbit/core'
+import type { Skill } from '@anyapp/core'
 
 /** Tool approval request sent to renderer. */
 interface ToolApprovalRequest {
@@ -44,7 +44,7 @@ const APPROVAL_TIMEOUT_MS = 60000
 let versionManager: VersionManager | null = null
 
 /** Config directory for sources and skills. */
-const configDir = join(homedir(), '.clirabbit')
+const configDir = join(homedir(), '.anyapp')
 
 /** Source manager instance. */
 const sourceManager = new SourceManager(configDir)

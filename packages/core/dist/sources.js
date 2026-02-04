@@ -1,4 +1,4 @@
 /**
- * Source configuration and connection types for CLIRabbit.
+ * Source configuration and connection types for anyapp.
  */
 export {};

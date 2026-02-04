@@ -1,7 +1,7 @@
 /**
  * Skills Loader for managing reusable agent instructions.
  */
-import type { Skill, SkillMention } from '@clirabbit/core';
+import type { Skill, SkillMention } from '@anyapp/core';
 /**
  * Loader for managing skills (reusable agent instructions).
  */

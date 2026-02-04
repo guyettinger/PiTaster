@@ -1,5 +1,5 @@
 /**
- * Skill types for CLIRabbit.
+ * Skill types for anyapp.
  */
 /**
  * A skill definition.

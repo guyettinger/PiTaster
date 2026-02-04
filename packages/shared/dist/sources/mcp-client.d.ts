@@ -1,7 +1,7 @@
 /**
  * MCP Client for connecting to stdio-based MCP servers.
  */
-import type { McpSourceConfig, McpTool } from '@clirabbit/core';
+import type { McpSourceConfig, McpTool } from '@anyapp/core';
 /**
  * Client for connecting to MCP (Model Context Protocol) servers via stdio.
  */

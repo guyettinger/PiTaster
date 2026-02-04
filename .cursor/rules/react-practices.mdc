@@ -119,7 +119,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 // 5. Local imports - types
-import type { Message } from "@clirabbit/core"
+import type { Message } from "@anyapp/core"
 ```
 
 ## Electron IPC Integration

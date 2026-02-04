@@ -4,7 +4,7 @@
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import type { McpSourceConfig, McpTool } from '@clirabbit/core'
+import type { McpSourceConfig, McpTool } from '@anyapp/core'
 
 /**
  * Environment variables to filter out when spawning MCP servers.
@@ -51,7 +51,7 @@ export class McpClient {
 
     // Create client
     this.client = new Client({
-      name: `clirabbit-${this.config.id}`,
+      name: `anyapp-${this.config.id}`,
       version: '1.0.0'
     })
 

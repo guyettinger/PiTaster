@@ -34,7 +34,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 ```typescript
 const client = new Client({
-  name: 'clirabbit-client',
+  name: 'anyapp-client',
   version: '1.0.0'
 })
 

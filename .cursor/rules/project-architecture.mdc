@@ -1,15 +1,15 @@
 ---
-description: CLIRabbit project architecture and conventions
+description: anyapp project architecture and conventions
 alwaysApply: true
 ---
 
-# CLIRabbit Architecture
+# anyapp Architecture
 
 ## Monorepo Structure (Bun Workspaces)
 
 - `apps/electron/` - Electron desktop app
-- `packages/core/` - Shared TypeScript types (@clirabbit/core)
-- `packages/shared/` - Business logic (@clirabbit/shared)
+- `packages/core/` - Shared TypeScript types (@anyapp/core)
+- `packages/shared/` - Business logic (@anyapp/shared)
 
 ## electron-vite Folder Convention
 
@@ -24,8 +24,8 @@ Use `"workspace:*"` for inter-package dependencies:
 ```json
 {
   "dependencies": {
-    "@clirabbit/core": "workspace:*",
-    "@clirabbit/shared": "workspace:*"
+    "@anyapp/core": "workspace:*",
+    "@anyapp/shared": "workspace:*"
   }
 }
 ```
@@ -36,10 +36,10 @@ Use `"workspace:*"` for inter-package dependencies:
 - `bun run dev` - Start development with hot reload
 - `bun run build` - Build all packages
 - `bun run typecheck:all` - Type check entire monorepo
-- `bun run --filter @clirabbit/electron dev` - Run specific workspace
+- `bun run --filter @anyapp/electron dev` - Run specific workspace
 
 ## Import Conventions
 
-- Types from `@clirabbit/core`
-- Business logic from `@clirabbit/shared`
+- Types from `@anyapp/core`
+- Business logic from `@anyapp/shared`
 - UI components from `@/components/ui` (shadcn)

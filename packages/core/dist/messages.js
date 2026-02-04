@@ -1,4 +1,4 @@
 /**
- * Message-related type definitions for CLIRabbit.
+ * Message-related type definitions for anyapp.
  */
 export {};

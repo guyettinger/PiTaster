@@ -1,7 +1,7 @@
 /**
- * @clirabbit/core - Shared TypeScript types for CLIRabbit
+ * @anyapp/core - Shared TypeScript types for anyapp
  *
- * This package contains type definitions shared across all CLIRabbit packages.
+ * This package contains type definitions shared across all anyapp packages.
  */
 export * from './agent';
 export * from './permissions';

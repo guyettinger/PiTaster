@@ -4,7 +4,7 @@
  * Provides commit, branch, rollback, merge, and diff capabilities
  * for managing source code versions.
  */
-import type { Commit, Branch, VersionState, FileDiff, MergeResult } from '@clirabbit/core';
+import type { Commit, Branch, VersionState, FileDiff, MergeResult } from '@anyapp/core';
 /**
  * Options for creating a commit.
  */

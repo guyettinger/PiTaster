@@ -7,7 +7,7 @@
 import * as git from 'isomorphic-git';
 import fs from 'node:fs';
 /** Default author for commits. */
-const AUTHOR = { name: 'CLIRabbit Agent', email: 'agent@clirabbit.local' };
+const AUTHOR = { name: 'anyapp Agent', email: 'agent@anyapp.local' };
 /**
  * Manages version control operations using isomorphic-git.
  */

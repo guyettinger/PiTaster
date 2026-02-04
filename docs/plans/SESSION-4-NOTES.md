@@ -28,7 +28,7 @@ Successfully implemented the sources system (MCP client, source management) and 
 - Updated `renderer/src/types/electron.d.ts` - Added type declarations
 - Updated `renderer/src/App.tsx` - Integrated panels with toggle buttons
 
-### User Config (~/.clirabbit/skills/)
+### User Config (~/.anyapp/skills/)
 - `self-modify/SKILL.md`
 - `debug-fix/SKILL.md`
 - `manage-versions/SKILL.md`
@@ -65,9 +65,9 @@ Added extra methods not in original plan for better UX:
 ## Build Order Consideration
 
 The packages must be built in dependency order before typecheck works:
-1. `@clirabbit/core` (types)
-2. `@clirabbit/shared` (depends on core)
-3. `@clirabbit/electron` (depends on both)
+1. `@anyapp/core` (types)
+2. `@anyapp/shared` (depends on core)
+3. `@anyapp/electron` (depends on both)
 
 Running `bun run build` handles this automatically via workspaces.
 

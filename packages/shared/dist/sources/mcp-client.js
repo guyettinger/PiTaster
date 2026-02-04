@@ -42,7 +42,7 @@ export class McpClient {
         const env = { ...filteredEnv, ...this.config.env };
         // Create client
         this.client = new Client({
-            name: `clirabbit-${this.config.id}`,
+            name: `anyapp-${this.config.id}`,
             version: '1.0.0'
         });
         // Create transport

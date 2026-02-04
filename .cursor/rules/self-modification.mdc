@@ -91,7 +91,7 @@ async function logModification(path: string, backupPath: string) {
     action: 'update',
     success: true
   }
-  await appendJsonLine('~/.clirabbit/modifications.jsonl', log)
+  await appendJsonLine('~/.anyapp/modifications.jsonl', log)
 }
 ```
 

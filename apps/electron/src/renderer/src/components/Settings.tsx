@@ -153,7 +153,7 @@ export function Settings({ isVisible = true }: SettingsProps) {
             Config Location
           </label>
           <p className="mt-1 text-sm text-neutral-400">
-            <code className="rounded bg-neutral-800 px-1.5 py-0.5">~/.clirabbit/</code>
+            <code className="rounded bg-neutral-800 px-1.5 py-0.5">~/.anyapp/</code>
           </p>
         </div>
 
@@ -170,7 +170,7 @@ export function Settings({ isVisible = true }: SettingsProps) {
         {/* Version Info */}
         <div className="mt-8 border-t border-neutral-800 pt-6">
           <p className="text-xs text-neutral-500">
-            CLIRabbit v0.1.0 - Self-Modifying Electron App
+            anyapp v0.1.0 - Self-Modifying Electron App
           </p>
         </div>
       </div>

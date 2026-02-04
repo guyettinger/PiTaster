@@ -183,7 +183,7 @@ export function SourcesPanel({ isVisible }: SourcesPanelProps) {
           </svg>
           <p className="text-sm text-neutral-500">No sources configured</p>
           <p className="mt-1 text-xs text-neutral-600">
-            Add MCP servers in ~/.clirabbit/sources/
+            Add MCP servers in ~/.anyapp/sources/
           </p>
         </div>
       ) : (

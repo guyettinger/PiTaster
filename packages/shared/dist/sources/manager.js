@@ -13,7 +13,7 @@ export class SourceManager {
     mcpClients = new Map();
     /**
      * Creates a SourceManager instance.
-     * @param configDir - The configuration directory (e.g., ~/.clirabbit)
+     * @param configDir - The configuration directory (e.g., ~/.anyapp)
      */
     constructor(configDir) {
         this.configDir = configDir;
