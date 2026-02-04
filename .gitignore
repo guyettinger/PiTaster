@@ -12,3 +12,7 @@ yarn-error.log*
 /.idea/
 /apps/electron/node_modules/*
 /apps/electron/out/*
+/packages/shared/dist/
+/packages/shared/node_modules/
+/packages/core/dist/
+/packages/core/node_modules/

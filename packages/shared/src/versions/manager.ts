@@ -53,6 +53,19 @@ export class VersionManager {
   constructor(private dir: string) {}
 
   /**
+   * Check if the directory is a valid git repository with at least one commit.
+   * @returns True if the repository is valid, false otherwise.
+   */
+  async isValidRepo(): Promise<boolean> {
+    try {
+      await git.resolveRef({ fs, dir: this.dir, ref: 'HEAD' })
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /**
    * Commit staged files with a message.
    * @param options - Commit options including message and files.
    * @returns The created commit.
@@ -261,22 +274,32 @@ export class VersionManager {
    * @returns The current version state.
    */
   async getState(): Promise<VersionState> {
-    const currentBranch = (await git.currentBranch({ fs, dir: this.dir })) ?? 'HEAD'
-    const head = await git.resolveRef({ fs, dir: this.dir, ref: 'HEAD' })
-    const status = await git.statusMatrix({ fs, dir: this.dir })
+    try {
+      const currentBranch = (await git.currentBranch({ fs, dir: this.dir })) ?? 'HEAD'
+      const head = await git.resolveRef({ fs, dir: this.dir, ref: 'HEAD' })
+      const status = await git.statusMatrix({ fs, dir: this.dir })
 
-    const modifiedFiles = status
-      .filter((row: [string, number, number, number]) => {
-        const [, headStatus, workdirStatus, stageStatus] = row
-        return headStatus !== workdirStatus || headStatus !== stageStatus
-      })
-      .map((row: [string, number, number, number]) => row[0])
+      const modifiedFiles = status
+        .filter((row: [string, number, number, number]) => {
+          const [, headStatus, workdirStatus, stageStatus] = row
+          return headStatus !== workdirStatus || headStatus !== stageStatus
+        })
+        .map((row: [string, number, number, number]) => row[0])
 
-    return {
-      currentBranch,
-      head,
-      hasChanges: modifiedFiles.length > 0,
-      modifiedFiles
+      return {
+        currentBranch,
+        head,
+        hasChanges: modifiedFiles.length > 0,
+        modifiedFiles
+      }
+    } catch {
+      // Repository doesn't exist or has no commits
+      return {
+        currentBranch: 'main',
+        head: '',
+        hasChanges: false,
+        modifiedFiles: []
+      }
     }
   }
 }

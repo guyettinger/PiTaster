@@ -152,6 +152,13 @@ export function VersionControl({
             Retry
           </button>
         </div>
+      ) : !state?.head ? (
+        <div className="flex flex-1 flex-col items-center justify-center p-4 text-center">
+          <p className="text-sm text-neutral-400">No git repository found or no commits yet.</p>
+          <p className="mt-2 text-xs text-neutral-500">
+            Initialize a git repository with at least one commit to enable version control.
+          </p>
+        </div>
       ) : (
         <>
           {/* Branch Selector */}
