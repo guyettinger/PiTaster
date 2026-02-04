@@ -53,7 +53,19 @@ export interface StreamChunk {
   type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error'
   text?: string
   tool?: string
+  input?: Record<string, unknown>
+  output?: string
   error?: string
+}
+
+/**
+ * Summarizes tool output for display (avoids showing huge file contents).
+ */
+function summarizeOutput(result: string): string {
+  if (result.length > 500) {
+    return result.slice(0, 500) + '\n...(truncated)'
+  }
+  return result
 }
 
 /** Anthropic SDK types */
@@ -1088,7 +1100,8 @@ export async function runAgentQuery(params: RunAgentQueryParams): Promise<Messag
             const toolName = block.name
             const toolInput = block.input as Record<string, unknown>
 
-            onStream({ type: 'tool_start', tool: toolName })
+            // Emit tool_start with input (updates the running tool with complete input)
+            onStream({ type: 'tool_start', tool: toolName, input: toolInput })
 
             // Check permissions
             const permission = checkPermission(permissionMode, toolName)
@@ -1117,7 +1130,7 @@ export async function runAgentQuery(params: RunAgentQueryParams): Promise<Messag
               content: result
             })
 
-            onStream({ type: 'tool_end' })
+            onStream({ type: 'tool_end', tool: toolName, output: summarizeOutput(result) })
           }
         }
 

@@ -1,11 +1,11 @@
 /**
- * Chat component with message list, input, and tool approval.
+ * Chat component with inline tool bubbles and approvals.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { MessageBubble } from './MessageBubble'
-import { ToolApprovalDialog } from './ToolApprovalDialog'
-import type { Message } from './MessageBubble'
+import { InlineApproval } from './InlineApproval'
+import type { Message, ContentBlock } from './MessageBubble'
 import type { 
   PermissionMode, 
   StreamChunk, 
@@ -57,61 +57,142 @@ export function Chat({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const internalInputRef = useRef<HTMLInputElement>(null)
   
+  // Track current tool being used for input data
+  const currentToolRef = useRef<{ name: string; input?: Record<string, unknown> } | null>(null)
+  
   // Use external input if provided (controlled mode)
   const currentInput = externalInput !== undefined ? externalInput : input
   const setCurrentInput = onExternalInputChange || setInput
   const inputRefToUse = externalInputRef || internalInputRef
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom when messages change or pending approval appears
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, pendingApproval])
 
   // Setup IPC listeners
   useEffect(() => {
     // Listen for agent stream
     window.electronAPI.onAgentStream((chunk: StreamChunk) => {
       if (chunk.type === 'text' && chunk.text) {
+        // Add text to current or create new text block
         setMessages(prev => {
           const last = prev[prev.length - 1]
-          if (last?.role === 'assistant') {
-            return [...prev.slice(0, -1), { ...last, content: last.content + chunk.text }]
+          if (last?.role !== 'assistant') return prev
+          
+          const blocks = last.blocks ?? []
+          const lastBlock = blocks[blocks.length - 1]
+          
+          if (lastBlock?.type === 'text') {
+            // Append to existing text block
+            const newBlocks: ContentBlock[] = [...blocks.slice(0, -1), {
+              ...lastBlock,
+              content: lastBlock.content + chunk.text
+            }]
+            return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
+          } else {
+            // Create new text block
+            const newBlocks: ContentBlock[] = [...blocks, { type: 'text' as const, content: chunk.text! }]
+            return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
           }
-          return prev
         })
       } else if (chunk.type === 'tool_start' && chunk.tool) {
+        // Store tool info
+        currentToolRef.current = { name: chunk.tool, input: chunk.input }
+        
         setMessages(prev => {
           const last = prev[prev.length - 1]
-          if (last?.role === 'assistant') {
-            const tools = [...(last.tools || []), { name: chunk.tool!, status: 'running' as const }]
-            return [...prev.slice(0, -1), { ...last, tools }]
+          if (last?.role !== 'assistant') return prev
+          
+          const blocks = last.blocks ?? []
+          
+          // Check if there's already a running tool with this name (no input yet)
+          // If so, update it with the input rather than creating a duplicate
+          const runningIdx = blocks.findIndex(
+            b => b.type === 'tool' && b.status === 'running' && b.tool === chunk.tool && !b.input
+          )
+          
+          if (runningIdx >= 0 && chunk.input) {
+            // Update existing running tool with input data
+            const newBlocks = [...blocks]
+            const toolBlock = newBlocks[runningIdx]
+            if (toolBlock.type === 'tool') {
+              newBlocks[runningIdx] = { ...toolBlock, input: chunk.input }
+            }
+            return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
           }
-          return prev
+          
+          // Add new tool block
+          const newBlocks: ContentBlock[] = [...blocks, {
+            type: 'tool' as const,
+            tool: chunk.tool!,
+            status: 'running' as const,
+            input: chunk.input
+          }]
+          return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
         })
       } else if (chunk.type === 'tool_end') {
+        // Mark tool as complete with output
         setMessages(prev => {
           const last = prev[prev.length - 1]
-          if (last?.role === 'assistant' && last.tools?.length) {
-            const tools = last.tools.map((t, i) => 
-              i === last.tools!.length - 1 ? { ...t, status: 'complete' as const } : t
-            )
-            return [...prev.slice(0, -1), { ...last, tools }]
+          if (last?.role !== 'assistant' || !last.blocks) return prev
+          
+          const blocks = last.blocks
+          const runningIdx = blocks.findIndex(
+            b => b.type === 'tool' && b.status === 'running'
+          )
+          
+          if (runningIdx >= 0) {
+            const newBlocks = [...blocks]
+            const toolBlock = newBlocks[runningIdx]
+            if (toolBlock.type === 'tool') {
+              newBlocks[runningIdx] = {
+                ...toolBlock,
+                status: 'complete' as const,
+                output: chunk.output
+              }
+            }
+            return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
           }
           return prev
         })
+        
+        currentToolRef.current = null
       } else if (chunk.type === 'complete') {
         setIsStreaming(false)
+        currentToolRef.current = null
       } else if (chunk.type === 'error') {
         setIsStreaming(false)
+        
+        // Add error to current tool or as text
         setMessages(prev => {
           const last = prev[prev.length - 1]
-          if (last?.role === 'assistant') {
-            return [...prev.slice(0, -1), { 
-              ...last, 
-              content: last.content + `\n\n**Error:** ${chunk.error}` 
-            }]
+          if (last?.role !== 'assistant') return prev
+          
+          const blocks = last.blocks ?? []
+          const runningIdx = blocks.findIndex(
+            b => b.type === 'tool' && b.status === 'running'
+          )
+          
+          if (runningIdx >= 0) {
+            const newBlocks = [...blocks]
+            const toolBlock = newBlocks[runningIdx]
+            if (toolBlock.type === 'tool') {
+              newBlocks[runningIdx] = {
+                ...toolBlock,
+                status: 'complete' as const,
+                error: chunk.error
+              }
+            }
+            return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
           }
-          return prev
+          
+          // Add as text block
+          const newBlocks: ContentBlock[] = [...blocks, { 
+            type: 'text' as const, 
+            content: `\n**Error:** ${chunk.error}` 
+          }]
+          return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
         })
       }
     })
@@ -140,7 +221,7 @@ export function Chat({
     const assistantMessage: Message = {
       id: (Date.now() + 1).toString(),
       role: 'assistant',
-      content: ''
+      blocks: []  // Use blocks instead of content for new messages
     }
 
     setMessages(prev => [...prev, userMessage, assistantMessage])
@@ -151,13 +232,28 @@ export function Chat({
   }, [currentInput, isStreaming, setCurrentInput])
 
   const handleApproval = useCallback((approved: boolean) => {
-    if (pendingApproval) {
-      window.electronAPI.respondToolApproval({ 
-        id: pendingApproval.id, 
-        approved 
-      })
-      setPendingApproval(null)
-    }
+    if (!pendingApproval) return
+    
+    // Record the approval decision as a block in the message
+    setMessages(prev => {
+      const last = prev[prev.length - 1]
+      if (last?.role !== 'assistant') return prev
+      
+      const blocks = last.blocks ?? []
+      const newBlocks: ContentBlock[] = [...blocks, {
+        type: 'approval' as const,
+        tool: pendingApproval.tool,
+        input: pendingApproval.input,
+        approved
+      }]
+      return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
+    })
+    
+    window.electronAPI.respondToolApproval({ 
+      id: pendingApproval.id, 
+      approved 
+    })
+    setPendingApproval(null)
   }, [pendingApproval])
 
   const clearHistory = useCallback(async () => {
@@ -206,6 +302,16 @@ export function Chat({
                 isStreaming={isStreaming && msg.role === 'assistant' && msg === messages[messages.length - 1]}
               />
             ))}
+            
+            {/* Inline approval - appears in the message flow */}
+            {pendingApproval && (
+              <InlineApproval
+                request={pendingApproval}
+                onApprove={() => handleApproval(true)}
+                onDeny={() => handleApproval(false)}
+              />
+            )}
+            
             <div ref={messagesEndRef} />
           </div>
         )}
@@ -233,15 +339,6 @@ export function Chat({
           </button>
         </div>
       </div>
-
-      {/* Tool Approval Dialog */}
-      {pendingApproval && (
-        <ToolApprovalDialog
-          request={pendingApproval}
-          onApprove={() => handleApproval(true)}
-          onDeny={() => handleApproval(false)}
-        />
-      )}
     </div>
   )
 }

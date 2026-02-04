@@ -12,6 +12,8 @@ interface StreamChunk {
   type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error'
   text?: string
   tool?: string
+  input?: Record<string, unknown>
+  output?: string
   error?: string
 }
 

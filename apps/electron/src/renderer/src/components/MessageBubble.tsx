@@ -1,29 +1,74 @@
 /**
- * Message bubble component for chat messages.
+ * Message bubble component that renders multiple content blocks.
  */
 
+import { ToolBubble } from './ToolBubble'
+import { TextBubble } from './TextBubble'
+import { ApprovalRecord } from './ApprovalRecord'
+
 /**
- * Tool status indicator in a message.
+ * Tool block within a message.
  */
-interface ToolStatus {
+interface ToolBlock {
+  type: 'tool'
+  tool: string
+  status: 'pending' | 'running' | 'complete'
+  input?: Record<string, unknown>
+  output?: string
+  error?: string
+}
+
+/**
+ * Text block within a message.
+ */
+interface TextBlock {
+  type: 'text'
+  content: string
+}
+
+/**
+ * Approval block within a message.
+ */
+interface ApprovalBlock {
+  type: 'approval'
+  tool: string
+  input: Record<string, unknown>
+  approved: boolean
+}
+
+/**
+ * Content block types for rich messages.
+ */
+export type ContentBlock = ToolBlock | TextBlock | ApprovalBlock
+
+/**
+ * Legacy tool status indicator (for backward compatibility).
+ */
+interface LegacyToolStatus {
   /** Tool name. */
   name: string
   /** Current status. */
   status: 'running' | 'complete'
+  /** Tool input. */
+  input?: Record<string, unknown>
+  /** Tool output. */
+  output?: string
 }
 
 /**
- * A chat message.
+ * A chat message with multiple content blocks.
  */
 export interface Message {
   /** Unique message ID. */
   id: string
   /** Message sender role. */
   role: 'user' | 'assistant'
-  /** Message content. */
-  content: string
-  /** Tools used in this message. */
-  tools?: ToolStatus[]
+  /** Text content (legacy support). */
+  content?: string
+  /** Content blocks (new architecture). */
+  blocks?: ContentBlock[]
+  /** Tools used in this message (legacy support). */
+  tools?: LegacyToolStatus[]
 }
 
 /**
@@ -37,43 +82,81 @@ interface MessageBubbleProps {
 }
 
 /**
- * Renders a single chat message bubble with tool indicators.
+ * Renders a message with all its content blocks.
  */
 export function MessageBubble({ message, isStreaming = false }: MessageBubbleProps) {
   const isUser = message.role === 'user'
-
-  return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div
-        className={`max-w-[85%] rounded-lg px-4 py-3 ${
-          isUser
-            ? 'bg-blue-600 text-white'
-            : 'bg-neutral-800 text-neutral-100'
-        }`}
-      >
-        {/* Tool status badges */}
-        {message.tools && message.tools.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-2">
-            {message.tools.map((tool, i) => (
-              <span
-                key={i}
-                className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs ${
-                  tool.status === 'running'
-                    ? 'bg-yellow-900/50 text-yellow-300'
-                    : 'bg-green-900/50 text-green-300'
-                }`}
-              >
-                {tool.status === 'running' ? '⏳' : '✓'} {tool.name}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Message content */}
-        <pre className="whitespace-pre-wrap font-sans text-sm">
-          {message.content || (message.role === 'assistant' && isStreaming ? '...' : '')}
-        </pre>
+  
+  // User messages are simple text bubbles
+  if (isUser) {
+    return <TextBubble content={message.content ?? ''} isUser={true} />
+  }
+  
+  // Assistant messages: render blocks if available, fallback to legacy format
+  if (message.blocks && message.blocks.length > 0) {
+    return (
+      <div className="space-y-2">
+        {message.blocks.map((block, i) => {
+          switch (block.type) {
+            case 'text':
+              return (
+                <TextBubble 
+                  key={i} 
+                  content={block.content} 
+                  isUser={false} 
+                  isStreaming={isStreaming && i === message.blocks!.length - 1}
+                />
+              )
+            case 'tool':
+              return (
+                <ToolBubble
+                  key={i}
+                  tool={block.tool}
+                  status={block.status}
+                  input={block.input}
+                  output={block.output}
+                  error={block.error}
+                />
+              )
+            case 'approval':
+              return (
+                <ApprovalRecord
+                  key={i}
+                  tool={block.tool}
+                  input={block.input}
+                  approved={block.approved}
+                />
+              )
+            default:
+              return null
+          }
+        })}
       </div>
+    )
+  }
+  
+  // Legacy format: tools as individual bubbles + text content
+  return (
+    <div className="space-y-2">
+      {/* Render tools as individual bubbles */}
+      {message.tools?.map((tool, i) => (
+        <ToolBubble
+          key={i}
+          tool={tool.name}
+          status={tool.status === 'running' ? 'running' : 'complete'}
+          input={tool.input}
+          output={tool.output}
+        />
+      ))}
+      
+      {/* Render text content */}
+      {(message.content || isStreaming) && (
+        <TextBubble 
+          content={message.content ?? ''} 
+          isUser={false} 
+          isStreaming={isStreaming}
+        />
+      )}
     </div>
   )
 }
