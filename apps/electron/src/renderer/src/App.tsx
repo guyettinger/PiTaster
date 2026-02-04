@@ -4,6 +4,7 @@ import { VersionControl } from './components/VersionControl'
 import { SourcesPanel } from './components/SourcesPanel'
 import { SkillsPanel } from './components/SkillsPanel'
 import { Settings } from './components/Settings'
+import { Help } from './components/Help'
 import type { PermissionMode } from './types/electron'
 
 /**
@@ -19,7 +20,7 @@ interface Skill {
 /**
  * Navigation panel types.
  */
-type MainPanel = 'chat' | 'settings'
+type MainPanel = 'chat' | 'settings' | 'help'
 type RightPanel = 'versions' | 'skills' | 'sources' | null
 
 /**
@@ -114,6 +115,12 @@ export function App() {
             active={mainPanel === 'chat'}
             onClick={() => setMainPanel('chat')}
           />
+          <NavButton
+            icon="📚"
+            label="Help"
+            active={mainPanel === 'help'}
+            onClick={() => setMainPanel('help')}
+          />
         </div>
 
         {/* Right Panel Toggles */}
@@ -165,6 +172,7 @@ export function App() {
               onExternalInputChange={setChatInput}
             />
           )}
+          {mainPanel === 'help' && <Help />}
           {mainPanel === 'settings' && <Settings />}
         </div>
 
