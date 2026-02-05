@@ -21,4 +21,5 @@ export { SkillsLoader, extractSkillMentions, buildSystemPrompt } from './skills/
 
 // Apps
 export { AppManager } from './apps/manager'
+export { AppRunner } from './apps/runner'
 export { getTemplate, getTemplates } from './apps/templates'

@@ -101,6 +101,32 @@ interface AppConfig {
   autoCommit: boolean
 }
 
+/** Running app state. */
+interface RunningApp {
+  appId: string
+  pid: number
+  url: string | null
+  port: number
+  startedAt: string
+}
+
+/** App log entry. */
+interface AppLogEntry {
+  appId: string
+  timestamp: string
+  type: 'stdout' | 'stderr' | 'system'
+  message: string
+}
+
+/** Status change event. */
+interface AppStatusChange {
+  appId: string
+  status: 'starting' | 'running' | 'stopped' | 'error'
+  url?: string
+  port?: number
+  error?: string
+}
+
 /** Electron API interface exposed to the renderer. */
 interface ElectronAPI {
   /** Send a message to the agent. */
@@ -187,6 +213,30 @@ interface ElectronAPI {
   getActiveApp: () => Promise<string | null>
   /** Get the active app details. */
   getActiveAppDetails: () => Promise<SubApp | null>
+
+  // App runner methods
+  /** Run a sub-app's dev server. */
+  runApp: (id: string) => Promise<RunningApp>
+  /** Stop a running app. */
+  stopApp: (id: string) => Promise<void>
+  /** Get all running apps. */
+  getRunningApps: () => Promise<RunningApp[]>
+  /** Check if an app is running. */
+  isAppRunning: (id: string) => Promise<boolean>
+  /** Get running info for an app. */
+  getRunningAppInfo: (id: string) => Promise<RunningApp | null>
+  /** Open a running app in browser. */
+  openInBrowser: (id: string) => Promise<void>
+  /** Install dependencies for an app. */
+  installDeps: (id: string) => Promise<void>
+  /** Listen for app log events. */
+  onAppLog: (callback: (entry: AppLogEntry) => void) => void
+  /** Remove app log listener. */
+  offAppLog: () => void
+  /** Listen for app status changes. */
+  onAppStatusChange: (callback: (change: AppStatusChange) => void) => void
+  /** Remove app status change listener. */
+  offAppStatusChange: () => void
 }
 
 declare global {
@@ -209,6 +259,9 @@ export type {
   ConnectedSource,
   Skill,
   AppConfig,
+  RunningApp,
+  AppLogEntry,
+  AppStatusChange,
   SubApp,
   CreateAppParams,
   AppTemplate

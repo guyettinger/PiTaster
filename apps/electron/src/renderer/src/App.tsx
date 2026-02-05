@@ -8,6 +8,9 @@ import { Help } from './components/Help'
 import { AppListing } from './components/AppListing'
 import { AppHeader } from './components/AppHeader'
 import { NoAppSelected } from './components/NoAppSelected'
+import { TerminalPanel } from './components/TerminalPanel'
+import { PreviewPanel } from './components/PreviewPanel'
+import { RunningAppsProvider } from './context/RunningAppsContext'
 import type { PermissionMode } from './types/electron'
 import type { SubApp } from '@anyapp/core'
 
@@ -26,6 +29,7 @@ interface Skill {
  */
 type MainPanel = 'apps' | 'chat' | 'settings' | 'help'
 type RightPanel = 'versions' | 'skills' | 'sources' | null
+type BottomPanel = 'terminal' | 'preview' | null
 
 /**
  * Navigation button component.
@@ -69,12 +73,92 @@ function NavButton({
 }
 
 /**
+ * Props for BottomPanelContainer.
+ */
+interface BottomPanelContainerProps {
+  /** Current height of the panel. */
+  height: number
+  /** Callback when height changes during resize. */
+  onHeightChange: (height: number) => void
+  /** Callback to close the panel. */
+  onClose: () => void
+  /** Panel content. */
+  children: React.ReactNode
+}
+
+/**
+ * Resizable container for bottom panels.
+ */
+function BottomPanelContainer({ 
+  height, 
+  onHeightChange, 
+  onClose, 
+  children 
+}: BottomPanelContainerProps) {
+  const [isDragging, setIsDragging] = useState(false)
+  const startY = useRef(0)
+  const startHeight = useRef(0)
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    setIsDragging(true)
+    startY.current = e.clientY
+    startHeight.current = height
+  }, [height])
+
+  useEffect(() => {
+    if (!isDragging) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = startY.current - e.clientY
+      const newHeight = Math.min(Math.max(startHeight.current + delta, 150), 600)
+      onHeightChange(newHeight)
+    }
+
+    const handleMouseUp = () => {
+      setIsDragging(false)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDragging, onHeightChange])
+
+  return (
+    <div 
+      className="flex flex-col border-t border-neutral-800"
+      style={{ height }}
+    >
+      {/* Resize handle */}
+      <div
+        onMouseDown={handleMouseDown}
+        className={`group flex h-1.5 cursor-ns-resize items-center justify-center hover:bg-blue-500/30 ${
+          isDragging ? 'bg-blue-500/50' : ''
+        }`}
+      >
+        <div className="h-0.5 w-12 rounded bg-neutral-700 group-hover:bg-blue-500" />
+      </div>
+
+      {/* Panel content */}
+      <div className="flex-1 overflow-hidden">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+/**
  * Root application component with sidebar navigation.
  */
 export function App() {
   // Panel state
   const [mainPanel, setMainPanel] = useState<MainPanel>('apps')
   const [rightPanel, setRightPanel] = useState<RightPanel>(null)
+  const [bottomPanel, setBottomPanel] = useState<BottomPanel>(null)
+  const [bottomPanelHeight, setBottomPanelHeight] = useState(300)
   
   // App state
   const [activeApp, setActiveApp] = useState<SubApp | null>(null)
@@ -114,6 +198,7 @@ export function App() {
     await window.electronAPI.setActiveApp(null)
     setMainPanel('apps')
     setRightPanel(null)
+    setBottomPanel(null)
   }, [])
 
   const handleVersionRollback = useCallback(async (commitId: string) => {
@@ -156,10 +241,15 @@ export function App() {
     setRightPanel(prev => prev === panel ? null : panel)
   }, [])
 
+  const toggleBottomPanel = useCallback((panel: BottomPanel) => {
+    setBottomPanel(prev => prev === panel ? null : panel)
+  }, [])
+
   return (
-    <div className="flex h-screen bg-neutral-950 text-neutral-50">
-      {/* Sidebar Navigation */}
-      <nav className="flex w-14 flex-col items-center border-r border-neutral-800 bg-neutral-900 py-3">
+    <RunningAppsProvider>
+      <div className="flex h-screen bg-neutral-950 text-neutral-50">
+        {/* Sidebar Navigation */}
+        <nav className="flex w-14 flex-col items-center border-r border-neutral-800 bg-neutral-900 py-3">
         {/* Main Navigation */}
         <div className="flex flex-col gap-1">
           <NavButton
@@ -207,6 +297,24 @@ export function App() {
           />
         </div>
 
+        {/* Bottom Panel Toggles */}
+        <div className="mt-4 flex flex-col gap-1 border-t border-neutral-800 pt-4">
+          <NavButton
+            icon="💻"
+            label="Terminal"
+            active={bottomPanel === 'terminal'}
+            onClick={() => toggleBottomPanel('terminal')}
+            disabled={!activeApp}
+          />
+          <NavButton
+            icon="👁️"
+            label="Preview"
+            active={bottomPanel === 'preview'}
+            onClick={() => toggleBottomPanel('preview')}
+            disabled={!activeApp}
+          />
+        </div>
+
         {/* Spacer */}
         <div className="flex-1" />
 
@@ -229,60 +337,85 @@ export function App() {
         )}
 
         {/* Content Area */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* Main Panel */}
-          <div className="flex-1 overflow-hidden">
-            {mainPanel === 'apps' && (
-              <AppListing
-                onAppSelect={handleAppSelect}
-                activeAppId={activeApp?.id ?? null}
-              />
-            )}
-            
-            {mainPanel === 'chat' && (
-              activeApp ? (
-                <Chat
-                  permissionMode={permissionMode}
-                  onModeChange={handleModeChange}
-                  inputRef={chatInputRef}
-                  externalInput={chatInput}
-                  onExternalInputChange={setChatInput}
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {/* Main + Right Panel Row */}
+          <div 
+            className="flex flex-1 overflow-hidden" 
+            style={{
+              height: activeApp && bottomPanel ? `calc(100% - ${bottomPanelHeight}px)` : '100%'
+            }}
+          >
+            {/* Main Panel */}
+            <div className="flex-1 overflow-hidden">
+              {mainPanel === 'apps' && (
+                <AppListing
+                  onAppSelect={handleAppSelect}
+                  activeAppId={activeApp?.id ?? null}
                 />
-              ) : (
-                <NoAppSelected onGoToApps={() => setMainPanel('apps')} />
-              )
+              )}
+              
+              {mainPanel === 'chat' && (
+                activeApp ? (
+                  <Chat
+                    permissionMode={permissionMode}
+                    onModeChange={handleModeChange}
+                    inputRef={chatInputRef}
+                    externalInput={chatInput}
+                    onExternalInputChange={setChatInput}
+                  />
+                ) : (
+                  <NoAppSelected onGoToApps={() => setMainPanel('apps')} />
+                )
+              )}
+              
+              {mainPanel === 'help' && <Help />}
+              {mainPanel === 'settings' && <Settings />}
+            </div>
+
+            {/* Right Panel - only shown when app is active */}
+            {activeApp && rightPanel && (
+              <div className="w-80 overflow-hidden border-l border-neutral-800">
+                {rightPanel === 'versions' && (
+                  <VersionControl
+                    isVisible={true}
+                    appPath={activeApp.path}
+                    onRollback={handleVersionRollback}
+                    onBranchSwitch={handleBranchSwitch}
+                    onBranchCreate={handleBranchCreate}
+                  />
+                )}
+                {rightPanel === 'skills' && (
+                  <SkillsPanel
+                    isVisible={true}
+                    onSkillSelect={handleSkillSelect}
+                  />
+                )}
+                {rightPanel === 'sources' && (
+                  <SourcesPanel isVisible={true} />
+                )}
+              </div>
             )}
-            
-            {mainPanel === 'help' && <Help />}
-            {mainPanel === 'settings' && <Settings />}
           </div>
 
-          {/* Right Panel - only shown when app is active */}
-          {activeApp && rightPanel && (
-            <div className="w-80 overflow-hidden border-l border-neutral-800">
-              {rightPanel === 'versions' && (
-                <VersionControl
-                  isVisible={true}
-                  appPath={activeApp.path}
-                  onRollback={handleVersionRollback}
-                  onBranchSwitch={handleBranchSwitch}
-                  onBranchCreate={handleBranchCreate}
-                />
+          {/* Bottom Panel - Terminal or Preview */}
+          {activeApp && bottomPanel && (
+            <BottomPanelContainer
+              height={bottomPanelHeight}
+              onHeightChange={setBottomPanelHeight}
+              onClose={() => setBottomPanel(null)}
+            >
+              {bottomPanel === 'terminal' && (
+                <TerminalPanel appId={activeApp.id} isVisible={true} />
               )}
-              {rightPanel === 'skills' && (
-                <SkillsPanel
-                  isVisible={true}
-                  onSkillSelect={handleSkillSelect}
-                />
+              {bottomPanel === 'preview' && (
+                <PreviewPanel appId={activeApp.id} isVisible={true} />
               )}
-              {rightPanel === 'sources' && (
-                <SourcesPanel isVisible={true} />
-              )}
-            </div>
+            </BottomPanelContainer>
           )}
         </div>
       </main>
     </div>
+    </RunningAppsProvider>
   )
 }
 

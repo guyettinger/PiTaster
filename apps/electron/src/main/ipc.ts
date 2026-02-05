@@ -2,15 +2,15 @@
  * IPC handlers for agent communication between main and renderer processes.
  */
 
-import { ipcMain, BrowserWindow, safeStorage } from 'electron'
+import { ipcMain, BrowserWindow, safeStorage, shell } from 'electron'
 import { nanoid } from 'nanoid'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { promises as fs } from 'node:fs'
 import { runAgentQuery, setProjectRoot, getProjectRoot } from './agent'
-import { VersionManager, SourceManager, SkillsLoader, AppManager } from '@anyapp/shared'
+import { VersionManager, SourceManager, SkillsLoader, AppManager, AppRunner } from '@anyapp/shared'
 import type { PermissionMode, StreamChunk, MessageParam } from './agent'
-import type { Skill, CreateAppParams, SubApp } from '@anyapp/core'
+import type { Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp } from '@anyapp/core'
 
 /** Tool approval request sent to renderer. */
 interface ToolApprovalRequest {
@@ -54,6 +54,9 @@ const skillsLoader = new SkillsLoader(join(configDir, 'skills'))
 
 /** App manager instance. */
 const appManager = new AppManager()
+
+/** App runner instance for dev servers. */
+const appRunner = new AppRunner()
 
 /** Currently active app ID for agent context. */
 let activeAppId: string | null = null
@@ -464,6 +467,125 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     }
     return saveConfig(config)
   })
+
+  // App runner IPC handlers
+
+  // Set up event forwarding from AppRunner to renderer
+  appRunner.on('log', (entry: AppLogEntry) => {
+    mainWindow.webContents.send('apps:log', entry)
+  })
+
+  appRunner.on('status', (change: AppStatusChange) => {
+    mainWindow.webContents.send('apps:status-change', change)
+  })
+
+  ipcMain.handle('apps:run', async (_, id: string) => {
+    if (typeof id !== 'string' || id.length === 0) {
+      throw new Error('Invalid app ID')
+    }
+
+    const app = await appManager.getApp(id)
+    if (!app) {
+      throw new Error(`App "${id}" not found`)
+    }
+
+    if (!appRunner.isRunnable(app.template)) {
+      throw new Error(`Template "${app.template}" is not runnable`)
+    }
+
+    return appRunner.start(id, app.path, app.template)
+  })
+
+  ipcMain.handle('apps:stop', async (_, id: string) => {
+    if (typeof id !== 'string' || id.length === 0) {
+      throw new Error('Invalid app ID')
+    }
+    return appRunner.stop(id)
+  })
+
+  ipcMain.handle('apps:get-running', async () => {
+    const running = appRunner.getRunning()
+    // Convert Map to array for IPC serialization
+    return Array.from(running.entries()).map(([id, info]) => ({ id, ...info }))
+  })
+
+  ipcMain.handle('apps:is-running', async (_, id: string) => {
+    if (typeof id !== 'string' || id.length === 0) {
+      throw new Error('Invalid app ID')
+    }
+    return appRunner.isRunning(id)
+  })
+
+  ipcMain.handle('apps:get-running-info', async (_, id: string) => {
+    if (typeof id !== 'string' || id.length === 0) {
+      throw new Error('Invalid app ID')
+    }
+    return appRunner.getRunningApp(id)
+  })
+
+  ipcMain.handle('apps:open-browser', async (_, id: string) => {
+    if (typeof id !== 'string' || id.length === 0) {
+      throw new Error('Invalid app ID')
+    }
+
+    const info = appRunner.getRunningApp(id)
+    if (!info?.url) {
+      throw new Error(`App "${id}" is not running or has no URL`)
+    }
+
+    await shell.openExternal(info.url)
+  })
+
+  ipcMain.handle('apps:install-deps', async (_, id: string) => {
+    if (typeof id !== 'string' || id.length === 0) {
+      throw new Error('Invalid app ID')
+    }
+
+    const app = await appManager.getApp(id)
+    if (!app) {
+      throw new Error(`App "${id}" not found`)
+    }
+
+    // Run bun install in the app directory
+    const { spawn } = await import('node:child_process')
+
+    return new Promise<void>((resolve, reject) => {
+      const proc = spawn('bun', ['install'], {
+        cwd: app.path,
+        stdio: ['ignore', 'pipe', 'pipe']
+      })
+
+      proc.stdout?.on('data', (data: Buffer) => {
+        const entry: AppLogEntry = {
+          appId: id,
+          timestamp: new Date().toISOString(),
+          type: 'stdout',
+          message: data.toString()
+        }
+        mainWindow.webContents.send('apps:log', entry)
+      })
+
+      proc.stderr?.on('data', (data: Buffer) => {
+        const entry: AppLogEntry = {
+          appId: id,
+          timestamp: new Date().toISOString(),
+          type: 'stderr',
+          message: data.toString()
+        }
+        mainWindow.webContents.send('apps:log', entry)
+      })
+
+      proc.on('exit', (code) => {
+        if (code === 0) {
+          resolve()
+        } else {
+          reject(new Error(`bun install exited with code ${code}`))
+        }
+      })
+
+      proc.on('error', reject)
+    })
+  })
 }
 
 /**
@@ -495,6 +617,19 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('apps:set-active')
   ipcMain.removeHandler('apps:get-active')
   ipcMain.removeHandler('apps:get-active-details')
+
+  // App runner handlers
+  ipcMain.removeHandler('apps:run')
+  ipcMain.removeHandler('apps:stop')
+  ipcMain.removeHandler('apps:get-running')
+  ipcMain.removeHandler('apps:is-running')
+  ipcMain.removeHandler('apps:get-running-info')
+  ipcMain.removeHandler('apps:open-browser')
+  ipcMain.removeHandler('apps:install-deps')
+
+  // Stop all running apps on cleanup
+  appRunner.stopAll().catch(() => {})
+  appRunner.removeAllListeners()
 
   // Sources handlers
   ipcMain.removeHandler('sources:list')

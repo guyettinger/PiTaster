@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { SubApp, AppTemplate } from '@anyapp/core'
+import { useRunningApps } from '../context/RunningAppsContext'
 
 /**
  * Props for the AppListing component.
@@ -245,12 +246,30 @@ interface AppCardProps {
  * Card displaying a single app.
  */
 function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
+  const { isRunning, getStatus, getUrl, startApp, stopApp } = useRunningApps()
+  
+  const running = isRunning(app.id)
+  const status = getStatus(app.id)
+  const url = getUrl(app.id)
+
   const templateIcons: Record<AppTemplate, string> = {
     'react-vite': '⚛️',
     'node-cli': '💻',
     'node-server': '🌐',
     'static-site': '📄',
     'blank': '📁'
+  }
+
+  const isRunnable = ['react-vite', 'node-server', 'node-cli', 'static-site'].includes(app.template)
+
+  const handleRun = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    await startApp(app.id)
+  }
+
+  const handleStop = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    await stopApp(app.id)
   }
 
   return (
@@ -266,7 +285,17 @@ function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
         <div className="flex items-center gap-2">
           <span className="text-lg">{templateIcons[app.template]}</span>
           <div>
-            <h4 className="font-medium">{app.name}</h4>
+            <div className="flex items-center gap-2">
+              <h4 className="font-medium">{app.name}</h4>
+              {/* Running indicator */}
+              {status && (
+                <span className={`h-2 w-2 rounded-full ${
+                  status === 'running' ? 'bg-green-500' :
+                  status === 'starting' ? 'animate-pulse bg-yellow-500' :
+                  status === 'error' ? 'bg-red-500' : ''
+                }`} />
+              )}
+            </div>
             {app.description && (
               <p className="line-clamp-1 text-sm text-neutral-400">
                 {app.description}
@@ -275,16 +304,42 @@ function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
           </div>
         </div>
         
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onDelete()
-          }}
-          className="p-1 text-neutral-500 transition-colors hover:text-red-400"
-          title="Delete app"
-        >
-          🗑️
-        </button>
+        <div className="flex items-center gap-1">
+          {/* Quick run/stop button */}
+          {isRunnable && (
+            running ? (
+              <button
+                onClick={handleStop}
+                disabled={status === 'starting'}
+                className="rounded p-1.5 text-neutral-400 transition-colors hover:bg-red-900/50 hover:text-red-400 disabled:opacity-50"
+                title="Stop"
+              >
+                ⏹
+              </button>
+            ) : (
+              <button
+                onClick={handleRun}
+                className="rounded p-1.5 text-neutral-400 transition-colors hover:bg-green-900/50 hover:text-green-400"
+                title="Run"
+              >
+                ▶
+              </button>
+            )
+          )}
+          
+          {/* Delete button - disabled while running */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              if (!running) onDelete()
+            }}
+            disabled={running}
+            className="rounded p-1 text-neutral-500 transition-colors hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+            title={running ? 'Stop app before deleting' : 'Delete app'}
+          >
+            🗑️
+          </button>
+        </div>
       </div>
       
       <div className="mt-2 flex items-center gap-3 text-xs text-neutral-500">
@@ -295,6 +350,12 @@ function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
         )}
         {app.hasChanges && (
           <span className="text-yellow-500">● Uncommitted</span>
+        )}
+        {/* Show port when running */}
+        {running && url && (
+          <span className="text-green-400">
+            :{new URL(url).port}
+          </span>
         )}
         <span>Updated {formatRelativeTime(app.updatedAt)}</span>
       </div>

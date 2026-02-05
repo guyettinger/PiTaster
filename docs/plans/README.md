@@ -29,6 +29,8 @@ The implementation is split into **6 independent sessions**, each resulting in a
 | [4. Sources + Skills](SESSION-4-SOURCES-SKILLS.md) | MCP + Skills | External connections + reusable instructions | Complete | [Notes](SESSION-4-NOTES.md) |
 | [5. Polish](SESSION-5-POLISH.md) | UI + Integration | Complete, polished application | Complete | [Notes](SESSION-5-NOTES.md) |
 | [6. Sub-Apps](SESSION-6-SUB-APPS.md) | Sandboxed Apps | App management with isolated self-modification | Planned | 6 sub-sessions |
+| [7. Chat](SESSION-7-CHAT.md) | Chat UI | Enhanced chat experience | Complete | [Notes](SESSION-7-NOTES.md) |
+| [8. App Preview](SESSION-8-APP-PREVIEW.md) | Dev Server + Preview | Run and view apps during development | Planned | 6 sub-sessions |
 
 ## Session 6 Sub-Sessions
 
@@ -42,6 +44,19 @@ Session 6 is larger and broken into 6 sub-sessions to fit within agent context l
 | [6.4](SESSION-6.4-IPC-INTEGRATION.md) | IPC handlers + preload API |
 | [6.5](SESSION-6.5-AGENT-SCOPING.md) | Agent scoping + security |
 | [6.6](SESSION-6.6-INTEGRATION.md) | Main app integration |
+
+## Session 8 Sub-Sessions
+
+Session 8 adds the app preview system, broken into 6 sub-sessions:
+
+| Sub-Session | Focus |
+|-------------|-------|
+| [8.1](SESSION-8.1-TYPES-AND-RUNNER.md) | Running app types + AppRunner class |
+| [8.2](SESSION-8.2-IPC-AND-PRELOAD.md) | IPC handlers + preload API |
+| [8.3](SESSION-8.3-CONTEXT-AND-TERMINAL.md) | Running apps context + terminal panel |
+| [8.4](SESSION-8.4-PREVIEW-PANEL.md) | Embedded webview preview |
+| [8.5](SESSION-8.5-APP-CONTROLS.md) | Run controls + status indicators |
+| [8.6](SESSION-8.6-LAYOUT-INTEGRATION.md) | Layout integration |
 
 ## How to Use
 

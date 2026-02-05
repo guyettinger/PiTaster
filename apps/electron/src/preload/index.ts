@@ -119,6 +119,32 @@ interface CreateAppParams {
   template: AppTemplate
 }
 
+/** Running app state. */
+interface RunningApp {
+  appId: string
+  pid: number
+  url: string | null
+  port: number
+  startedAt: string
+}
+
+/** App log entry. */
+interface AppLogEntry {
+  appId: string
+  timestamp: string
+  type: 'stdout' | 'stderr' | 'system'
+  message: string
+}
+
+/** Status change event for running apps. */
+interface AppStatusChange {
+  appId: string
+  status: 'starting' | 'running' | 'stopped' | 'error'
+  url?: string
+  port?: number
+  error?: string
+}
+
 /**
  * Electron API exposed to the renderer process.
  * 
@@ -426,6 +452,93 @@ const electronAPI = {
    */
   getActiveAppDetails: (): Promise<SubApp | null> => {
     return ipcRenderer.invoke('apps:get-active-details')
+  },
+
+  // App runner methods
+
+  /**
+   * Run a sub-app's dev server.
+   * @param id - The app ID to run
+   */
+  runApp: (id: string): Promise<RunningApp> => {
+    return ipcRenderer.invoke('apps:run', id)
+  },
+
+  /**
+   * Stop a running app.
+   * @param id - The app ID to stop
+   */
+  stopApp: (id: string): Promise<void> => {
+    return ipcRenderer.invoke('apps:stop', id)
+  },
+
+  /**
+   * Get all running apps.
+   */
+  getRunningApps: (): Promise<RunningApp[]> => {
+    return ipcRenderer.invoke('apps:get-running')
+  },
+
+  /**
+   * Check if an app is running.
+   * @param id - The app ID to check
+   */
+  isAppRunning: (id: string): Promise<boolean> => {
+    return ipcRenderer.invoke('apps:is-running', id)
+  },
+
+  /**
+   * Get running info for an app.
+   * @param id - The app ID
+   */
+  getRunningAppInfo: (id: string): Promise<RunningApp | null> => {
+    return ipcRenderer.invoke('apps:get-running-info', id)
+  },
+
+  /**
+   * Open a running app in the default browser.
+   * @param id - The app ID to open
+   */
+  openInBrowser: (id: string): Promise<void> => {
+    return ipcRenderer.invoke('apps:open-browser', id)
+  },
+
+  /**
+   * Install dependencies for an app.
+   * @param id - The app ID
+   */
+  installDeps: (id: string): Promise<void> => {
+    return ipcRenderer.invoke('apps:install-deps', id)
+  },
+
+  /**
+   * Listen for app log events.
+   * @param callback - Function called with each log entry
+   */
+  onAppLog: (callback: (entry: AppLogEntry) => void): void => {
+    ipcRenderer.on('apps:log', (_event, entry) => callback(entry))
+  },
+
+  /**
+   * Remove app log listener.
+   */
+  offAppLog: (): void => {
+    ipcRenderer.removeAllListeners('apps:log')
+  },
+
+  /**
+   * Listen for app status changes.
+   * @param callback - Function called with status changes
+   */
+  onAppStatusChange: (callback: (change: AppStatusChange) => void): void => {
+    ipcRenderer.on('apps:status-change', (_event, change) => callback(change))
+  },
+
+  /**
+   * Remove app status change listener.
+   */
+  offAppStatusChange: (): void => {
+    ipcRenderer.removeAllListeners('apps:status-change')
   }
 }
 

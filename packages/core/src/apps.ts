@@ -107,3 +107,75 @@ export interface AppTemplateConfig {
   /** Scripts for package.json. */
   scripts?: Record<string, string>
 }
+
+/**
+ * Running app state.
+ */
+export interface RunningApp {
+  /** App ID that is running. */
+  appId: string
+  /** Process ID. */
+  pid: number
+  /** URL where the app is accessible, or null if not a web app. */
+  url: string | null
+  /** Port the app is running on. */
+  port: number
+  /** ISO timestamp when started. */
+  startedAt: string
+}
+
+/**
+ * App log entry.
+ */
+export interface AppLogEntry {
+  /** App ID that produced this log. */
+  appId: string
+  /** ISO timestamp. */
+  timestamp: string
+  /** Log source type. */
+  type: 'stdout' | 'stderr' | 'system'
+  /** Log message content. */
+  message: string
+}
+
+/**
+ * Status change event for running apps.
+ */
+export interface AppStatusChange {
+  /** App ID. */
+  appId: string
+  /** New status. */
+  status: 'starting' | 'running' | 'stopped' | 'error'
+  /** URL if running. */
+  url?: string
+  /** Port if running. */
+  port?: number
+  /** Error message if status is 'error'. */
+  error?: string
+}
+
+/**
+ * Port configuration for a template.
+ */
+export interface PortConfig {
+  /** Starting port number. */
+  base: number
+  /** Maximum port number. */
+  max: number
+}
+
+/**
+ * Run configuration for a template.
+ */
+export interface AppRunConfig {
+  /** Command to run (e.g., 'bun'). */
+  command: string
+  /** Base arguments (e.g., ['run', 'dev']). */
+  args: string[]
+  /** Port configuration. */
+  ports: PortConfig
+  /** How to pass port (cli flag or env var name). */
+  portFlag: string | null
+  /** Pattern to detect when server is ready. */
+  readyPattern: RegExp | null
+}
