@@ -8,9 +8,9 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { promises as fs } from 'node:fs'
 import { runAgentQuery, setProjectRoot, getProjectRoot } from './agent'
-import { VersionManager, SourceManager, SkillsLoader, AppManager, AppRunner } from '@anyapp/shared'
+import { VersionManager, SourceManager, SkillsLoader, AppManager, AppRunner, ChatHistoryManager } from '@anyapp/shared'
 import type { PermissionMode, StreamChunk, MessageParam } from './agent'
-import type { Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp } from '@anyapp/core'
+import type { Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, SerializedTextBlock } from '@anyapp/core'
 
 /** Tool approval request sent to renderer. */
 interface ToolApprovalRequest {
@@ -57,6 +57,9 @@ const appManager = new AppManager()
 
 /** App runner instance for dev servers. */
 const appRunner = new AppRunner()
+
+/** Chat history manager instance. */
+const chatHistoryManager = new ChatHistoryManager()
 
 /** Currently active app ID for agent context. */
 let activeAppId: string | null = null
@@ -376,7 +379,35 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (id !== null && (typeof id !== 'string' || id.length === 0)) {
       throw new Error('Invalid app ID')
     }
+    
+    // Clear in-memory conversation history
+    conversationHistory = []
+    
     activeAppId = id
+    
+    if (id) {
+      // Load persisted history for the new app
+      const history = await chatHistoryManager.loadHistory(id)
+      
+      // Rebuild conversationHistory for Claude SDK from text content only
+      for (const msg of history) {
+        const textContent = msg.blocks
+          .filter((b): b is SerializedTextBlock => b.type === 'text')
+          .map((b) => b.content)
+          .join('')
+        
+        if (textContent) {
+          conversationHistory.push({
+            role: msg.role,
+            content: textContent
+          })
+        }
+      }
+      
+      // Emit to renderer
+      mainWindow.webContents.send('chat:history-loaded', history)
+    }
+    
     return activeAppId
   })
 
@@ -466,6 +497,32 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       throw new Error('Invalid config')
     }
     return saveConfig(config)
+  })
+
+  // Chat history IPC handlers
+  ipcMain.handle('chat:load-history', async () => {
+    if (!activeAppId) {
+      return []
+    }
+    return chatHistoryManager.loadHistory(activeAppId)
+  })
+
+  ipcMain.handle('chat:save-message', async (_, message: PersistedMessage) => {
+    if (!activeAppId) {
+      throw new Error('No active app')
+    }
+    if (!message || typeof message.id !== 'string') {
+      throw new Error('Invalid message')
+    }
+    await chatHistoryManager.saveMessage(activeAppId, message)
+  })
+
+  ipcMain.handle('chat:clear-history', async () => {
+    if (!activeAppId) {
+      throw new Error('No active app')
+    }
+    await chatHistoryManager.clearHistory(activeAppId)
+    conversationHistory = []
   })
 
   // App runner IPC handlers
@@ -648,6 +705,11 @@ export function cleanupIpcHandlers(): void {
   // Config handlers
   ipcMain.removeHandler('config:get')
   ipcMain.removeHandler('config:save')
+
+  // Chat history handlers
+  ipcMain.removeHandler('chat:load-history')
+  ipcMain.removeHandler('chat:save-message')
+  ipcMain.removeHandler('chat:clear-history')
   
   // Reset version manager
   versionManager = null

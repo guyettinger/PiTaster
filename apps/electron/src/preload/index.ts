@@ -145,6 +145,41 @@ interface AppStatusChange {
   error?: string
 }
 
+/** Serialized text content block. */
+interface SerializedTextBlock {
+  type: 'text'
+  content: string
+}
+
+/** Serialized tool execution block. */
+interface SerializedToolBlock {
+  type: 'tool'
+  name: string
+  input?: Record<string, unknown>
+  output?: string
+  status: 'pending' | 'running' | 'complete' | 'error'
+  error?: string
+}
+
+/** Serialized approval record block. */
+interface SerializedApprovalBlock {
+  type: 'approval'
+  tool: string
+  input: Record<string, unknown>
+  approved: boolean
+}
+
+/** Union of all serializable content block types. */
+type SerializedContentBlock = SerializedTextBlock | SerializedToolBlock | SerializedApprovalBlock
+
+/** A persisted chat message. */
+interface PersistedMessage {
+  id: string
+  role: 'user' | 'assistant'
+  blocks: SerializedContentBlock[]
+  timestamp: string
+}
+
 /**
  * Electron API exposed to the renderer process.
  * 
@@ -388,6 +423,45 @@ const electronAPI = {
    */
   saveConfig: (config: AppConfig): Promise<void> => {
     return ipcRenderer.invoke('config:save', config)
+  },
+
+  // Chat history methods
+
+  /**
+   * Load chat history for the active app.
+   */
+  loadChatHistory: (): Promise<PersistedMessage[]> => {
+    return ipcRenderer.invoke('chat:load-history')
+  },
+
+  /**
+   * Save a chat message to history.
+   * @param message - The message to save
+   */
+  saveChatMessage: (message: PersistedMessage): Promise<void> => {
+    return ipcRenderer.invoke('chat:save-message', message)
+  },
+
+  /**
+   * Clear chat history for the active app.
+   */
+  clearChatHistory: (): Promise<void> => {
+    return ipcRenderer.invoke('chat:clear-history')
+  },
+
+  /**
+   * Listen for chat history loaded events.
+   * @param callback - Function called with the loaded messages
+   */
+  onChatHistoryLoaded: (callback: (messages: PersistedMessage[]) => void): void => {
+    ipcRenderer.on('chat:history-loaded', (_event, messages) => callback(messages))
+  },
+
+  /**
+   * Remove chat history loaded listener.
+   */
+  offChatHistoryLoaded: (): void => {
+    ipcRenderer.removeAllListeners('chat:history-loaded')
   },
 
   // App management methods

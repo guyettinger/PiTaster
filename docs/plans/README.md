@@ -31,6 +31,7 @@ The implementation is split into **6 independent sessions**, each resulting in a
 | [6. Sub-Apps](SESSION-6-SUB-APPS.md) | Sandboxed Apps | App management with isolated self-modification | Planned | 6 sub-sessions |
 | [7. Chat](SESSION-7-CHAT.md) | Chat UI | Enhanced chat experience | Complete | [Notes](SESSION-7-NOTES.md) |
 | [8. App Preview](SESSION-8-APP-PREVIEW.md) | Dev Server + Preview | Run and view apps during development | Planned | 6 sub-sessions |
+| [9. Chat History](SESSION-9-CHAT-HISTORY.md) | Persistent History | Chat history saved per app | Complete | [Notes](SESSION-9-NOTES.md) |
 
 ## Session 6 Sub-Sessions
 

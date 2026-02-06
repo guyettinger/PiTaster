@@ -23,3 +23,6 @@ export { SkillsLoader, extractSkillMentions, buildSystemPrompt } from './skills/
 export { AppManager } from './apps/manager'
 export { AppRunner } from './apps/runner'
 export { getTemplate, getTemplates } from './apps/templates'
+
+// Chat
+export { ChatHistoryManager } from './chat/manager'

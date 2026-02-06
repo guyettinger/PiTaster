@@ -2,7 +2,7 @@
  * Type definitions for the Electron API exposed via preload script.
  */
 
-import type { SubApp, CreateAppParams, AppTemplate } from '@anyapp/core'
+import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage } from '@anyapp/core'
 
 /** Permission mode type for tool execution. */
 type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
@@ -196,6 +196,18 @@ interface ElectronAPI {
   /** Save the application configuration. */
   saveConfig: (config: AppConfig) => Promise<void>
 
+  // Chat history methods
+  /** Load chat history for the active app. */
+  loadChatHistory: () => Promise<PersistedMessage[]>
+  /** Save a chat message to history. */
+  saveChatMessage: (message: PersistedMessage) => Promise<void>
+  /** Clear chat history for the active app. */
+  clearChatHistory: () => Promise<void>
+  /** Listen for chat history loaded events. */
+  onChatHistoryLoaded: (callback: (messages: PersistedMessage[]) => void) => void
+  /** Remove chat history loaded listener. */
+  offChatHistoryLoaded: () => void
+
   // Apps methods
   /** List all sub-apps. */
   listApps: () => Promise<SubApp[]>
@@ -264,5 +276,6 @@ export type {
   AppStatusChange,
   SubApp,
   CreateAppParams,
-  AppTemplate
+  AppTemplate,
+  PersistedMessage
 }

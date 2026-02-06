@@ -9,8 +9,10 @@ import type { Message, ContentBlock } from './MessageBubble'
 import type { 
   PermissionMode, 
   StreamChunk, 
-  ToolApprovalRequest 
+  ToolApprovalRequest,
+  PersistedMessage
 } from '../types/electron'
+import type { SerializedContentBlock } from '@anyapp/core'
 
 /**
  * Skill definition for @mention insertion.
@@ -41,6 +43,80 @@ interface ChatProps {
 }
 
 /**
+ * Convert serialized content blocks from persistence to UI blocks.
+ */
+function convertToUIBlocks(blocks: SerializedContentBlock[]): ContentBlock[] {
+  return blocks.map((block): ContentBlock => {
+    if (block.type === 'text') {
+      return { type: 'text', content: block.content }
+    } else if (block.type === 'tool') {
+      return {
+        type: 'tool',
+        tool: block.name,
+        status: block.status === 'error' ? 'complete' : block.status,
+        input: block.input,
+        output: block.output,
+        error: block.error
+      }
+    } else {
+      // approval block
+      return {
+        type: 'approval',
+        tool: block.tool,
+        input: block.input,
+        approved: block.approved
+      }
+    }
+  })
+}
+
+/**
+ * Convert UI content blocks to serialized blocks for persistence.
+ */
+function convertToSerializedBlocks(blocks: ContentBlock[]): SerializedContentBlock[] {
+  return blocks.map((block): SerializedContentBlock => {
+    if (block.type === 'text') {
+      return { type: 'text', content: block.content }
+    } else if (block.type === 'tool') {
+      return {
+        type: 'tool',
+        name: block.tool,
+        status: block.status,
+        input: block.input,
+        output: block.output,
+        error: block.error
+      }
+    } else {
+      // approval block
+      return {
+        type: 'approval',
+        tool: block.tool,
+        input: block.input,
+        approved: block.approved
+      }
+    }
+  })
+}
+
+/**
+ * Convert a UI Message to a PersistedMessage for storage.
+ */
+function toPersistedMessage(msg: Message): PersistedMessage {
+  // Convert legacy content format to blocks if needed
+  let blocks: ContentBlock[] = msg.blocks ?? []
+  if (!msg.blocks && msg.content) {
+    blocks = [{ type: 'text', content: msg.content }]
+  }
+  
+  return {
+    id: msg.id,
+    role: msg.role,
+    blocks: convertToSerializedBlocks(blocks),
+    timestamp: new Date().toISOString()
+  }
+}
+
+/**
  * Main chat interface with streaming messages and tool approval.
  */
 export function Chat({ 
@@ -60,6 +136,10 @@ export function Chat({
   // Track current tool being used for input data
   const currentToolRef = useRef<{ name: string; input?: Record<string, unknown> } | null>(null)
   
+  // Track latest messages for saving assistant message on complete
+  const messagesRef = useRef<Message[]>([])
+  messagesRef.current = messages
+  
   // Use external input if provided (controlled mode)
   const currentInput = externalInput !== undefined ? externalInput : input
   const setCurrentInput = onExternalInputChange || setInput
@@ -69,6 +149,35 @@ export function Chat({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, pendingApproval])
+
+  // Listen for chat history loaded on app switch
+  useEffect(() => {
+    const handleHistoryLoaded = (history: PersistedMessage[]) => {
+      // Convert PersistedMessage[] to Message[] for UI
+      const uiMessages: Message[] = history.map(msg => ({
+        id: msg.id,
+        role: msg.role,
+        blocks: convertToUIBlocks(msg.blocks)
+      }))
+      setMessages(uiMessages)
+    }
+    
+    window.electronAPI.onChatHistoryLoaded(handleHistoryLoaded)
+    
+    // Also load history on mount in case event was missed
+    // (happens when Chat component mounts after setActiveApp completes)
+    window.electronAPI.loadChatHistory().then(history => {
+      if (history.length > 0) {
+        handleHistoryLoaded(history)
+      }
+    }).catch(() => {
+      // Ignore errors (e.g., no active app)
+    })
+    
+    return () => {
+      window.electronAPI.offChatHistoryLoaded()
+    }
+  }, [])
 
   // Setup IPC listeners
   useEffect(() => {
@@ -161,6 +270,15 @@ export function Chat({
       } else if (chunk.type === 'complete') {
         setIsStreaming(false)
         currentToolRef.current = null
+        
+        // Save assistant message to history
+        const currentMessages = messagesRef.current
+        const assistantMessage = currentMessages[currentMessages.length - 1]
+        if (assistantMessage?.role === 'assistant') {
+          window.electronAPI.saveChatMessage(toPersistedMessage(assistantMessage)).catch(() => {
+            // Ignore save errors (e.g., no active app)
+          })
+        }
       } else if (chunk.type === 'error') {
         setIsStreaming(false)
         
@@ -215,7 +333,8 @@ export function Chat({
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: currentInput
+      content: currentInput,
+      blocks: [{ type: 'text' as const, content: currentInput }]
     }
 
     const assistantMessage: Message = {
@@ -227,6 +346,13 @@ export function Chat({
     setMessages(prev => [...prev, userMessage, assistantMessage])
     setCurrentInput('')
     setIsStreaming(true)
+
+    // Save user message to history
+    try {
+      await window.electronAPI.saveChatMessage(toPersistedMessage(userMessage))
+    } catch {
+      // Ignore save errors (e.g., no active app)
+    }
 
     await window.electronAPI.sendMessage(currentInput)
   }, [currentInput, isStreaming, setCurrentInput])
@@ -258,6 +384,12 @@ export function Chat({
 
   const clearHistory = useCallback(async () => {
     await window.electronAPI.clearHistory()
+    // Also clear persisted chat history
+    try {
+      await window.electronAPI.clearChatHistory()
+    } catch {
+      // Ignore errors (e.g., no active app)
+    }
     setMessages([])
   }, [])
 
