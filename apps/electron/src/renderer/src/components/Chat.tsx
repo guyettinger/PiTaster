@@ -279,6 +279,19 @@ export function Chat({
             // Ignore save errors (e.g., no active app)
           })
         }
+      } else if (chunk.type === 'rate_limit') {
+        // Show rate-limit notice as a text block in the assistant message
+        setMessages(prev => {
+          const last = prev[prev.length - 1]
+          if (last?.role !== 'assistant') return prev
+          
+          const blocks = last.blocks ?? []
+          const newBlocks: ContentBlock[] = [...blocks, {
+            type: 'text' as const,
+            content: `\n*Rate limited by API. Retrying in ${chunk.retryAfterSeconds}s...*`
+          }]
+          return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
+        })
       } else if (chunk.type === 'error') {
         setIsStreaming(false)
         

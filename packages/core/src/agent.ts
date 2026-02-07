@@ -23,13 +23,15 @@ export interface ToolResult {
  */
 export interface StreamChunk {
   /** Type of chunk. */
-  type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error'
+  type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error' | 'rate_limit'
   /** Text content (for 'text' type). */
   text?: string
   /** Tool name (for 'tool_start' type). */
   tool?: string
   /** Error message (for 'error' type). */
   error?: string
+  /** Seconds until retry (for 'rate_limit' type). */
+  retryAfterSeconds?: number
 }
 
 /**

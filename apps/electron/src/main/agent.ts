@@ -3,7 +3,7 @@
  * All file operations are sandboxed to the active sub-app directory.
  */
 
-import Anthropic from '@anthropic-ai/sdk'
+import Anthropic, { APIError } from '@anthropic-ai/sdk'
 import { promises as fs } from 'node:fs'
 import { resolve, join, dirname } from 'node:path'
 import { exec } from 'node:child_process'
@@ -22,6 +22,11 @@ const AUTHOR = { name: 'anyapp Agent', email: 'agent@anyapp.local' }
 
 /** Blocked shell command patterns for safety. */
 const BLOCKED_COMMANDS = ['rm -rf /', 'sudo', '> /dev', 'dd if=', 'mkfs', ':(){']
+
+/** Maximum number of retries on 429 rate-limit errors. */
+const MAX_RATE_LIMIT_RETRIES = 3
+/** Default wait time (seconds) when retry-after header is missing. */
+const DEFAULT_RETRY_AFTER_SECONDS = 60
 
 /**
  * Normalize and validate a path to prevent directory traversal.
@@ -50,12 +55,14 @@ function normalizePath(rootPath: string, relativePath: string): string | null {
 
 /** Stream chunk from agent response. */
 export interface StreamChunk {
-  type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error'
+  type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error' | 'rate_limit'
   text?: string
   tool?: string
   input?: Record<string, unknown>
   output?: string
   error?: string
+  /** Seconds until retry (for 'rate_limit' type). */
+  retryAfterSeconds?: number
 }
 
 /**
@@ -1038,6 +1045,7 @@ export async function runAgentQuery(params: RunAgentQueryParams): Promise<Messag
 
   // Agentic loop - continue until no more tool use
   let continueLoop = true
+  let rateLimitRetries = 0
   
   while (continueLoop) {
     continueLoop = false
@@ -1141,6 +1149,21 @@ export async function runAgentQuery(params: RunAgentQueryParams): Promise<Messag
         }
       }
     } catch (error) {
+      // 429 rate-limit: retry with backoff
+      if (error instanceof APIError && error.status === 429 && rateLimitRetries < MAX_RATE_LIMIT_RETRIES) {
+        const retryAfterHeader = error.headers?.['retry-after']
+        const retryAfterSeconds = retryAfterHeader
+          ? parseInt(retryAfterHeader, 10) || DEFAULT_RETRY_AFTER_SECONDS
+          : DEFAULT_RETRY_AFTER_SECONDS
+
+        rateLimitRetries++
+        onStream({ type: 'rate_limit', retryAfterSeconds })
+        await new Promise(resolve => setTimeout(resolve, retryAfterSeconds * 1000))
+        continueLoop = true
+        continue
+      }
+
+      // All other errors (or retries exhausted): surface to user, no retry
       const err = error as Error
       onStream({ type: 'error', error: err.message })
       return messages

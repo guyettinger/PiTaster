@@ -5,10 +5,12 @@ type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
 
 /** Stream chunk from agent response. */
 interface StreamChunk {
-  type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error'
+  type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error' | 'rate_limit'
   text?: string
   tool?: string
   error?: string
+  /** Seconds until retry (for 'rate_limit' type). */
+  retryAfterSeconds?: number
 }
 
 /** Tool approval request sent to renderer. */
