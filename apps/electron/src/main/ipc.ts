@@ -10,7 +10,7 @@ import { promises as fs } from 'node:fs'
 import { runAgentQuery, setProjectRoot, getProjectRoot } from './agent'
 import { VersionManager, SourceManager, SkillsLoader, AppManager, AppRunner, ChatHistoryManager } from '@anyapp/shared'
 import type { PermissionMode, StreamChunk, MessageParam } from './agent'
-import type { Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, SerializedTextBlock } from '@anyapp/core'
+import type { Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, SerializedTextBlock, CreateChatSessionParams } from '@anyapp/core'
 
 /** Tool approval request sent to renderer. */
 interface ToolApprovalRequest {
@@ -63,6 +63,9 @@ const chatHistoryManager = new ChatHistoryManager()
 
 /** Currently active app ID for agent context. */
 let activeAppId: string | null = null
+
+/** Currently active session ID for the active app. */
+let activeSessionId: string | null = null
 
 /** Path to config file. */
 const configPath = join(configDir, 'config.json')
@@ -163,6 +166,28 @@ export function getActiveAppId(): string | null {
 export async function getActiveApp(): Promise<SubApp | null> {
   if (!activeAppId) return null
   return appManager.getApp(activeAppId)
+}
+
+/**
+ * Rebuild the in-memory conversationHistory from persisted messages.
+ * Extracts text content from serialized blocks for the Claude SDK.
+ * @param history - The persisted messages to rebuild from
+ */
+function rebuildConversationHistory(history: PersistedMessage[]): void {
+  conversationHistory = []
+  for (const msg of history) {
+    const textContent = msg.blocks
+      .filter((b): b is SerializedTextBlock => b.type === 'text')
+      .map((b) => b.content)
+      .join('')
+
+    if (textContent) {
+      conversationHistory.push({
+        role: msg.role,
+        content: textContent
+      })
+    }
+  }
 }
 
 /**
@@ -380,32 +405,35 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       throw new Error('Invalid app ID')
     }
     
-    // Clear in-memory conversation history
+    // Clear in-memory state
     conversationHistory = []
-    
     activeAppId = id
+    activeSessionId = null
     
     if (id) {
-      // Load persisted history for the new app
-      const history = await chatHistoryManager.loadHistory(id)
+      // Load manifest (triggers migration if needed)
+      const manifest = await chatHistoryManager.loadManifest(id)
       
-      // Rebuild conversationHistory for Claude SDK from text content only
-      for (const msg of history) {
-        const textContent = msg.blocks
-          .filter((b): b is SerializedTextBlock => b.type === 'text')
-          .map((b) => b.content)
-          .join('')
+      // Auto-create first session if none exist
+      if (manifest.sessions.length === 0) {
+        const session = await chatHistoryManager.createSession(id, { title: 'Chat' })
+        activeSessionId = session.id
+        mainWindow.webContents.send('sessions:list-updated', [session])
+        mainWindow.webContents.send('chat:session-changed', session.id)
+        mainWindow.webContents.send('chat:history-loaded', [])
+      } else {
+        activeSessionId = manifest.activeSessionId
         
-        if (textContent) {
-          conversationHistory.push({
-            role: msg.role,
-            content: textContent
-          })
+        if (activeSessionId) {
+          const history = await chatHistoryManager.loadHistory(id, activeSessionId)
+          rebuildConversationHistory(history)
+          mainWindow.webContents.send('chat:history-loaded', history)
         }
+        
+        // Send sessions list to renderer
+        mainWindow.webContents.send('sessions:list-updated', manifest.sessions)
+        mainWindow.webContents.send('chat:session-changed', activeSessionId)
       }
-      
-      // Emit to renderer
-      mainWindow.webContents.send('chat:history-loaded', history)
     }
     
     return activeAppId
@@ -499,30 +527,107 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     return saveConfig(config)
   })
 
-  // Chat history IPC handlers
+  // Chat history IPC handlers (session-aware)
   ipcMain.handle('chat:load-history', async () => {
-    if (!activeAppId) {
-      return []
-    }
-    return chatHistoryManager.loadHistory(activeAppId)
+    if (!activeAppId || !activeSessionId) return []
+    return chatHistoryManager.loadHistory(activeAppId, activeSessionId)
   })
 
   ipcMain.handle('chat:save-message', async (_, message: PersistedMessage) => {
-    if (!activeAppId) {
-      throw new Error('No active app')
+    if (!activeAppId || !activeSessionId) {
+      throw new Error('No active session')
     }
     if (!message || typeof message.id !== 'string') {
       throw new Error('Invalid message')
     }
-    await chatHistoryManager.saveMessage(activeAppId, message)
+    await chatHistoryManager.saveMessage(activeAppId, activeSessionId, message)
   })
 
   ipcMain.handle('chat:clear-history', async () => {
-    if (!activeAppId) {
-      throw new Error('No active app')
+    if (!activeAppId || !activeSessionId) {
+      throw new Error('No active session')
     }
-    await chatHistoryManager.clearHistory(activeAppId)
+    await chatHistoryManager.clearHistory(activeAppId, activeSessionId)
     conversationHistory = []
+  })
+
+  // Chat session IPC handlers
+  ipcMain.handle('sessions:list', async () => {
+    if (!activeAppId) return []
+    return chatHistoryManager.listSessions(activeAppId)
+  })
+
+  ipcMain.handle('sessions:create', async (_, params?: CreateChatSessionParams) => {
+    if (!activeAppId) throw new Error('No active app')
+
+    const session = await chatHistoryManager.createSession(activeAppId, params)
+
+    // Switch to the new session
+    activeSessionId = session.id
+    conversationHistory = []
+
+    // Notify renderer
+    mainWindow.webContents.send('chat:history-loaded', [])
+    mainWindow.webContents.send('chat:session-changed', session.id)
+
+    return session
+  })
+
+  ipcMain.handle('sessions:delete', async (_, sessionId: string) => {
+    if (!activeAppId) throw new Error('No active app')
+    if (typeof sessionId !== 'string' || sessionId.length === 0) {
+      throw new Error('Invalid session ID')
+    }
+
+    await chatHistoryManager.deleteSession(activeAppId, sessionId)
+
+    // If we deleted the active session, load the new active
+    if (activeSessionId === sessionId) {
+      const newActiveId = await chatHistoryManager.getActiveSessionId(activeAppId)
+      activeSessionId = newActiveId
+
+      if (newActiveId) {
+        const history = await chatHistoryManager.loadHistory(activeAppId, newActiveId)
+        rebuildConversationHistory(history)
+        mainWindow.webContents.send('chat:history-loaded', history)
+      } else {
+        conversationHistory = []
+        mainWindow.webContents.send('chat:history-loaded', [])
+      }
+      mainWindow.webContents.send('chat:session-changed', newActiveId)
+    }
+  })
+
+  ipcMain.handle('sessions:rename', async (_, sessionId: string, title: string) => {
+    if (!activeAppId) throw new Error('No active app')
+    if (typeof sessionId !== 'string' || sessionId.length === 0) {
+      throw new Error('Invalid session ID')
+    }
+    if (typeof title !== 'string' || title.length === 0) {
+      throw new Error('Invalid title')
+    }
+    return chatHistoryManager.renameSession(activeAppId, sessionId, title)
+  })
+
+  ipcMain.handle('sessions:set-active', async (_, sessionId: string) => {
+    if (!activeAppId) throw new Error('No active app')
+    if (typeof sessionId !== 'string' || sessionId.length === 0) {
+      throw new Error('Invalid session ID')
+    }
+
+    await chatHistoryManager.setActiveSession(activeAppId, sessionId)
+    activeSessionId = sessionId
+
+    // Load history for the new session
+    const history = await chatHistoryManager.loadHistory(activeAppId, sessionId)
+    rebuildConversationHistory(history)
+
+    mainWindow.webContents.send('chat:history-loaded', history)
+    mainWindow.webContents.send('chat:session-changed', sessionId)
+  })
+
+  ipcMain.handle('sessions:get-active', async () => {
+    return activeSessionId
   })
 
   // App runner IPC handlers
@@ -710,12 +815,21 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('chat:load-history')
   ipcMain.removeHandler('chat:save-message')
   ipcMain.removeHandler('chat:clear-history')
+
+  // Session handlers
+  ipcMain.removeHandler('sessions:list')
+  ipcMain.removeHandler('sessions:create')
+  ipcMain.removeHandler('sessions:delete')
+  ipcMain.removeHandler('sessions:rename')
+  ipcMain.removeHandler('sessions:set-active')
+  ipcMain.removeHandler('sessions:get-active')
   
   // Reset version manager
   versionManager = null
 
-  // Reset active app
+  // Reset active app and session
   activeAppId = null
+  activeSessionId = null
 
   // Disconnect all sources
   sourceManager.disconnectAll().catch(() => {})

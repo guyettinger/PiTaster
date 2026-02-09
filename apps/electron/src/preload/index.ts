@@ -182,6 +182,20 @@ interface PersistedMessage {
   timestamp: string
 }
 
+/** A chat session within an app. */
+interface ChatSession {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+  messageCount: number
+}
+
+/** Parameters for creating a new chat session. */
+interface CreateChatSessionParams {
+  title?: string
+}
+
 /**
  * Electron API exposed to the renderer process.
  * 
@@ -464,6 +478,85 @@ const electronAPI = {
    */
   offChatHistoryLoaded: (): void => {
     ipcRenderer.removeAllListeners('chat:history-loaded')
+  },
+
+  // Chat session methods
+
+  /**
+   * List all chat sessions for the active app.
+   */
+  listChatSessions: (): Promise<ChatSession[]> => {
+    return ipcRenderer.invoke('sessions:list')
+  },
+
+  /**
+   * Create a new chat session.
+   * @param params - Optional creation parameters
+   */
+  createChatSession: (params?: CreateChatSessionParams): Promise<ChatSession> => {
+    return ipcRenderer.invoke('sessions:create', params)
+  },
+
+  /**
+   * Delete a chat session.
+   * @param sessionId - The session ID to delete
+   */
+  deleteChatSession: (sessionId: string): Promise<void> => {
+    return ipcRenderer.invoke('sessions:delete', sessionId)
+  },
+
+  /**
+   * Rename a chat session.
+   * @param sessionId - The session ID to rename
+   * @param title - The new title
+   */
+  renameChatSession: (sessionId: string, title: string): Promise<ChatSession> => {
+    return ipcRenderer.invoke('sessions:rename', sessionId, title)
+  },
+
+  /**
+   * Set the active chat session.
+   * @param sessionId - The session ID to activate
+   */
+  setActiveChatSession: (sessionId: string): Promise<void> => {
+    return ipcRenderer.invoke('sessions:set-active', sessionId)
+  },
+
+  /**
+   * Get the active chat session ID.
+   */
+  getActiveChatSession: (): Promise<string | null> => {
+    return ipcRenderer.invoke('sessions:get-active')
+  },
+
+  /**
+   * Listen for session change events.
+   * @param callback - Function called when the active session changes
+   */
+  onChatSessionChanged: (callback: (sessionId: string | null) => void): void => {
+    ipcRenderer.on('chat:session-changed', (_event, sessionId) => callback(sessionId))
+  },
+
+  /**
+   * Remove session change listener.
+   */
+  offChatSessionChanged: (): void => {
+    ipcRenderer.removeAllListeners('chat:session-changed')
+  },
+
+  /**
+   * Listen for sessions list updates.
+   * @param callback - Function called when the sessions list changes
+   */
+  onSessionsListUpdated: (callback: (sessions: ChatSession[]) => void): void => {
+    ipcRenderer.on('sessions:list-updated', (_event, sessions) => callback(sessions))
+  },
+
+  /**
+   * Remove sessions list update listener.
+   */
+  offSessionsListUpdated: (): void => {
+    ipcRenderer.removeAllListeners('sessions:list-updated')
   },
 
   // App management methods

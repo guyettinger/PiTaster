@@ -65,3 +65,37 @@ export interface PersistedMessage {
   /** ISO timestamp when message was created. */
   timestamp: string
 }
+
+/**
+ * A chat session within an app.
+ */
+export interface ChatSession {
+  /** Unique session ID (e.g., "sess_abc123"). */
+  id: string
+  /** User-facing session title. */
+  title: string
+  /** ISO timestamp when created. */
+  createdAt: string
+  /** ISO timestamp when last message was sent/received. */
+  updatedAt: string
+  /** Number of messages in this session. */
+  messageCount: number
+}
+
+/**
+ * Session manifest stored in .chat-sessions.json per app.
+ */
+export interface ChatSessionManifest {
+  /** The currently active session ID for this app. */
+  activeSessionId: string | null
+  /** All sessions for this app. */
+  sessions: ChatSession[]
+}
+
+/**
+ * Parameters for creating a new chat session.
+ */
+export interface CreateChatSessionParams {
+  /** Optional title (defaults to "New Chat"). */
+  title?: string
+}

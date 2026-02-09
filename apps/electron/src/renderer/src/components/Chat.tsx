@@ -40,6 +40,8 @@ interface ChatProps {
   externalInput?: string
   /** External input change handler (controlled). */
   onExternalInputChange?: (value: string) => void
+  /** Currently active session ID. */
+  activeSessionId: string | null
 }
 
 /**
@@ -124,7 +126,8 @@ export function Chat({
   onModeChange,
   inputRef: externalInputRef,
   externalInput,
-  onExternalInputChange
+  onExternalInputChange,
+  activeSessionId
 }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -149,6 +152,13 @@ export function Chat({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, pendingApproval])
+
+  // Reset messages when active session changes
+  useEffect(() => {
+    setMessages([])
+    setIsStreaming(false)
+    setPendingApproval(null)
+  }, [activeSessionId])
 
   // Listen for chat history loaded on app switch
   useEffect(() => {
@@ -341,7 +351,7 @@ export function Chat({
   }, [])
 
   const sendMessage = useCallback(async () => {
-    if (!currentInput.trim() || isStreaming) return
+    if (!currentInput.trim() || isStreaming || !activeSessionId) return
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -368,7 +378,7 @@ export function Chat({
     }
 
     await window.electronAPI.sendMessage(currentInput)
-  }, [currentInput, isStreaming, setCurrentInput])
+  }, [currentInput, isStreaming, setCurrentInput, activeSessionId])
 
   const handleApproval = useCallback((approved: boolean) => {
     if (!pendingApproval) return
@@ -472,12 +482,12 @@ export function Chat({
             onChange={(e) => setCurrentInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
             placeholder="Ask the agent... (use @skill-name to include skills)"
-            disabled={isStreaming}
+            disabled={isStreaming || !activeSessionId}
             className="flex-1 rounded-lg border border-neutral-700 bg-neutral-800 px-4 py-3 text-neutral-100 placeholder-neutral-500 focus:border-blue-500 focus:outline-none disabled:opacity-50"
           />
           <button
             onClick={sendMessage}
-            disabled={isStreaming || !currentInput.trim()}
+            disabled={isStreaming || !currentInput.trim() || !activeSessionId}
             className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isStreaming ? 'Thinking...' : 'Send'}

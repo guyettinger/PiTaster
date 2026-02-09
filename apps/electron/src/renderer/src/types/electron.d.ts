@@ -2,7 +2,7 @@
  * Type definitions for the Electron API exposed via preload script.
  */
 
-import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage } from '@anyapp/core'
+import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatSession, CreateChatSessionParams } from '@anyapp/core'
 
 /** Permission mode type for tool execution. */
 type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
@@ -210,6 +210,28 @@ interface ElectronAPI {
   /** Remove chat history loaded listener. */
   offChatHistoryLoaded: () => void
 
+  // Chat session methods
+  /** List all chat sessions for the active app. */
+  listChatSessions: () => Promise<ChatSession[]>
+  /** Create a new chat session. */
+  createChatSession: (params?: CreateChatSessionParams) => Promise<ChatSession>
+  /** Delete a chat session. */
+  deleteChatSession: (sessionId: string) => Promise<void>
+  /** Rename a chat session. */
+  renameChatSession: (sessionId: string, title: string) => Promise<ChatSession>
+  /** Set the active chat session. */
+  setActiveChatSession: (sessionId: string) => Promise<void>
+  /** Get the active chat session ID. */
+  getActiveChatSession: () => Promise<string | null>
+  /** Listen for session change events. */
+  onChatSessionChanged: (callback: (sessionId: string | null) => void) => void
+  /** Remove session change listener. */
+  offChatSessionChanged: () => void
+  /** Listen for sessions list updates. */
+  onSessionsListUpdated: (callback: (sessions: ChatSession[]) => void) => void
+  /** Remove sessions list update listener. */
+  offSessionsListUpdated: () => void
+
   // Apps methods
   /** List all sub-apps. */
   listApps: () => Promise<SubApp[]>
@@ -279,5 +301,7 @@ export type {
   SubApp,
   CreateAppParams,
   AppTemplate,
-  PersistedMessage
+  PersistedMessage,
+  ChatSession,
+  CreateChatSessionParams
 }

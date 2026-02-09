@@ -22,6 +22,7 @@ export interface Message {
 
 /**
  * A chat session.
+ * @deprecated Use {@link ChatSession} from `./chat` instead.
  */
 export interface Session {
   /** Unique session ID. */

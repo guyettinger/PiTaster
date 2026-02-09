@@ -8,6 +8,7 @@ import { Help } from './components/Help'
 import { AppListing } from './components/AppListing'
 import { AppHeader } from './components/AppHeader'
 import { NoAppSelected } from './components/NoAppSelected'
+import { ChatSessionList } from './components/ChatSessionList'
 import { TerminalPanel } from './components/TerminalPanel'
 import { PreviewPanel } from './components/PreviewPanel'
 import { RunningAppsProvider } from './context/RunningAppsContext'
@@ -163,6 +164,7 @@ export function App() {
   // App state
   const [activeApp, setActiveApp] = useState<SubApp | null>(null)
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('default')
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   
   // Chat input state (for skill insertion)
   const [chatInput, setChatInput] = useState('')
@@ -182,6 +184,16 @@ export function App() {
     })
   }, [])
 
+  // Listen for session change events from main process
+  useEffect(() => {
+    window.electronAPI.onChatSessionChanged((sessionId) => {
+      setActiveSessionId(sessionId)
+    })
+    return () => {
+      window.electronAPI.offChatSessionChanged()
+    }
+  }, [])
+
   const handleModeChange = useCallback(async (mode: PermissionMode) => {
     const newMode = await window.electronAPI.setPermissionMode(mode)
     setPermissionMode(newMode)
@@ -189,12 +201,14 @@ export function App() {
 
   const handleAppSelect = useCallback(async (app: SubApp) => {
     setActiveApp(app)
+    setActiveSessionId(null) // Will be set by IPC event from apps:set-active
     await window.electronAPI.setActiveApp(app.id)
     setMainPanel('chat')
   }, [])
 
   const handleBackToApps = useCallback(async () => {
     setActiveApp(null)
+    setActiveSessionId(null)
     await window.electronAPI.setActiveApp(null)
     setMainPanel('apps')
     setRightPanel(null)
@@ -235,6 +249,15 @@ export function App() {
     // Focus the input and switch to chat
     setMainPanel('chat')
     setTimeout(() => chatInputRef.current?.focus(), 0)
+  }, [])
+
+  const handleSessionSelect = useCallback(async (sessionId: string) => {
+    await window.electronAPI.setActiveChatSession(sessionId)
+  }, [])
+
+  const handleSessionCreate = useCallback(async () => {
+    await window.electronAPI.createChatSession()
+    // Session list and active session updated via IPC events
   }, [])
 
   const toggleRightPanel = useCallback((panel: RightPanel) => {
@@ -356,13 +379,25 @@ export function App() {
               
               {mainPanel === 'chat' && (
                 activeApp ? (
-                  <Chat
-                    permissionMode={permissionMode}
-                    onModeChange={handleModeChange}
-                    inputRef={chatInputRef}
-                    externalInput={chatInput}
-                    onExternalInputChange={setChatInput}
-                  />
+                  <div className="flex h-full">
+                    {/* Session sidebar */}
+                    <ChatSessionList
+                      activeSessionId={activeSessionId}
+                      onSessionSelect={handleSessionSelect}
+                      onSessionCreate={handleSessionCreate}
+                    />
+                    {/* Chat panel */}
+                    <div className="flex-1 overflow-hidden">
+                      <Chat
+                        permissionMode={permissionMode}
+                        onModeChange={handleModeChange}
+                        inputRef={chatInputRef}
+                        externalInput={chatInput}
+                        onExternalInputChange={setChatInput}
+                        activeSessionId={activeSessionId}
+                      />
+                    </div>
+                  </div>
                 ) : (
                   <NoAppSelected onGoToApps={() => setMainPanel('apps')} />
                 )
