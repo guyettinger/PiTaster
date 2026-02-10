@@ -33,6 +33,7 @@ The implementation is split into **6 independent sessions**, each resulting in a
 | [8. App Preview](SESSION-8-APP-PREVIEW.md) | Dev Server + Preview | Run and view apps during development | Planned | 6 sub-sessions |
 | [9. Chat History](SESSION-9-CHAT-HISTORY.md) | Persistent History | Chat history saved per app | Complete | [Notes](SESSION-9-NOTES.md) |
 | [10. Rate Limits](SESSION-10-RATE-LIMITS.md) | API rate limits | 429 handling, retry with backoff | Complete | [Notes](SESSION-10-NOTES.md) |
+| [12. Add Source](SESSION-12-ADD-SOURCE.md) | Source CRUD UI | Add/edit/delete MCP sources from UI | Complete | [Notes](SESSION-12-NOTES.md) |
 
 ## Session 6 Sub-Sessions
 
