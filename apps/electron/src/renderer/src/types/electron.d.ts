@@ -2,7 +2,7 @@
  * Type definitions for the Electron API exposed via preload script.
  */
 
-import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatSession, CreateChatSessionParams } from '@anyapp/core'
+import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatSession, CreateChatSessionParams, ElementContext, SerializedContentBlock } from '@anyapp/core'
 
 /** Permission mode type for tool execution. */
 type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
@@ -129,10 +129,44 @@ interface AppStatusChange {
   error?: string
 }
 
+/** Element info from inspector overlay. */
+interface ElementInfo {
+  /** Tag name (e.g., 'button', 'div'). */
+  tag: string
+  /** Element text content (trimmed). */
+  text: string
+  /** CSS classes. */
+  classes: string[]
+  /** ID attribute. */
+  id?: string
+  /** Data attributes. */
+  dataAttributes: Record<string, string>
+  /** Computed styles (selected properties). */
+  styles: {
+    position: string
+    display: string
+    width: string
+    height: string
+    backgroundColor?: string
+    color?: string
+  }
+  /** Bounding rect relative to viewport. */
+  bounds: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }
+  /** XPath selector for the element. */
+  xpath: string
+  /** CSS selector (best attempt). */
+  selector: string
+}
+
 /** Electron API interface exposed to the renderer. */
 interface ElectronAPI {
-  /** Send a message to the agent. */
-  sendMessage: (message: string) => Promise<void>
+  /** Send a message to the agent (string or content blocks). */
+  sendMessage: (message: string | SerializedContentBlock[]) => Promise<void>
   /** Listen for streamed agent responses. */
   onAgentStream: (callback: (chunk: StreamChunk) => void) => void
   /** Remove agent stream listener. */
@@ -273,6 +307,16 @@ interface ElectronAPI {
   onAppStatusChange: (callback: (change: AppStatusChange) => void) => void
   /** Remove app status change listener. */
   offAppStatusChange: () => void
+
+  // Inspector methods
+  /** Get the inspector overlay script. */
+  getInspectorScript: () => Promise<string>
+  /** Capture element screenshot and info. */
+  captureElement: (elementInfo: ElementInfo) => Promise<ElementContext>
+  /** Add element context to the current chat. */
+  addElementContext: (context: ElementContext) => Promise<void>
+  /** Listen for element context added events. */
+  onElementContextAdded: (callback: (context: ElementContext) => void) => () => void
 }
 
 declare global {

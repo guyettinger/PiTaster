@@ -5,6 +5,8 @@
 import { ToolBubble } from './ToolBubble'
 import { TextBubble } from './TextBubble'
 import { ApprovalRecord } from './ApprovalRecord'
+import { ElementContextBubble } from './ElementContextBubble'
+import type { ElementContext } from '@anyapp/core'
 
 /**
  * Tool block within a message.
@@ -37,9 +39,18 @@ interface ApprovalBlock {
 }
 
 /**
+ * Element context block within a message.
+ */
+interface ElementBlock {
+  type: 'element'
+  content: string
+  elementContext?: ElementContext
+}
+
+/**
  * Content block types for rich messages.
  */
-export type ContentBlock = ToolBlock | TextBlock | ApprovalBlock
+export type ContentBlock = ToolBlock | TextBlock | ApprovalBlock | ElementBlock
 
 /**
  * Legacy tool status indicator (for backward compatibility).
@@ -86,13 +97,8 @@ interface MessageBubbleProps {
  */
 export function MessageBubble({ message, isStreaming = false }: MessageBubbleProps) {
   const isUser = message.role === 'user'
-  
-  // User messages are simple text bubbles
-  if (isUser) {
-    return <TextBubble content={message.content ?? ''} isUser={true} />
-  }
-  
-  // Assistant messages: render blocks if available, fallback to legacy format
+
+  // Render blocks if available
   if (message.blocks && message.blocks.length > 0) {
     return (
       <div className="space-y-2">
@@ -100,10 +106,10 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
           switch (block.type) {
             case 'text':
               return (
-                <TextBubble 
-                  key={i} 
-                  content={block.content} 
-                  isUser={false} 
+                <TextBubble
+                  key={i}
+                  content={block.content}
+                  isUser={isUser}
                   isStreaming={isStreaming && i === message.blocks!.length - 1}
                 />
               )
@@ -127,12 +133,21 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
                   approved={block.approved}
                 />
               )
+            case 'element':
+              return block.elementContext ? (
+                <ElementContextBubble key={i} context={block.elementContext} />
+              ) : null
             default:
               return null
           }
         })}
       </div>
     )
+  }
+
+  // Legacy format: user messages are simple text bubbles
+  if (isUser) {
+    return <TextBubble content={message.content ?? ''} isUser={true} />
   }
   
   // Legacy format: tools as individual bubbles + text content

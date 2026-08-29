@@ -10,7 +10,9 @@ import { promises as fs } from 'node:fs'
 import { runAgentQuery, setProjectRoot, getProjectRoot } from './agent'
 import { VersionManager, SourceManager, SkillsLoader, AppManager, AppRunner, ChatHistoryManager } from '@anyapp/shared'
 import type { PermissionMode, StreamChunk, MessageParam } from './agent'
-import type { Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, SerializedTextBlock, CreateChatSessionParams } from '@anyapp/core'
+import type { Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, SerializedTextBlock, CreateChatSessionParams, SerializedContentBlock } from '@anyapp/core'
+import { captureElement, type ElementInfo } from './screenshot'
+import type { ElementContext } from '@anyapp/core'
 
 /** Tool approval request sent to renderer. */
 interface ToolApprovalRequest {
@@ -223,13 +225,27 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   })
 
   // Send message to agent
-  ipcMain.handle('agent:message', async (_, prompt: string): Promise<void> => {
+  ipcMain.handle('agent:message', async (_, prompt: string | SerializedContentBlock[]): Promise<void> => {
     // Validate input
-    if (typeof prompt !== 'string' || prompt.length === 0) {
-      throw new Error('Invalid prompt')
-    }
-    if (prompt.length > 100000) {
-      throw new Error('Prompt too long')
+    if (typeof prompt === 'string') {
+      if (prompt.length === 0) {
+        throw new Error('Invalid prompt')
+      }
+      if (prompt.length > 100000) {
+        throw new Error('Prompt too long')
+      }
+    } else if (Array.isArray(prompt)) {
+      if (prompt.length === 0) {
+        throw new Error('Invalid prompt: empty blocks array')
+      }
+      // Validate each block has proper structure
+      for (const block of prompt) {
+        if (!block.type) {
+          throw new Error('Invalid prompt: block missing type')
+        }
+      }
+    } else {
+      throw new Error('Invalid prompt: must be string or content blocks')
     }
 
     /**
@@ -748,6 +764,50 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       proc.on('error', reject)
     })
   })
+
+  /**
+   * Load the inspector overlay script as a string.
+   */
+  ipcMain.handle('inspector:get-script', async () => {
+    try {
+      // Read the compiled inspector script
+      const scriptPath = join(__dirname, '../../packages/shared/dist/inspector/overlay.js')
+      const script = await fs.readFile(scriptPath, 'utf-8')
+      return script
+    } catch (err) {
+      console.error('Failed to load inspector script:', err)
+      throw new Error('Inspector script not found')
+    }
+  })
+
+  /**
+   * Capture element screenshot.
+   */
+  ipcMain.handle(
+    'inspector:capture-element',
+    async (event, elementInfo: ElementInfo) => {
+      try {
+        const window = BrowserWindow.fromWebContents(event.sender)
+        if (!window) throw new Error('Window not found')
+
+        const elementContext = await captureElement(window, elementInfo)
+        return elementContext
+      } catch (err) {
+        console.error('Element capture failed:', err)
+        throw err
+      }
+    }
+  )
+
+  /**
+   * Add element context to the current chat.
+   */
+  ipcMain.handle('chat:add-element-context', async (event, context: ElementContext) => {
+    // Notify all renderer windows to inject element context
+    BrowserWindow.getAllWindows().forEach((win) => {
+      win.webContents.send('chat:element-context-added', context)
+    })
+  })
 }
 
 /**
@@ -823,7 +883,12 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('sessions:rename')
   ipcMain.removeHandler('sessions:set-active')
   ipcMain.removeHandler('sessions:get-active')
-  
+
+  // Inspector handlers
+  ipcMain.removeHandler('inspector:get-script')
+  ipcMain.removeHandler('inspector:capture-element')
+  ipcMain.removeHandler('chat:add-element-context')
+
   // Reset version manager
   versionManager = null
 

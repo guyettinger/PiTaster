@@ -205,9 +205,9 @@ interface CreateChatSessionParams {
 const electronAPI = {
   /**
    * Send a message to the agent.
-   * @param message - The message content to send
+   * @param message - The message content (string or content blocks)
    */
-  sendMessage: (message: string): Promise<void> => {
+  sendMessage: (message: string | SerializedContentBlock[]): Promise<void> => {
     return ipcRenderer.invoke('agent:message', message)
   },
 
@@ -708,6 +708,38 @@ const electronAPI = {
    */
   offAppStatusChange: (): void => {
     ipcRenderer.removeAllListeners('apps:status-change')
+  },
+
+  // Inspector methods
+
+  /**
+   * Get the inspector overlay script.
+   */
+  getInspectorScript: (): Promise<string> => {
+    return ipcRenderer.invoke('inspector:get-script')
+  },
+
+  /**
+   * Capture element screenshot and info.
+   */
+  captureElement: (elementInfo: any): Promise<any> => {
+    return ipcRenderer.invoke('inspector:capture-element', elementInfo)
+  },
+
+  /**
+   * Add element context to the current chat.
+   */
+  addElementContext: (context: any): Promise<void> => {
+    return ipcRenderer.invoke('chat:add-element-context', context)
+  },
+
+  /**
+   * Listen for element context added events.
+   */
+  onElementContextAdded: (callback: (context: any) => void): (() => void) => {
+    const handler = (_event: any, context: any) => callback(context)
+    ipcRenderer.on('chat:element-context-added', handler)
+    return () => ipcRenderer.removeListener('chat:element-context-added', handler)
   }
 }
 

@@ -3,16 +3,18 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { nanoid } from 'nanoid'
 import { MessageBubble } from './MessageBubble'
 import { InlineApproval } from './InlineApproval'
+import { ElementContextBubble } from './ElementContextBubble'
 import type { Message, ContentBlock } from './MessageBubble'
-import type { 
-  PermissionMode, 
-  StreamChunk, 
+import type {
+  PermissionMode,
+  StreamChunk,
   ToolApprovalRequest,
   PersistedMessage
 } from '../types/electron'
-import type { SerializedContentBlock } from '@anyapp/core'
+import type { SerializedContentBlock, ElementContext } from '@anyapp/core'
 
 /**
  * Skill definition for @mention insertion.
@@ -60,15 +62,22 @@ function convertToUIBlocks(blocks: SerializedContentBlock[]): ContentBlock[] {
         output: block.output,
         error: block.error
       }
-    } else {
-      // approval block
+    } else if (block.type === 'approval') {
       return {
         type: 'approval',
         tool: block.tool,
         input: block.input,
         approved: block.approved
       }
+    } else if (block.type === 'element') {
+      return {
+        type: 'element',
+        content: '',
+        elementContext: block.elementContext
+      }
     }
+    // Fallback for unknown types
+    return { type: 'text', content: '' }
   })
 }
 
@@ -88,15 +97,21 @@ function convertToSerializedBlocks(blocks: ContentBlock[]): SerializedContentBlo
         output: block.output,
         error: block.error
       }
-    } else {
-      // approval block
+    } else if (block.type === 'approval') {
       return {
         type: 'approval',
         tool: block.tool,
         input: block.input,
         approved: block.approved
       }
+    } else if (block.type === 'element') {
+      return {
+        type: 'element',
+        elementContext: block.elementContext!
+      }
     }
+    // Fallback for unknown types
+    return { type: 'text', content: '' }
   })
 }
 
@@ -343,10 +358,40 @@ export function Chat({
       setPendingApproval(request)
     })
 
+    // Listen for element context events
+    const unsubscribeElementContext = window.electronAPI.onElementContextAdded(
+      (context: ElementContext) => {
+        // Add a new user message with element context
+        const message: Message = {
+          id: nanoid(),
+          role: 'user',
+          blocks: [
+            {
+              type: 'text' as const,
+              content: 'Please help me modify this element:'
+            },
+            {
+              type: 'element' as const,
+              content: '',
+              elementContext: context
+            }
+          ]
+        }
+
+        setMessages((prev) => [...prev, message])
+
+        // Save message to history
+        window.electronAPI.saveChatMessage(toPersistedMessage(message)).catch(() => {
+          // Ignore save errors
+        })
+      }
+    )
+
     // Cleanup listeners
     return () => {
       window.electronAPI.offAgentStream()
       window.electronAPI.offToolApproval()
+      unsubscribeElementContext()
     }
   }, [])
 
@@ -377,7 +422,9 @@ export function Chat({
       // Ignore save errors (e.g., no active app)
     }
 
-    await window.electronAPI.sendMessage(currentInput)
+    // Convert message blocks to serialized format for agent
+    const serializedBlocks = convertToSerializedBlocks(userMessage.blocks || [])
+    await window.electronAPI.sendMessage(serializedBlocks)
   }, [currentInput, isStreaming, setCurrentInput, activeSessionId])
 
   const handleApproval = useCallback((approved: boolean) => {

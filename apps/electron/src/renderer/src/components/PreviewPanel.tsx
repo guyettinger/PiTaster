@@ -20,6 +20,7 @@ export function PreviewPanel({ appId, isVisible }: PreviewPanelProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [currentUrl, setCurrentUrl] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [isInspecting, setIsInspecting] = useState(false)
 
   const url = getUrl(appId)
   const status = getStatus(appId)
@@ -90,6 +91,103 @@ export function PreviewPanel({ appId, isVisible }: PreviewPanelProps) {
     }
   }, [currentUrl])
 
+  /**
+   * Toggle inspector mode in the webview.
+   */
+  const toggleInspector = useCallback(async () => {
+    if (!webviewRef.current) return
+
+    try {
+      if (isInspecting) {
+        // Deactivate
+        await webviewRef.current.executeJavaScript('window.__anyappInspector?.deactivate()')
+        setIsInspecting(false)
+      } else {
+        // Load inspector script if not already loaded
+        const hasInspector = await webviewRef.current.executeJavaScript(
+          'typeof window.__anyappInspector !== "undefined"'
+        )
+
+        if (!hasInspector) {
+          // Read and inject the overlay script
+          const overlayScript = await window.electronAPI.getInspectorScript()
+          await webviewRef.current.executeJavaScript(overlayScript)
+        }
+
+        // Activate
+        await webviewRef.current.executeJavaScript('window.__anyappInspector?.activate()')
+        setIsInspecting(true)
+      }
+    } catch (err) {
+      console.error('Failed to toggle inspector:', err)
+    }
+  }, [isInspecting])
+
+  /**
+   * Keyboard shortcuts for inspector.
+   */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // ESC exits inspect mode
+      if (e.key === 'Escape' && isInspecting) {
+        toggleInspector()
+      }
+
+      // Cmd/Ctrl+Shift+I toggles inspect mode
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'i') {
+        e.preventDefault()
+        toggleInspector()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isInspecting, toggleInspector])
+
+  /**
+   * Handle element selection messages from webview.
+   */
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.data?.type === 'anyapp:element-selected') {
+        const elementInfo = event.data.data
+
+        try {
+          // Capture screenshot
+          const elementContext = await window.electronAPI.captureElement(elementInfo)
+
+          // Inject into chat
+          await window.electronAPI.addElementContext(elementContext)
+
+          // Exit inspect mode
+          setIsInspecting(false)
+          if (webviewRef.current) {
+            await webviewRef.current.executeJavaScript('window.__anyappInspector?.deactivate()')
+          }
+        } catch (err) {
+          console.error('Failed to capture element:', err)
+        }
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [])
+
+  /**
+   * ESC key exits inspect mode.
+   */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isInspecting) {
+        toggleInspector()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isInspecting, toggleInspector])
+
   if (!isVisible) return null
 
   return (
@@ -138,6 +236,22 @@ export function PreviewPanel({ appId, isVisible }: PreviewPanelProps) {
 
         {/* Actions */}
         <div className="flex items-center gap-1">
+          {/* Inspect button */}
+          <button
+            onClick={toggleInspector}
+            disabled={!running}
+            className={`rounded px-2 py-1 text-xs transition disabled:opacity-50 ${
+              isInspecting
+                ? 'bg-blue-600 text-white'
+                : 'bg-neutral-700 text-neutral-300 hover:bg-neutral-600'
+            }`}
+            title={isInspecting
+              ? 'Exit inspect mode (ESC)'
+              : 'Inspect elements (⌘⇧I)'
+            }
+          >
+            {isInspecting ? '✓ Inspecting' : '🔍 Inspect'}
+          </button>
           <button
             onClick={handleOpenExternal}
             disabled={!running}

@@ -12,9 +12,11 @@
     "@anthropic-ai/sdk": "^0.36.0",
     "@anyapp/core": "workspace:*",
     "@anyapp/shared": "workspace:*",
+    "@img/sharp-darwin-arm64": "^0.34.5",
     "ansi-to-html": "^0.7.2",
     "isomorphic-git": "^1.27.0",
     "nanoid": "^5.0.0",
+    "sharp": "^0.33.0",
     "tree-kill": "^1.2.2",
     "zod": "^3.25.0"
   },
