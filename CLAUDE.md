@@ -9,5 +9,8 @@
 - Delegate Electron main/preload/IPC review to the `electron-security-reviewer`
   subagent, and changes to the agent's tool surface or sandboxing to
   `self-modification-auditor`. Both are read-only.
+- Load the `pi-agent` skill before changing anything under
+  `apps/electron/src/main/agent/` — it carries Pi's real event shapes and the
+  integration gotchas.
 - `docs/skills/` is anyapp's *runtime* skill content, not Claude Code skills.
   When asked to change Claude Code's behavior, edit `.claude/` instead.

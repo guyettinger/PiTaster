@@ -273,8 +273,6 @@ interface ElectronAPI {
   // Chat history methods
   /** Load chat history for the active app. */
   loadChatHistory: () => Promise<PersistedMessage[]>
-  /** Save a chat message to history. */
-  saveChatMessage: (message: PersistedMessage) => Promise<void>
   /** Clear chat history for the active app. */
   clearChatHistory: () => Promise<void>
   /** Listen for chat history loaded events. */

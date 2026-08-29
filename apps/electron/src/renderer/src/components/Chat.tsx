@@ -118,24 +118,6 @@ function convertToSerializedBlocks(blocks: ContentBlock[]): SerializedContentBlo
 }
 
 /**
- * Convert a UI Message to a PersistedMessage for storage.
- */
-function toPersistedMessage(msg: Message): PersistedMessage {
-  // Convert legacy content format to blocks if needed
-  let blocks: ContentBlock[] = msg.blocks ?? []
-  if (!msg.blocks && msg.content) {
-    blocks = [{ type: 'text', content: msg.content }]
-  }
-  
-  return {
-    id: msg.id,
-    role: msg.role,
-    blocks: convertToSerializedBlocks(blocks),
-    timestamp: new Date().toISOString()
-  }
-}
-
-/**
  * Main chat interface with streaming messages and tool approval.
  */
 export function Chat({ 
@@ -286,15 +268,7 @@ export function Chat({
       } else if (chunk.type === 'complete') {
         setIsStreaming(false)
         currentToolRef.current = null
-        
-        // Save assistant message to history
-        const currentMessages = messagesRef.current
-        const assistantMessage = currentMessages[currentMessages.length - 1]
-        if (assistantMessage?.role === 'assistant') {
-          window.electronAPI.saveChatMessage(toPersistedMessage(assistantMessage)).catch(() => {
-            // Ignore save errors (e.g., no active app)
-          })
-        }
+        // The agent persists its own transcript; nothing to save here.
       } else if (chunk.type === 'rate_limit') {
         // Show rate-limit notice as a text block in the assistant message
         setMessages(prev => {
@@ -370,11 +344,6 @@ export function Chat({
         }
 
         setMessages((prev) => [...prev, message])
-
-        // Save message to history
-        window.electronAPI.saveChatMessage(toPersistedMessage(message)).catch(() => {
-          // Ignore save errors
-        })
       }
     )
 
@@ -405,13 +374,6 @@ export function Chat({
     setMessages(prev => [...prev, userMessage, assistantMessage])
     setCurrentInput('')
     setIsStreaming(true)
-
-    // Save user message to history
-    try {
-      await window.electronAPI.saveChatMessage(toPersistedMessage(userMessage))
-    } catch {
-      // Ignore save errors (e.g., no active app)
-    }
 
     // Convert message blocks to serialized format for agent
     const serializedBlocks = convertToSerializedBlocks(userMessage.blocks || [])

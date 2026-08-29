@@ -63,6 +63,10 @@ const MAX_PROMPT_BLOCKS = 100
 /** Config directory for sources and skills. */
 const configDir = join(homedir(), '.anyapp')
 
+/** Pi agent directory, holding models.json, settings.json and session transcripts. */
+const piAgentDir = join(configDir, 'pi')
+
+
 /** Source manager instance. */
 const sourceManager = new SourceManager(configDir)
 
@@ -76,7 +80,7 @@ const appManager = new AppManager()
 const appRunner = new AppRunner()
 
 /** Chat history manager instance. */
-const chatHistoryManager = new ChatHistoryManager()
+const chatHistoryManager = new ChatHistoryManager(piAgentDir)
 
 /** Currently active app ID for agent context. */
 let activeAppId: string | null = null
@@ -86,9 +90,6 @@ let activeSessionId: string | null = null
 
 /** Path to config file. */
 const configPath = join(configDir, 'config.json')
-
-/** Pi agent directory, holding models.json, settings.json and session transcripts. */
-const piAgentDir = join(configDir, 'pi')
 
 /**
  * Legacy path to the encrypted Anthropic API key.
@@ -278,10 +279,17 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
 
   await disposeAgentHost()
 
+  // Resume the active transcript when one exists. A freshly created session is a
+  // draft with no file yet, so Pi starts a new transcript and we adopt its id below.
+  const sessionFile = (await chatHistoryManager.getActiveSessionPath(app.id)) ?? undefined
+  const draft = sessionFile ? null : await chatHistoryManager.getDraftSession(app.id)
+
   agentHost = await createAgentHost({
     app,
     agentDir: piAgentDir,
     modelId: config.ollamaModel,
+    sessionFile,
+    sessionTitle: draft?.title,
     callbacks: {
       getPermissionMode: () => currentPermissionMode,
       getAutoCommit: () => getConfig().autoCommit,
@@ -316,6 +324,19 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
       }
     }
   })
+
+  // Replace the UI's placeholder with the session Pi actually created.
+  if (!sessionFile) {
+    await chatHistoryManager.attachSession({ appId: app.id, sessionId: agentHost.sessionId })
+    activeSessionId = agentHost.sessionId
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('chat:session-changed', activeSessionId)
+      mainWindow.webContents.send(
+        'sessions:list-updated',
+        await chatHistoryManager.listSessions(app.id)
+      )
+    }
+  }
 
   return agentHost
 }
@@ -401,6 +422,12 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
   // Handle tool approval response from renderer
   ipcMain.on('agent:tool-response', (_, response: ToolApprovalResponse): void => {
+    // This is the approval gate for the entire permission system, so the payload
+    // is validated strictly: a truthy non-boolean must not read as approval.
+    if (!response || typeof response !== 'object') return
+    if (typeof response.id !== 'string' || response.id.length === 0) return
+    if (typeof response.approved !== 'boolean') return
+
     const pending = pendingApprovals.get(response.id)
     if (pending) {
       pendingApprovals.delete(response.id)
@@ -675,16 +702,6 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   ipcMain.handle('chat:load-history', async () => {
     if (!activeAppId || !activeSessionId) return []
     return chatHistoryManager.loadHistory(activeAppId, activeSessionId)
-  })
-
-  ipcMain.handle('chat:save-message', async (_, message: PersistedMessage) => {
-    if (!activeAppId || !activeSessionId) {
-      throw new Error('No active session')
-    }
-    if (!message || typeof message.id !== 'string') {
-      throw new Error('Invalid message')
-    }
-    await chatHistoryManager.saveMessage(activeAppId, activeSessionId, message)
   })
 
   ipcMain.handle('chat:clear-history', async () => {
@@ -1001,7 +1018,6 @@ export function cleanupIpcHandlers(): void {
 
   // Chat history handlers
   ipcMain.removeHandler('chat:load-history')
-  ipcMain.removeHandler('chat:save-message')
   ipcMain.removeHandler('chat:clear-history')
 
   // Session handlers

@@ -89,7 +89,11 @@ const filteredEnv = Object.fromEntries(
 
 ## Credential Storage
 
-Use Electron's `safeStorage` for sensitive data — never plain files or renderer storage:
+anyapp currently stores no secrets: inference runs on a local Ollama daemon, so
+there is no API key. Nothing in the app calls `safeStorage` today.
+
+If you add a remote provider, or anything else with a credential, use Electron's
+`safeStorage` — never plain files or renderer storage:
 
 ```typescript
 import { safeStorage } from 'electron'
