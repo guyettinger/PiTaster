@@ -2,7 +2,7 @@
  * IPC handlers for agent communication between main and renderer processes.
  */
 
-import { ipcMain, BrowserWindow, safeStorage, shell } from 'electron'
+import { ipcMain, BrowserWindow, shell } from 'electron'
 import { nanoid } from 'nanoid'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -12,6 +12,13 @@ import { runAgentQuery, setProjectRoot, getProjectRoot } from './agent'
 import { VersionManager, SourceManager, SkillsLoader, AppManager, AppRunner, ChatHistoryManager } from '@anyapp/shared'
 import type { PermissionMode, StreamChunk, MessageParam } from './agent'
 import type { Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, SerializedTextBlock, CreateChatSessionParams, SerializedContentBlock } from '@anyapp/core'
+import {
+  DEFAULT_OLLAMA_BASE_URL,
+  isOllamaReachable,
+  listOllamaModels,
+  syncOllamaModels,
+  type OllamaModel
+} from './agent/ollama'
 import { captureElement, type ElementInfo } from './screenshot'
 import type { ElementContext } from '@anyapp/core'
 
@@ -76,31 +83,66 @@ let activeSessionId: string | null = null
 /** Path to config file. */
 const configPath = join(configDir, 'config.json')
 
-/** Path to encrypted API key file. */
-const apiKeyPath = join(configDir, '.apikey')
+/** Pi agent directory, holding models.json, settings.json and session transcripts. */
+const piAgentDir = join(configDir, 'pi')
 
-/** Application configuration interface. */
+/**
+ * Legacy path to the encrypted Anthropic API key.
+ *
+ * anyapp runs on a local Ollama daemon and no longer holds any secret, so this file
+ * is deleted on startup rather than read.
+ */
+const legacyApiKeyPath = join(configDir, '.apikey')
+
+/**
+ * Persisted application configuration, stored at `~/.anyapp/config.json`.
+ */
 interface AppConfig {
-  anthropicApiKey?: string
+  /** Ollama daemon base URL, without the `/v1` suffix. */
+  ollamaBaseUrl: string
+  /** Selected model tag, for example `qwen3-coder:30b`, or null when none is chosen. */
+  ollamaModel: string | null
+  /** UI colour theme. */
   theme: 'light' | 'dark' | 'system'
+  /** Whether agent file writes auto-commit to git. */
   autoCommit: boolean
 }
 
 /** Default configuration. */
 const defaultConfig: AppConfig = {
+  ollamaBaseUrl: DEFAULT_OLLAMA_BASE_URL,
+  ollamaModel: null,
   theme: 'dark',
   autoCommit: true
 }
 
+/** Cached configuration, populated by {@link loadConfig}. */
+let cachedConfig: AppConfig = { ...defaultConfig }
+
 /**
- * Load the application configuration.
+ * Get the most recently loaded configuration without touching disk.
+ * @returns The cached configuration
+ */
+export function getConfig(): AppConfig {
+  return cachedConfig
+}
+
+/**
+ * Get the Pi agent directory.
+ * @returns Absolute path to `~/.anyapp/pi`
+ */
+export function getPiAgentDir(): string {
+  return piAgentDir
+}
+
+/**
+ * Load the application configuration from disk and cache it.
+ * @returns The loaded configuration, or defaults when it cannot be read
  */
 async function loadConfig(): Promise<AppConfig> {
   try {
-    // Ensure config directory exists
     await fs.mkdir(configDir, { recursive: true })
-    
-    // Load main config
+
     let config = { ...defaultConfig }
     try {
       const data = await fs.readFile(configPath, 'utf-8')
@@ -108,45 +150,41 @@ async function loadConfig(): Promise<AppConfig> {
     } catch {
       // Config doesn't exist yet, use defaults
     }
-    
-    // Load encrypted API key if it exists
-    try {
-      const encryptedKey = await fs.readFile(apiKeyPath)
-      if (safeStorage.isEncryptionAvailable()) {
-        config.anthropicApiKey = safeStorage.decryptString(encryptedKey)
-      }
-    } catch {
-      // API key doesn't exist
-    }
-    
+
+    // Remove the ciphertext left behind by earlier Anthropic-backed versions.
+    await fs.rm(legacyApiKeyPath, { force: true })
+
+    cachedConfig = config
     return config
   } catch (error) {
     console.error('Failed to load config:', error)
-    return defaultConfig
+    cachedConfig = { ...defaultConfig }
+    return cachedConfig
   }
 }
 
 /**
- * Save the application configuration.
+ * Save the application configuration and re-sync Pi's model catalog.
+ * @param config - The configuration to persist
  */
 async function saveConfig(config: AppConfig): Promise<void> {
-  // Ensure config directory exists
   await fs.mkdir(configDir, { recursive: true })
-  
-  // Extract API key to store separately
-  const { anthropicApiKey, ...restConfig } = config
-  
-  // Save main config (without API key)
-  await fs.writeFile(configPath, JSON.stringify(restConfig, null, 2))
-  
-  // Save API key encrypted if provided
-  if (anthropicApiKey && safeStorage.isEncryptionAvailable()) {
-    const encrypted = safeStorage.encryptString(anthropicApiKey)
-    await fs.writeFile(apiKeyPath, encrypted)
-    
-    // Also set environment variable for the current process
-    process.env.ANTHROPIC_API_KEY = anthropicApiKey
-  }
+  await fs.writeFile(configPath, JSON.stringify(config, null, 2))
+  cachedConfig = config
+
+  // Keep Pi's models.json in step with the configured daemon.
+  await syncOllamaModels({ agentDir: piAgentDir, baseUrl: config.ollamaBaseUrl })
+}
+
+/**
+ * Load configuration at startup and write Pi's model catalog.
+ *
+ * Earlier versions only reached {@link loadConfig} from the `config:get` handler, so a
+ * fresh launch never saw the persisted settings.
+ */
+export async function initializeConfig(): Promise<void> {
+  const config = await loadConfig()
+  await syncOllamaModels({ agentDir: piAgentDir, baseUrl: config.ollamaBaseUrl })
 }
 
 /**
@@ -544,7 +582,39 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (!config || typeof config !== 'object') {
       throw new Error('Invalid config')
     }
+    if (typeof config.ollamaBaseUrl !== 'string' || config.ollamaBaseUrl.length > 2048) {
+      throw new Error('Invalid Ollama base URL')
+    }
+    if (
+      config.ollamaModel !== null &&
+      (typeof config.ollamaModel !== 'string' || config.ollamaModel.length > 256)
+    ) {
+      throw new Error('Invalid model id')
+    }
+    if (!['light', 'dark', 'system'].includes(config.theme)) {
+      throw new Error('Invalid theme')
+    }
+    if (typeof config.autoCommit !== 'boolean') {
+      throw new Error('Invalid autoCommit')
+    }
     return saveConfig(config)
+  })
+
+  /**
+   * List the models pulled into the local Ollama daemon, refreshing Pi's catalog.
+   */
+  ipcMain.handle('models:list', async (): Promise<OllamaModel[]> => {
+    return syncOllamaModels({ agentDir: piAgentDir, baseUrl: getConfig().ollamaBaseUrl })
+  })
+
+  /**
+   * Report whether the configured Ollama daemon is answering.
+   */
+  ipcMain.handle('models:check-connection', async (_, baseUrl?: string): Promise<boolean> => {
+    if (baseUrl !== undefined && (typeof baseUrl !== 'string' || baseUrl.length > 2048)) {
+      throw new Error('Invalid Ollama base URL')
+    }
+    return isOllamaReachable(baseUrl ?? getConfig().ollamaBaseUrl)
   })
 
   // Chat history IPC handlers (session-aware)

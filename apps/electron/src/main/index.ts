@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { setupIpcHandlers, cleanupIpcHandlers } from './ipc'
+import { setupIpcHandlers, cleanupIpcHandlers, initializeConfig } from './ipc'
 import { setProjectRoot } from './agent'
 
 /** Directory of this module, for resolving bundled assets under ESM. */
@@ -66,7 +66,11 @@ function createWindow(): void {
 }
 
 // Handle app lifecycle
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Load persisted settings before the first message. Earlier versions only reached
+  // loadConfig() from the config:get handler, so a fresh launch never saw them.
+  await initializeConfig()
+
   createWindow()
 
   // macOS: Re-create window when dock icon clicked and no windows exist
