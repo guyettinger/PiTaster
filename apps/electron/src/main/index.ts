@@ -1,7 +1,11 @@
 import { app, BrowserWindow } from 'electron'
-import { join } from 'path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { setupIpcHandlers, cleanupIpcHandlers } from './ipc'
 import { setProjectRoot } from './agent'
+
+/** Directory of this module, for resolving bundled assets under ESM. */
+const moduleDir = dirname(fileURLToPath(import.meta.url))
 
 /** Reference to the main window for cleanup. */
 let mainWindow: BrowserWindow | null = null
@@ -16,7 +20,7 @@ function createWindow(): void {
     minWidth: 800,
     minHeight: 600,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: join(moduleDir, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -34,7 +38,7 @@ function createWindow(): void {
   // In production, this should be set by the user
   if (process.env.NODE_ENV === 'development') {
     // Go up from out/main to the project root
-    setProjectRoot(join(__dirname, '../../..'))
+    setProjectRoot(join(moduleDir, '../../..'))
   }
 
   // Clean up IPC handlers when window is closed
@@ -57,7 +61,7 @@ function createWindow(): void {
     }
   } else {
     // In production, load from built files
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    mainWindow.loadFile(join(moduleDir, '../renderer/index.html'))
   }
 }
 
