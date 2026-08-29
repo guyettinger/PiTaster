@@ -5,7 +5,7 @@
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import type { AnySourceConfig, ConnectedSource, McpSourceConfig } from '@anyapp/core'
-import { McpClient } from './mcp-client'
+import { McpClient } from './mcp-client.js'
 
 /**
  * Manages source configurations and connections.

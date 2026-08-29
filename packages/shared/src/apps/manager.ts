@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import * as git from 'isomorphic-git'
 import fs from 'node:fs'
 import type { SubApp, AppMetadata, CreateAppParams } from '@anyapp/core'
-import { getTemplate } from './templates'
+import { getTemplate } from './templates.js'
 
 const APPS_DIR = join(homedir(), '.anyapp', 'apps')
 const AUTHOR = { name: 'anyapp Agent', email: 'agent@anyapp.local' }

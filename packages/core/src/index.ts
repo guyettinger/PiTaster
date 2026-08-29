@@ -4,11 +4,11 @@
  * This package contains type definitions shared across all anyapp packages.
  */
 
-export * from './agent'
-export * from './permissions'
-export * from './messages'
-export * from './versions'
-export * from './sources'
-export * from './skills'
-export * from './apps'
-export * from './chat'
+export * from './agent.js'
+export * from './permissions.js'
+export * from './messages.js'
+export * from './versions.js'
+export * from './sources.js'
+export * from './skills.js'
+export * from './apps.js'
+export * from './chat.js'

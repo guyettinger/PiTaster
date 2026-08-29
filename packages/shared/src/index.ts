@@ -8,21 +8,21 @@
  * - Version control (isomorphic-git wrapper)
  */
 
-export { VersionManager } from './versions/manager'
-export type { CommitOptions, CreateBranchOptions, HistoryOptions } from './versions/manager'
+export { VersionManager } from './versions/manager.js'
+export type { CommitOptions, CreateBranchOptions, HistoryOptions } from './versions/manager.js'
 
 // Sources
-export { SourceManager } from './sources/manager'
-export { McpClient } from './sources/mcp-client'
+export { SourceManager } from './sources/manager.js'
+export { McpClient } from './sources/mcp-client.js'
 
 // Skills
-export { SkillsLoader, extractSkillMentions, buildSystemPrompt } from './skills/loader'
+export { SkillsLoader, extractSkillMentions, buildSystemPrompt } from './skills/loader.js'
 
 // Apps
-export { AppManager } from './apps/manager'
-export { AppRunner } from './apps/runner'
-export { getTemplate, getTemplates } from './apps/templates'
+export { AppManager } from './apps/manager.js'
+export { AppRunner } from './apps/runner.js'
+export { getTemplate, getTemplates } from './apps/templates.js'
 
 // Chat
-export { ChatHistoryManager } from './chat/manager'
-export { getAppPath, getAppSessionDir, getPiAgentDir } from './chat/session-paths'
+export { ChatHistoryManager } from './chat/manager.js'
+export { getAppPath, getAppSessionDir, getPiAgentDir } from './chat/session-paths.js'

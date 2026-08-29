@@ -120,6 +120,28 @@ suggests. The extension-side `tool_call` event does use `input`. Read the `.d.ts
 `supportsDeveloperRole: false` and `supportsReasoningEffort: false`, reasoning-capable
 models fail outright. Pi's `models.md` calls this out for Ollama specifically.
 
+**Two bugs only surfaced by running the app.** Both passed `typecheck:all` and
+`build` cleanly, and neither could have been caught by either:
+
+*The app would not start at all.* Switching the main process to ESM broke
+`@anyapp/shared`: TypeScript with `moduleResolution: "bundler"` emits extensionless
+relative imports (`from './versions/manager'`), which Node's ESM resolver rejects
+outright — `ERR_MODULE_NOT_FOUND` before the first window. The CJS bundle had
+tolerated them because `require()` does extension guessing. Fixed by adding explicit
+`.js` extensions and moving both packages to `module`/`moduleResolution: "NodeNext"`,
+so the compiler now enforces it. `ssr.noExternal` looked like a cheaper fix but
+electron-vite ignores it for the main build.
+
+*New chats vanished and swallowed the first message.* `attachSession()` cleared the
+draft record and broadcast `chat:session-changed` as soon as the agent host was
+built — but Pi had not flushed the transcript yet, so `listSessions()` returned
+nothing ("No sessions yet") and the session-changed event reloaded empty history over
+the in-flight message. The fix removed the draft mechanism entirely: `createSession()`
+now writes Pi's session header itself, so the transcript exists and is listable from
+the moment the user clicks New Chat, with an id that never changes.
+`SessionManager.open()` appends to it normally. This is simpler than the draft
+bookkeeping it replaced and has no id-migration step.
+
 **A careless regex ate half the preload bridge.** A `re.sub` intended to remove
 `setProjectRoot` removed every bridge function from `sendMessage` down to it. Nothing
 caught it: `electron.d.ts` is a hand-written declaration, so the preload is not type-
@@ -146,6 +168,22 @@ Run against a live Ollama daemon with `muse-glimmer:30b-mlx`:
 | `bash ls $HOME` | ❌ **not blocked** — see Gotchas |
 | Ordinary commands (`bun run build`, `cat src/App.tsx`) not refused | ✅ |
 | `bun run typecheck:all`, `bun run build` | ✅ |
+
+### Driven through the real UI
+
+Launched under Playwright's `_electron` (macOS, no xvfb) and driven end to end:
+
+| Check | Result |
+|-------|--------|
+| App launches; Apps list renders | ✅ |
+| Settings shows the Ollama server field and model picker; no API key field | ✅ |
+| Picker lists only tool-capable models — both embedding models excluded | ✅ |
+| Selecting a model persists to `~/.anyapp/config.json` | ✅ |
+| "Ask to Edit": tool bubble renders, approval prompt appears, Allow runs it | ✅ |
+| Stop button replaces Send while streaming | ✅ |
+| "Auto Edit": write auto-approves, `write: src/lucky.ts` commit lands | ✅ |
+| Restart: full transcript reloads with tool bubbles; count correct | ✅ |
+| Restart: model answers a follow-up from restored context, no tool calls | ✅ |
 
 ### Inline security review
 
@@ -174,5 +212,8 @@ had been missing `SerializedElementBlock` — both fixed.
 4. **`thinking_delta` events are dropped.** Local reasoning models emit plenty; showing
    it is a UI decision nobody has made.
 5. **Compaction is unsurfaced.** Pi emits `compaction_start`/`compaction_end`.
-6. **`deleteMessage` was not carried over** — Pi's transcript is append-only per branch,
+6. **The session list's message count is stale until reload.** After a run finishes
+   the sidebar still shows the count from when the session was opened. Cosmetic; it
+   corrects on the next app start or session switch.
+7. **`deleteMessage` was not carried over** — Pi's transcript is append-only per branch,
    so removing one message means branching. Nothing called it.
