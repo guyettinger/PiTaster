@@ -1,19 +1,18 @@
 ---
-description: TanStack Query patterns for data fetching, mutations, and cache management
-globs:
-  - "**/hooks/**"
-  - "**/queries.ts"
-  - "**/mutations.ts"
-alwaysApply: false
+name: react-query
+description: TanStack Query patterns for data fetching, mutations, and cache management. Reference for if/when the renderer adopts the library — it is not currently a dependency.
 ---
 
-# React Query Patterns (TanStack Query)
+# TanStack Query Patterns
 
-Use `@tanstack/react-query` for all data fetching in the renderer process.
+> **Not currently used.** `@tanstack/react-query` is not a dependency of
+> `@anyapp/electron` and appears nowhere in the source. The renderer gets its
+> data by calling `window.electronAPI` and subscribing to streamed IPC events.
+> This document is the pattern to follow **if** the library is adopted — it is
+> not a description of existing code, and nothing should be written as if these
+> hooks already exist.
 
 ## Query Hook Pattern
-
-Query hooks use `useQuery` with typed response interfaces and `queryOptions` helper:
 
 ```typescript
 import { useQuery, queryOptions } from "@tanstack/react-query"
@@ -38,7 +37,7 @@ const sessionsQueryOptions = (workspaceId: string) =>
     queryFn: async () => {
       return window.electronAPI.getSessions(workspaceId) as Promise<SessionsResponse>
     },
-    staleTime: 30 * 1000, // 30 seconds
+    staleTime: 30 * 1000,
   })
 
 /**
@@ -51,8 +50,6 @@ export function useSessions(workspaceId: string) {
 ```
 
 ## Mutation Hook Pattern
-
-Mutations use `useMutation` and invalidate related queries:
 
 ```typescript
 import { useMutation, useQueryClient } from "@tanstack/react-query"
@@ -78,7 +75,6 @@ export function useCreateSession() {
       return window.electronAPI.createSession(params)
     },
     onSuccess: (data, variables) => {
-      // Invalidate sessions list
       void queryClient.invalidateQueries({
         queryKey: ["sessions", "list", variables.workspaceId],
       })
@@ -89,8 +85,6 @@ export function useCreateSession() {
 
 ## Optimistic Updates
 
-For better UX, use optimistic updates when appropriate:
-
 ```typescript
 export function useUpdateSessionTitle() {
   const queryClient = useQueryClient()
@@ -100,17 +94,14 @@ export function useUpdateSessionTitle() {
       return window.electronAPI.updateSession(params)
     },
     onMutate: async (newData) => {
-      // Cancel outgoing refetches
       await queryClient.cancelQueries({
         queryKey: ["sessions", "detail", newData.sessionId],
       })
 
-      // Snapshot previous value
       const previousSession = queryClient.getQueryData<Session>([
         "sessions", "detail", newData.sessionId,
       ])
 
-      // Optimistically update
       queryClient.setQueryData(
         ["sessions", "detail", newData.sessionId],
         (old: Session | undefined) =>
@@ -120,7 +111,6 @@ export function useUpdateSessionTitle() {
       return { previousSession }
     },
     onError: (err, newData, context) => {
-      // Rollback on error
       if (context?.previousSession) {
         queryClient.setQueryData(
           ["sessions", "detail", newData.sessionId],
@@ -134,7 +124,7 @@ export function useUpdateSessionTitle() {
 
 ## Query Key Structure
 
-Query keys follow hierarchical structure: `["domain", "resource", ...params]`
+Hierarchical: `["domain", "resource", ...params]`
 
 ```typescript
 queryKey: ["sessions", "list", workspaceId]
@@ -143,11 +133,19 @@ queryKey: ["sources", "list", workspaceId]
 queryKey: ["skills", "list", workspaceId]
 ```
 
-## Key Patterns Checklist
+## Checklist
 
-- Configure `staleTime` appropriately (30s-5min based on data volatility)
-- Use `enabled` option to conditionally enable queries
-- Use `queryOptions` helper for reusable query configurations
-- Invalidate queries in mutation `onSuccess` callbacks
-- Use `mutateAsync` for promise-based mutations when composing side effects
-- **Don't fetch data in `useEffect`** - Use TanStack Query hooks
+- Configure `staleTime` per data volatility (30s–5min)
+- Use `enabled` to conditionally run queries
+- Use the `queryOptions` helper for reusable configurations
+- Invalidate in mutation `onSuccess`
+- Use `mutateAsync` when composing side effects
+- Don't fetch in `useEffect`
+
+## Caveat for This Codebase
+
+Much of anyapp's renderer data is **pushed** over IPC (streaming agent output,
+terminal output, dev-server status), not pulled. Streams do not map onto
+`useQuery`. If the library is adopted, use it for the request/response calls
+(sessions, sources, skills, version history) and keep the subscription-based
+data in custom hooks around `window.electronAPI`.

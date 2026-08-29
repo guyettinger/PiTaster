@@ -10,9 +10,16 @@ yarn-error.log*
 
 .vscode/*
 /.idea/
-/apps/electron/node_modules/*
-/apps/electron/out/*
+/apps/electron/node_modules/
+/apps/electron/out/
 /packages/shared/dist/
 /packages/shared/node_modules/
 /packages/core/dist/
 /packages/core/node_modules/
+
+# macOS
+.DS_Store
+
+# Claude Code (local, not shared)
+CLAUDE.local.md
+.claude/settings.local.json

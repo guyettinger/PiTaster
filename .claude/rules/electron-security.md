@@ -1,10 +1,11 @@
 ---
-description: Electron security best practices
-globs: apps/electron/**/*.ts
-alwaysApply: false
+paths:
+  - "apps/electron/src/{main,preload}/**/*.ts"
 ---
 
-# Electron Security Best Practices
+# Electron Security
+
+These rules are not stylistic. Violating them is a security bug.
 
 ## BrowserWindow Configuration
 
@@ -23,37 +24,41 @@ new BrowserWindow({
 
 ## Preload Script Patterns
 
-### BAD - Never expose raw ipcRenderer
+### BAD — never expose raw ipcRenderer
 
 ```typescript
-// DANGEROUS: Exposes full IPC capabilities
+// DANGEROUS: exposes full IPC capabilities
 contextBridge.exposeInMainWorld('electronAPI', {
   on: ipcRenderer.on
 })
 
-// DANGEROUS: Leaks event object
+// DANGEROUS: leaks the event object to the renderer
 contextBridge.exposeInMainWorld('electronAPI', {
   onUpdate: (callback) => ipcRenderer.on('update', callback)
 })
 ```
 
-### GOOD - Expose specific functions, filter events
+### GOOD — expose specific functions, unwrap events
 
 ```typescript
 contextBridge.exposeInMainWorld('electronAPI', {
-  // Use invoke for request/response
+  // invoke for request/response
   sendMessage: (msg: string) => ipcRenderer.invoke('agent:message', msg),
-  
-  // Filter event data - never pass raw event
+
+  // filter event data - never pass the raw event through
   onStream: (callback: (data: string) => void) => {
     ipcRenderer.on('agent:stream', (_event, data) => callback(data))
   }
 })
 ```
 
+Every function added to the bridge needs a matching entry in
+`apps/electron/src/renderer/src/types/electron.d.ts`.
+
 ## IPC Handler Security
 
-Validate all inputs in main process:
+The renderer is untrusted. Validate type and length of every argument in the
+main process before acting on it:
 
 ```typescript
 ipcMain.handle('agent:message', async (event, message) => {
@@ -71,7 +76,7 @@ Block sensitive vars when spawning subprocesses:
 ```typescript
 const BLOCKED_ENV_VARS = [
   'ANTHROPIC_API_KEY',
-  'OPENAI_API_KEY', 
+  'OPENAI_API_KEY',
   'AWS_SECRET_ACCESS_KEY',
   'GITHUB_TOKEN'
 ]
@@ -84,7 +89,7 @@ const filteredEnv = Object.fromEntries(
 
 ## Credential Storage
 
-Use Electron's safeStorage for sensitive data:
+Use Electron's `safeStorage` for sensitive data — never plain files or renderer storage:
 
 ```typescript
 import { safeStorage } from 'electron'
