@@ -5,6 +5,7 @@
  */
 
 import type { AppTemplate, SubApp } from '@anyapp/core'
+import type { McpToolBinding } from './mcp-tools'
 
 /** Template-specific hints for the system prompt. */
 const TEMPLATE_HINTS: Record<AppTemplate, string> = {
@@ -53,15 +54,56 @@ This is a blank project. Create files as needed.`
 }
 
 /**
+ * Render the tools contributed by connected MCP sources.
+ *
+ * A local model will not reach for a tool it was never told about, so every bound
+ * tool is listed by the exact name it must call.
+ *
+ * @param mcpTools - Bindings for the connected sources' tools
+ * @returns A prompt section, or an empty string when nothing is connected
+ */
+function renderMcpSection(mcpTools: McpToolBinding[]): string {
+  if (mcpTools.length === 0) return ''
+
+  const lines = mcpTools.map(
+    (binding) =>
+      `- \`${binding.qualifiedName}\` (${binding.sourceName}) - ${
+        binding.tool.description || binding.tool.name
+      }`
+  )
+
+  return `
+
+## Connected Sources
+
+These tools come from external MCP servers the user has connected. They act
+outside the app directory, and every call needs the user's approval, so prefer the
+built-in tools for anything local.
+
+${lines.join('\n')}`
+}
+
+/**
+ * Parameters for {@link getSystemPrompt}.
+ */
+export interface SystemPromptParams {
+  /** The active sub-app, or null if none is selected. */
+  app: SubApp | null
+  /** Tools contributed by connected MCP sources. */
+  mcpTools?: McpToolBinding[]
+}
+
+/**
  * Generate the system prompt for the active app context.
  *
  * The tool list below must stay in step with the allowlist in
- * {@link import('./session').AGENT_TOOL_NAMES}.
+ * {@link import('./session').AGENT_TOOL_NAMES}; MCP tools are appended per session
+ * from {@link SystemPromptParams.mcpTools}.
  *
- * @param app - The active sub-app, or null if none is selected
+ * @param params - The active sub-app and any connected MCP tools
  * @returns The system prompt string
  */
-export function getSystemPrompt(app: SubApp | null): string {
+export function getSystemPrompt({ app, mcpTools = [] }: SystemPromptParams): string {
   if (!app) {
     return `You are anyapp, an AI assistant that helps users create and manage applications.
 
@@ -97,6 +139,7 @@ All paths are relative to the app root. You cannot read or write outside it.
 - \`get_history\` - View commit history
 - \`rollback\` - Restore a previous state
 - \`git_status\` - Check uncommitted changes
+${renderMcpSection(mcpTools)}
 ${TEMPLATE_HINTS[app.template]}
 
 ## Guidelines

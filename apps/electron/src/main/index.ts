@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { setupIpcHandlers, cleanupIpcHandlers, initializeConfig } from './ipc'
+import { setupIpcHandlers, cleanupIpcHandlers, initializeConfig, initializeSources } from './ipc'
 
 /** Directory of this module, for resolving bundled assets under ESM. */
 const moduleDir = dirname(fileURLToPath(import.meta.url))
@@ -61,6 +61,11 @@ app.whenReady().then(async () => {
   // Load persisted settings before the first message. Earlier versions only reached
   // loadConfig() from the config:get handler, so a fresh launch never saw them.
   await initializeConfig()
+
+  // Connect enabled MCP sources in the background. Spawning a server can be slow
+  // (an `npx` fetch, say), and none of it needs to block the first paint — the
+  // agent session is built on the first prompt, by which time these have settled.
+  void initializeSources()
 
   createWindow()
 

@@ -11,11 +11,18 @@
  * `cwd: rootPath`. Now a single `tool_call` handler is the whole boundary, so a bug
  * here is a full escape. The path checks are exact; the shell check is best-effort and
  * documented as such on {@link inspectCommand}.
+ *
+ * MCP source tools are the one part of the surface {@link checkConfinement} cannot
+ * police. They carry no anyapp-resolved path, they execute inside a separate server
+ * process the user configured, and their reach is whatever that server exposes.
+ * Approval is their entire boundary, which is why {@link checkPermission} never
+ * auto-approves one outside `bypassPermissions`.
  */
 
 import { homedir } from 'node:os'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { PermissionMode } from '@anyapp/core'
+import { isMcpToolName } from './mcp-tools'
 
 /**
  * Shell command patterns that are refused outright, in every permission mode.
@@ -82,6 +89,12 @@ export function checkPermission(
 
   if (permissionMode === 'bypassPermissions') {
     return { behavior: 'allow' }
+  }
+
+  // MCP tools reach outside the app root into a process anyapp does not control,
+  // and no path check applies to them. Like `bash`, they always reach the user.
+  if (isMcpToolName(toolName)) {
+    return { behavior: 'ask' }
   }
 
   if (permissionMode === 'acceptEdits') {

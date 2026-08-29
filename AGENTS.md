@@ -10,7 +10,8 @@ models served by **Ollama** — there is no API key and no inference network cal
 
 Pi owns the agent loop, the built-in tools (`read`, `write`, `edit`, `bash`,
 `grep`, `find`, `ls`), and the session transcript. anyapp adds the permission
-gate, path confinement, git auto-commit, and its own version-control tools.
+gate, path confinement, git auto-commit, its own version-control tools, and a
+bridge that exposes connected MCP sources' tools as `mcp__<source>__<tool>`.
 
 ## Monorepo layout
 
@@ -108,6 +109,10 @@ bypasses the permission mode.
 | `default` | Prompt the user for approval on each tool use. |
 | `acceptEdits` | Auto-approve file operations. |
 | `bypassPermissions` | Auto-approve everything. Use with caution. |
+
+MCP source tools are the exception to `acceptEdits`: they always prompt outside
+`bypassPermissions`. Path confinement cannot reach inside a separate server
+process, so approval is their only boundary.
 
 ## Version control
 
