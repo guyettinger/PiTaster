@@ -2,7 +2,6 @@ import { app, BrowserWindow } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { setupIpcHandlers, cleanupIpcHandlers, initializeConfig } from './ipc'
-import { setProjectRoot } from './agent'
 
 /** Directory of this module, for resolving bundled assets under ESM. */
 const moduleDir = dirname(fileURLToPath(import.meta.url))
@@ -32,14 +31,6 @@ function createWindow(): void {
 
   // Setup IPC handlers for agent communication
   setupIpcHandlers(mainWindow)
-
-  // Set default project root to the app's location
-  // In development, this will be the project directory
-  // In production, this should be set by the user
-  if (process.env.NODE_ENV === 'development') {
-    // Go up from out/main to the project root
-    setProjectRoot(join(moduleDir, '../../..'))
-  }
 
   // Clean up IPC handlers when window is closed
   mainWindow.on('closed', () => {

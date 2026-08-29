@@ -14,7 +14,9 @@ import type { ElementContext } from '@anyapp/core'
 interface ToolBlock {
   type: 'tool'
   tool: string
-  status: 'pending' | 'running' | 'complete'
+  /** Stable id correlating this block with its tool_end chunk. */
+  toolCallId?: string
+  status: 'pending' | 'running' | 'complete' | 'error'
   input?: Record<string, unknown>
   output?: string
   error?: string

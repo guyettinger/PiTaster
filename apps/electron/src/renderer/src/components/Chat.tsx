@@ -57,7 +57,8 @@ function convertToUIBlocks(blocks: SerializedContentBlock[]): ContentBlock[] {
       return {
         type: 'tool',
         tool: block.name,
-        status: block.status === 'error' ? 'complete' : block.status,
+        toolCallId: block.toolCallId,
+        status: block.status,
         input: block.input,
         output: block.output,
         error: block.error
@@ -92,6 +93,7 @@ function convertToSerializedBlocks(blocks: ContentBlock[]): SerializedContentBlo
       return {
         type: 'tool',
         name: block.tool,
+        toolCallId: block.toolCallId,
         status: block.status,
         input: block.input,
         output: block.output,
@@ -233,64 +235,53 @@ export function Chat({
       } else if (chunk.type === 'tool_start' && chunk.tool) {
         // Store tool info
         currentToolRef.current = { name: chunk.tool, input: chunk.input }
-        
+
         setMessages(prev => {
           const last = prev[prev.length - 1]
           if (last?.role !== 'assistant') return prev
-          
+
           const blocks = last.blocks ?? []
-          
-          // Check if there's already a running tool with this name (no input yet)
-          // If so, update it with the input rather than creating a duplicate
-          const runningIdx = blocks.findIndex(
-            b => b.type === 'tool' && b.status === 'running' && b.tool === chunk.tool && !b.input
-          )
-          
-          if (runningIdx >= 0 && chunk.input) {
-            // Update existing running tool with input data
-            const newBlocks = [...blocks]
-            const toolBlock = newBlocks[runningIdx]
-            if (toolBlock.type === 'tool') {
-              newBlocks[runningIdx] = { ...toolBlock, input: chunk.input }
-            }
-            return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
-          }
-          
-          // Add new tool block
+
+          // The agent emits exactly one tool_start per call, carrying complete
+          // arguments, so this is always a fresh block.
           const newBlocks: ContentBlock[] = [...blocks, {
             type: 'tool' as const,
             tool: chunk.tool!,
+            toolCallId: chunk.toolCallId,
             status: 'running' as const,
             input: chunk.input
           }]
           return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
         })
       } else if (chunk.type === 'tool_end') {
-        // Mark tool as complete with output
         setMessages(prev => {
           const last = prev[prev.length - 1]
           if (last?.role !== 'assistant' || !last.blocks) return prev
-          
+
           const blocks = last.blocks
-          const runningIdx = blocks.findIndex(
-            b => b.type === 'tool' && b.status === 'running'
-          )
-          
-          if (runningIdx >= 0) {
+          // Match on the call id so parallel tool calls resolve to the right
+          // bubble. Fall back to the first running block only for chunks that
+          // predate the id.
+          const idx = chunk.toolCallId
+            ? blocks.findIndex(b => b.type === 'tool' && b.toolCallId === chunk.toolCallId)
+            : blocks.findIndex(b => b.type === 'tool' && b.status === 'running')
+
+          if (idx >= 0) {
             const newBlocks = [...blocks]
-            const toolBlock = newBlocks[runningIdx]
+            const toolBlock = newBlocks[idx]
             if (toolBlock.type === 'tool') {
-              newBlocks[runningIdx] = {
+              newBlocks[idx] = {
                 ...toolBlock,
-                status: 'complete' as const,
-                output: chunk.output
+                status: chunk.error ? ('error' as const) : ('complete' as const),
+                output: chunk.output,
+                error: chunk.error
               }
             }
             return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
           }
           return prev
         })
-        
+
         currentToolRef.current = null
       } else if (chunk.type === 'complete') {
         setIsStreaming(false)
@@ -427,6 +418,19 @@ export function Chat({
     await window.electronAPI.sendMessage(serializedBlocks)
   }, [currentInput, isStreaming, setCurrentInput, activeSessionId])
 
+  /**
+   * Cancel the in-flight agent run.
+   */
+  const stopStreaming = useCallback(async () => {
+    try {
+      await window.electronAPI.abortAgent()
+    } catch (err) {
+      console.error('Failed to abort agent:', err)
+    } finally {
+      setIsStreaming(false)
+    }
+  }, [])
+
   const handleApproval = useCallback((approved: boolean) => {
     if (!pendingApproval) return
     
@@ -532,13 +536,22 @@ export function Chat({
             disabled={isStreaming || !activeSessionId}
             className="flex-1 rounded-lg border border-neutral-700 bg-neutral-800 px-4 py-3 text-neutral-100 placeholder-neutral-500 focus:border-blue-500 focus:outline-none disabled:opacity-50"
           />
-          <button
-            onClick={sendMessage}
-            disabled={isStreaming || !currentInput.trim() || !activeSessionId}
-            className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isStreaming ? 'Thinking...' : 'Send'}
-          </button>
+          {isStreaming ? (
+            <button
+              onClick={stopStreaming}
+              className="rounded-lg bg-red-600 px-6 py-3 font-medium text-white transition-colors hover:bg-red-500"
+            >
+              Stop
+            </button>
+          ) : (
+            <button
+              onClick={sendMessage}
+              disabled={!currentInput.trim() || !activeSessionId}
+              className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Send
+            </button>
+          )}
         </div>
       </div>
     </div>

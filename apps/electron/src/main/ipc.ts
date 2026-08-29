@@ -8,10 +8,9 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promises as fs } from 'node:fs'
-import { runAgentQuery, setProjectRoot, getProjectRoot } from './agent'
+import { createAgentHost, type AgentHost } from './agent/session'
 import { VersionManager, SourceManager, SkillsLoader, AppManager, AppRunner, ChatHistoryManager } from '@anyapp/shared'
-import type { PermissionMode, StreamChunk, MessageParam } from './agent'
-import type { Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, SerializedTextBlock, CreateChatSessionParams, SerializedContentBlock } from '@anyapp/core'
+import type { PermissionMode, StreamChunk, Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, CreateChatSessionParams, SerializedContentBlock, ElementContext } from '@anyapp/core'
 import {
   DEFAULT_OLLAMA_BASE_URL,
   isOllamaReachable,
@@ -20,7 +19,6 @@ import {
   type OllamaModel
 } from './agent/ollama'
 import { captureElement, type ElementInfo } from './screenshot'
-import type { ElementContext } from '@anyapp/core'
 
 /** Directory of this module, for resolving bundled assets under ESM. */
 const moduleDir = dirname(fileURLToPath(import.meta.url))
@@ -47,14 +45,20 @@ const pendingApprovals = new Map<string, {
 /** Current permission mode. */
 let currentPermissionMode: PermissionMode = 'default'
 
-/** Conversation history for session continuity. */
-let conversationHistory: MessageParam[] = []
+/**
+ * The live Pi agent session, rebuilt whenever the active app or session changes.
+ * Pi owns the transcript, so there is no separate in-memory history to keep.
+ */
+let agentHost: AgentHost | null = null
 
 /** Default timeout for tool approval (60 seconds). */
 const APPROVAL_TIMEOUT_MS = 60000
 
-/** Version manager instance - initialized lazily. */
-let versionManager: VersionManager | null = null
+/** Maximum accepted prompt length, in characters. */
+const MAX_PROMPT_CHARS = 100000
+
+/** Maximum accepted number of content blocks in one prompt. */
+const MAX_PROMPT_BLOCKS = 100
 
 /** Config directory for sources and skills. */
 const configDir = join(homedir(), '.anyapp')
@@ -188,16 +192,6 @@ export async function initializeConfig(): Promise<void> {
 }
 
 /**
- * Get or create the version manager instance.
- */
-function getVersionManager(): VersionManager {
-  if (!versionManager) {
-    versionManager = new VersionManager(getProjectRoot())
-  }
-  return versionManager
-}
-
-/**
  * Get the currently active app ID.
  */
 export function getActiveAppId(): string | null {
@@ -213,25 +207,117 @@ export async function getActiveApp(): Promise<SubApp | null> {
 }
 
 /**
- * Rebuild the in-memory conversationHistory from persisted messages.
- * Extracts text content from serialized blocks for the Claude SDK.
- * @param history - The persisted messages to rebuild from
+ * Split a renderer prompt into plain text and attached element contexts.
+ *
+ * `tool` and `approval` blocks are display-only records of an earlier turn; Pi keeps
+ * that history itself, so they are not resent.
+ *
+ * @param prompt - The prompt as the renderer sent it
+ * @returns The message text and any attached element contexts
  */
-function rebuildConversationHistory(history: PersistedMessage[]): void {
-  conversationHistory = []
-  for (const msg of history) {
-    const textContent = msg.blocks
-      .filter((b): b is SerializedTextBlock => b.type === 'text')
-      .map((b) => b.content)
-      .join('')
+function splitPrompt(prompt: string | SerializedContentBlock[]): {
+  /** The user's message text. */
+  text: string
+  /** Element contexts attached to the message. */
+  elements: ElementContext[]
+} {
+  if (typeof prompt === 'string') {
+    return { text: prompt, elements: [] }
+  }
 
-    if (textContent) {
-      conversationHistory.push({
-        role: msg.role,
-        content: textContent
-      })
+  const textParts: string[] = []
+  const elements: ElementContext[] = []
+
+  for (const block of prompt) {
+    if (block.type === 'text') {
+      textParts.push(block.content)
+    } else if (block.type === 'element') {
+      elements.push(block.elementContext)
     }
   }
+
+  return { text: textParts.join('\n'), elements }
+}
+
+/**
+ * Tear down the live agent session, if any.
+ */
+async function disposeAgentHost(): Promise<void> {
+  if (!agentHost) return
+  const host = agentHost
+  agentHost = null
+  try {
+    await host.abort()
+  } catch {
+    // Aborting an idle session is not an error.
+  }
+  host.dispose()
+}
+
+/**
+ * Get the agent session for the active app, creating it on first use.
+ *
+ * @param mainWindow - The window that receives streamed chunks and approval prompts
+ * @returns A live agent host bound to the active app
+ * @throws {Error} If no app is selected or no model is configured
+ */
+async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
+  const app = await getActiveApp()
+  if (!app) {
+    throw new Error('No app selected. Choose or create an app before chatting.')
+  }
+
+  const config = getConfig()
+  if (!config.ollamaModel) {
+    throw new Error('No model selected. Pick an Ollama model in Settings.')
+  }
+
+  if (agentHost && agentHost.appId === app.id) {
+    return agentHost
+  }
+
+  await disposeAgentHost()
+
+  agentHost = await createAgentHost({
+    app,
+    agentDir: piAgentDir,
+    modelId: config.ollamaModel,
+    callbacks: {
+      getPermissionMode: () => currentPermissionMode,
+      getAutoCommit: () => getConfig().autoCommit,
+
+      requestApproval: (tool: string, input: unknown): Promise<boolean> => {
+        const id = nanoid()
+        const request: ToolApprovalRequest = {
+          id,
+          tool,
+          input: input as Record<string, unknown>
+        }
+
+        if (mainWindow.isDestroyed()) return Promise.resolve(false)
+        mainWindow.webContents.send('agent:tool-approval', request)
+
+        return new Promise((resolve, reject) => {
+          pendingApprovals.set(id, { resolve, reject })
+
+          // Deny by default if the user never answers.
+          setTimeout(() => {
+            if (pendingApprovals.has(id)) {
+              pendingApprovals.delete(id)
+              resolve(false)
+            }
+          }, APPROVAL_TIMEOUT_MS)
+        })
+      },
+
+      onStream: (chunk: StreamChunk): void => {
+        if (mainWindow.isDestroyed()) return
+        mainWindow.webContents.send('agent:stream', chunk)
+      }
+    }
+  })
+
+  return agentHost
 }
 
 /**
@@ -253,36 +339,30 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     return currentPermissionMode
   })
 
-  // Set project root directory
-  ipcMain.handle('project:set-root', (_, path: string): void => {
-    if (typeof path !== 'string' || path.length === 0) {
-      throw new Error('Invalid project path')
-    }
-    setProjectRoot(path)
-  })
-
-  // Clear conversation history
-  ipcMain.handle('agent:clear-history', (): void => {
-    conversationHistory = []
+  // Start a fresh agent session, discarding the current transcript
+  ipcMain.handle('agent:clear-history', async (): Promise<void> => {
+    await disposeAgentHost()
   })
 
   // Send message to agent
   ipcMain.handle('agent:message', async (_, prompt: string | SerializedContentBlock[]): Promise<void> => {
-    // Validate input
+    // Validate input. The renderer is untrusted.
     if (typeof prompt === 'string') {
       if (prompt.length === 0) {
         throw new Error('Invalid prompt')
       }
-      if (prompt.length > 100000) {
+      if (prompt.length > MAX_PROMPT_CHARS) {
         throw new Error('Prompt too long')
       }
     } else if (Array.isArray(prompt)) {
       if (prompt.length === 0) {
         throw new Error('Invalid prompt: empty blocks array')
       }
-      // Validate each block has proper structure
+      if (prompt.length > MAX_PROMPT_BLOCKS) {
+        throw new Error('Invalid prompt: too many blocks')
+      }
       for (const block of prompt) {
-        if (!block.type) {
+        if (!block || typeof block !== 'object' || typeof block.type !== 'string') {
           throw new Error('Invalid prompt: block missing type')
         }
       }
@@ -291,57 +371,32 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     }
 
     /**
-     * Request approval from the renderer process for a tool execution.
-     */
-    const requestApproval = async (tool: string, input: unknown): Promise<boolean> => {
-      const id = nanoid()
-      const request: ToolApprovalRequest = { 
-        id, 
-        tool, 
-        input: input as Record<string, unknown> 
-      }
-
-      // Send to renderer for user approval
-      mainWindow.webContents.send('agent:tool-approval', request)
-
-      // Wait for response with timeout
-      return new Promise((resolve, reject) => {
-        pendingApprovals.set(id, { resolve, reject })
-
-        // Timeout after 60 seconds - default to deny
-        setTimeout(() => {
-          if (pendingApprovals.has(id)) {
-            pendingApprovals.delete(id)
-            resolve(false)
-          }
-        }, APPROVAL_TIMEOUT_MS)
-      })
-    }
-
-    /**
      * Stream chunks to the renderer process.
      */
     const onStream = (chunk: StreamChunk): void => {
+      if (mainWindow.isDestroyed()) return
       mainWindow.webContents.send('agent:stream', chunk)
     }
 
     try {
-      // Get the currently active app for scoped operations
-      const activeApp = await getActiveApp()
-      
-      // Run the agent query and update conversation history
-      conversationHistory = await runAgentQuery({
-        prompt,
-        permissionMode: currentPermissionMode,
-        requestApproval,
-        onStream,
-        conversationHistory,
-        activeApp
-      })
+      const host = await ensureAgentHost(mainWindow)
+      const { text, elements } = splitPrompt(prompt)
+
+      if (text.length > MAX_PROMPT_CHARS) {
+        throw new Error('Prompt too long')
+      }
+
+      await host.sendPrompt({ text, elements })
     } catch (error) {
       const err = error as Error
       onStream({ type: 'error', error: err.message })
+      onStream({ type: 'complete' })
     }
+  })
+
+  // Cancel the in-flight agent run
+  ipcMain.handle('agent:abort', async (): Promise<void> => {
+    await agentHost?.abort()
   })
 
   // Handle tool approval response from renderer
@@ -463,8 +518,8 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       throw new Error('Invalid app ID')
     }
     
-    // Clear in-memory state
-    conversationHistory = []
+    // Switching app discards the agent session; the next message builds a new one.
+    await disposeAgentHost()
     activeAppId = id
     activeSessionId = null
     
@@ -484,7 +539,6 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
         
         if (activeSessionId) {
           const history = await chatHistoryManager.loadHistory(id, activeSessionId)
-          rebuildConversationHistory(history)
           mainWindow.webContents.send('chat:history-loaded', history)
         }
         
@@ -638,7 +692,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       throw new Error('No active session')
     }
     await chatHistoryManager.clearHistory(activeAppId, activeSessionId)
-    conversationHistory = []
+    await disposeAgentHost()
   })
 
   // Chat session IPC handlers
@@ -654,7 +708,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
     // Switch to the new session
     activeSessionId = session.id
-    conversationHistory = []
+    await disposeAgentHost()
 
     // Notify renderer
     mainWindow.webContents.send('chat:history-loaded', [])
@@ -675,13 +729,12 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (activeSessionId === sessionId) {
       const newActiveId = await chatHistoryManager.getActiveSessionId(activeAppId)
       activeSessionId = newActiveId
+      await disposeAgentHost()
 
       if (newActiveId) {
         const history = await chatHistoryManager.loadHistory(activeAppId, newActiveId)
-        rebuildConversationHistory(history)
         mainWindow.webContents.send('chat:history-loaded', history)
       } else {
-        conversationHistory = []
         mainWindow.webContents.send('chat:history-loaded', [])
       }
       mainWindow.webContents.send('chat:session-changed', newActiveId)
@@ -707,11 +760,10 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
     await chatHistoryManager.setActiveSession(activeAppId, sessionId)
     activeSessionId = sessionId
+    await disposeAgentHost()
 
     // Load history for the new session
     const history = await chatHistoryManager.loadHistory(activeAppId, sessionId)
-    rebuildConversationHistory(history)
-
     mainWindow.webContents.send('chat:history-loaded', history)
     mainWindow.webContents.send('chat:session-changed', sessionId)
   })
@@ -890,9 +942,11 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
 export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('permissions:get-mode')
   ipcMain.removeHandler('permissions:set-mode')
-  ipcMain.removeHandler('project:set-root')
   ipcMain.removeHandler('agent:clear-history')
   ipcMain.removeHandler('agent:message')
+  ipcMain.removeHandler('agent:abort')
+  ipcMain.removeHandler('models:list')
+  ipcMain.removeHandler('models:check-connection')
   ipcMain.removeAllListeners('agent:tool-response')
   
   // Version control handlers
@@ -963,8 +1017,8 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('inspector:capture-element')
   ipcMain.removeHandler('chat:add-element-context')
 
-  // Reset version manager
-  versionManager = null
+  // Tear down the agent session
+  void disposeAgentHost()
 
   // Reset active app and session
   activeAppId = null

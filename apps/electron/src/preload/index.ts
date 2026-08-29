@@ -3,11 +3,21 @@ import { contextBridge, ipcRenderer } from 'electron'
 /** Permission mode type for tool execution. */
 type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
 
-/** Stream chunk from agent response. */
+/** A single streamed update from the agent to the renderer. */
 interface StreamChunk {
+  /** Type of chunk. */
   type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error' | 'rate_limit'
+  /** Text content (for 'text' type). */
   text?: string
+  /** Tool name (for 'tool_start' and 'tool_end' types). */
   tool?: string
+  /** Stable identifier correlating a 'tool_start' with its 'tool_end'. */
+  toolCallId?: string
+  /** Tool arguments (for 'tool_start' type). */
+  input?: Record<string, unknown>
+  /** Truncated tool output (for 'tool_end' type). */
+  output?: string
+  /** Error message (for 'error' type, or a failed 'tool_end'). */
   error?: string
   /** Seconds until retry (for 'rate_limit' type). */
   retryAfterSeconds?: number
@@ -180,6 +190,8 @@ interface SerializedTextBlock {
 interface SerializedToolBlock {
   type: 'tool'
   name: string
+  /** Stable identifier correlating this call with its result. */
+  toolCallId?: string
   input?: Record<string, unknown>
   output?: string
   status: 'pending' | 'running' | 'complete' | 'error'
@@ -195,7 +207,45 @@ interface SerializedApprovalBlock {
 }
 
 /** Union of all serializable content block types. */
-type SerializedContentBlock = SerializedTextBlock | SerializedToolBlock | SerializedApprovalBlock
+/** Bounding box of an inspected element, in CSS pixels. */
+interface ElementBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** DOM details of an element selected in the preview panel. */
+interface ElementInfo {
+  tag: string
+  text: string
+  classes: string[]
+  id?: string
+  selector: string
+  xpath: string
+  bounds: ElementBounds
+}
+
+/** An inspected element plus its screenshot. */
+interface ElementContext {
+  element: ElementInfo
+  /** Screenshot as a base64 data URL. */
+  screenshot?: string
+  /** ISO timestamp of capture. */
+  capturedAt: string
+}
+
+/** Serialized UI element context block. */
+interface SerializedElementBlock {
+  type: 'element'
+  elementContext: ElementContext
+}
+
+type SerializedContentBlock =
+  | SerializedTextBlock
+  | SerializedToolBlock
+  | SerializedApprovalBlock
+  | SerializedElementBlock
 
 /** A persisted chat message. */
 interface PersistedMessage {
@@ -295,11 +345,10 @@ const electronAPI = {
   },
 
   /**
-   * Set the project root directory.
-   * @param path - Absolute path to project root
+   * Cancel the in-flight agent run.
    */
-  setProjectRoot: (path: string): Promise<void> => {
-    return ipcRenderer.invoke('project:set-root', path)
+  abortAgent: (): Promise<void> => {
+    return ipcRenderer.invoke('agent:abort')
   },
 
   // Version control methods
@@ -762,22 +811,22 @@ const electronAPI = {
   /**
    * Capture element screenshot and info.
    */
-  captureElement: (elementInfo: any): Promise<any> => {
+  captureElement: (elementInfo: ElementInfo): Promise<ElementContext> => {
     return ipcRenderer.invoke('inspector:capture-element', elementInfo)
   },
 
   /**
    * Add element context to the current chat.
    */
-  addElementContext: (context: any): Promise<void> => {
+  addElementContext: (context: ElementContext): Promise<void> => {
     return ipcRenderer.invoke('chat:add-element-context', context)
   },
 
   /**
    * Listen for element context added events.
    */
-  onElementContextAdded: (callback: (context: any) => void): (() => void) => {
-    const handler = (_event: any, context: any) => callback(context)
+  onElementContextAdded: (callback: (context: ElementContext) => void): (() => void) => {
+    const handler = (_event: unknown, context: ElementContext): void => callback(context)
     ipcRenderer.on('chat:element-context-added', handler)
     return () => ipcRenderer.removeListener('chat:element-context-added', handler)
   }

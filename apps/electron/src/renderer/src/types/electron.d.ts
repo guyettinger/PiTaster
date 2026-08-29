@@ -7,13 +7,21 @@ import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatSessio
 /** Permission mode type for tool execution. */
 type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
 
-/** Stream chunk from agent response. */
+/** A single streamed update from the agent to the renderer. */
 interface StreamChunk {
+  /** Type of chunk. */
   type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error' | 'rate_limit'
+  /** Text content (for 'text' type). */
   text?: string
+  /** Tool name (for 'tool_start' and 'tool_end' types). */
   tool?: string
+  /** Stable identifier correlating a 'tool_start' with its 'tool_end'. */
+  toolCallId?: string
+  /** Tool arguments (for 'tool_start' type). */
   input?: Record<string, unknown>
+  /** Truncated tool output (for 'tool_end' type). */
   output?: string
+  /** Error message (for 'error' type, or a failed 'tool_end'). */
   error?: string
   /** Seconds until retry (for 'rate_limit' type). */
   retryAfterSeconds?: number
@@ -206,8 +214,9 @@ interface ElectronAPI {
   respondToolApproval: (response: ToolApprovalResponse) => void
   /** Clear the conversation history. */
   clearHistory: () => Promise<void>
-  /** Set the project root directory. */
-  setProjectRoot: (path: string) => Promise<void>
+
+  /** Cancel the in-flight agent run. */
+  abortAgent: () => Promise<void>
   
   // Version control methods
   /** Get current version control state. */

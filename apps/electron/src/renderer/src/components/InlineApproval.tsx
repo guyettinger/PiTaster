@@ -25,18 +25,30 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
     const { tool, input } = request
     
     switch (tool) {
-      case 'run_command':
+      case 'bash':
         return `Run: ${(input.command as string) ?? 'command'}`
-      case 'write_file':
+      case 'read':
+        return `Read: ${(input.path as string) ?? 'file'}`
+      case 'write':
         return `Write to: ${(input.path as string) ?? 'file'}`
-      case 'delete_file':
-        return `Delete: ${(input.path as string) ?? 'file'}`
-      case 'create_directory':
-        return `Create folder: ${(input.path as string) ?? 'directory'}`
+      case 'edit':
+        return `Edit: ${(input.path as string) ?? 'file'}`
+      case 'ls':
+        return `List: ${(input.path as string) ?? '.'}`
+      case 'grep':
+        return `Search for: ${(input.pattern as string) ?? 'pattern'}`
+      case 'find':
+        return `Find files: ${(input.pattern as string) ?? 'pattern'}`
       case 'create_branch':
         return `Create branch: ${(input.name as string) ?? 'branch'}`
       case 'switch_branch':
         return `Switch to branch: ${(input.name as string) ?? 'branch'}`
+      case 'list_branches':
+        return 'List branches'
+      case 'get_history':
+        return 'View commit history'
+      case 'git_status':
+        return 'Check git status'
       case 'rollback':
         return `Rollback to: ${(input.commit as string) ?? 'commit'}`
       default:

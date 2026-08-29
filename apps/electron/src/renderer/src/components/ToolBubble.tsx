@@ -11,7 +11,7 @@ interface ToolBubbleProps {
   /** Tool name. */
   tool: string
   /** Tool status. */
-  status: 'pending' | 'running' | 'complete' | 'approved' | 'denied'
+  status: 'pending' | 'running' | 'complete' | 'error' | 'approved' | 'denied'
   /** Tool input parameters. */
   input?: Record<string, unknown>
   /** Tool output/result summary. */
@@ -25,13 +25,13 @@ interface ToolBubbleProps {
  */
 function getToolLabel(tool: string): { icon: string; label: string } {
   const toolMap: Record<string, { icon: string; label: string }> = {
-    run_command: { icon: '⌘', label: 'Command' },
-    read_file: { icon: '📄', label: 'Read File' },
-    write_file: { icon: '✏️', label: 'Write File' },
-    list_files: { icon: '📁', label: 'List Files' },
-    create_directory: { icon: '📂', label: 'Create Directory' },
-    delete_file: { icon: '🗑️', label: 'Delete File' },
-    search_files: { icon: '🔍', label: 'Search' },
+    bash: { icon: '⌘', label: 'Command' },
+    read: { icon: '📄', label: 'Read File' },
+    write: { icon: '✏️', label: 'Write File' },
+    edit: { icon: '✏️', label: 'Edit File' },
+    ls: { icon: '📁', label: 'List Files' },
+    find: { icon: '🔍', label: 'Find Files' },
+    grep: { icon: '🔍', label: 'Search' },
     create_branch: { icon: '🌿', label: 'Create Branch' },
     switch_branch: { icon: '🔀', label: 'Switch Branch' },
     list_branches: { icon: '🌳', label: 'List Branches' },
@@ -54,6 +54,8 @@ function getStatusStyle(status: ToolBubbleProps['status']): string {
       return 'border-blue-600 bg-blue-900/20 animate-pulse'
     case 'complete':
       return 'border-green-600 bg-green-900/20'
+    case 'error':
+      return 'border-red-600 bg-red-900/20'
     case 'approved':
       return 'border-green-600 bg-green-900/30'
     case 'denied':
@@ -70,16 +72,16 @@ function getInputSummary(tool: string, input?: Record<string, unknown>): string 
   if (!input) return null
   
   switch (tool) {
-    case 'run_command':
+    case 'bash':
       return (input.command as string) ?? null
-    case 'read_file':
-    case 'write_file':
-    case 'delete_file':
+    case 'read':
+    case 'write':
+    case 'edit':
+    case 'ls':
       return (input.path as string) ?? null
-    case 'list_files':
-      return (input.directory as string) ?? (input.path as string) ?? null
-    case 'search_files':
-      return (input.pattern as string) ?? (input.query as string) ?? null
+    case 'grep':
+    case 'find':
+      return (input.pattern as string) ?? null
     case 'create_branch':
     case 'switch_branch':
       return (input.name as string) ?? null
