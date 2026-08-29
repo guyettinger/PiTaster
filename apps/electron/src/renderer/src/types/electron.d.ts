@@ -98,9 +98,32 @@ interface Skill {
 
 /** Application configuration. */
 interface AppConfig {
-  anthropicApiKey?: string
+  /** Ollama daemon base URL, without the `/v1` suffix. */
+  ollamaBaseUrl: string
+  /** Selected model tag, for example `qwen3-coder:30b`, or null when none is chosen. */
+  ollamaModel: string | null
+  /** UI colour theme. */
   theme: 'light' | 'dark' | 'system'
+  /** Whether agent file writes auto-commit to git. */
   autoCommit: boolean
+}
+
+/** A model pulled into the local Ollama instance. */
+interface OllamaModel {
+  /** Model tag as Ollama reports it, for example `qwen3-coder:30b`. */
+  id: string
+  /** Parameter size string reported by Ollama, for example `30.5B`. */
+  parameterSize?: string
+  /** Size on disk in bytes. */
+  sizeBytes?: number
+  /** Context window in tokens, from the model's own metadata when available. */
+  contextWindow: number
+  /** Whether the model supports function calling. The agent's tools require it. */
+  supportsTools: boolean
+  /** Whether the model accepts image input. */
+  supportsVision: boolean
+  /** Whether the model exposes extended thinking. */
+  supportsThinking: boolean
 }
 
 /** Running app state. */
@@ -232,6 +255,12 @@ interface ElectronAPI {
   /** Save the application configuration. */
   saveConfig: (config: AppConfig) => Promise<void>
 
+  /** List the models pulled into the local Ollama daemon. */
+  listModels: () => Promise<OllamaModel[]>
+
+  /** Check whether an Ollama daemon is answering. */
+  checkModelConnection: (baseUrl?: string) => Promise<boolean>
+
   // Chat history methods
   /** Load chat history for the active app. */
   loadChatHistory: () => Promise<PersistedMessage[]>
@@ -339,6 +368,7 @@ export type {
   ConnectedSource,
   Skill,
   AppConfig,
+  OllamaModel,
   RunningApp,
   AppLogEntry,
   AppStatusChange,
