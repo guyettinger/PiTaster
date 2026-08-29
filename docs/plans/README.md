@@ -34,6 +34,8 @@ The implementation is split into **6 independent sessions**, each resulting in a
 | [9. Chat History](SESSION-9-CHAT-HISTORY.md) | Persistent History | Chat history saved per app | Complete | [Notes](SESSION-9-NOTES.md) |
 | [10. Rate Limits](SESSION-10-RATE-LIMITS.md) | API rate limits | 429 handling, retry with backoff | Complete | [Notes](SESSION-10-NOTES.md) |
 | [12. Add Source](SESSION-12-ADD-SOURCE.md) | Source CRUD UI | Add/edit/delete MCP sources from UI | Complete | [Notes](SESSION-12-NOTES.md) |
+| [13. Addressable UI](SESSION-13-ADDRESSABLE-UI.md) | Element Inspection | Click elements in preview to add to chat context | Planned | 3 sub-sessions |
+| [14. Agent Config](SESSION-14-AGENT-CONFIG.md) | Claude Code Setup | AGENTS.md, path-scoped rules, skills, review subagents | Complete | [Notes](SESSION-14-NOTES.md) |
 
 ## Session 6 Sub-Sessions
 
@@ -60,6 +62,16 @@ Session 8 adds the app preview system, broken into 6 sub-sessions:
 | [8.4](SESSION-8.4-PREVIEW-PANEL.md) | Embedded webview preview |
 | [8.5](SESSION-8.5-APP-CONTROLS.md) | Run controls + status indicators |
 | [8.6](SESSION-8.6-LAYOUT-INTEGRATION.md) | Layout integration |
+
+## Session 13 Sub-Sessions
+
+Session 13 adds the addressable UI element inspection, broken into 3 sub-sessions:
+
+| Sub-Session | Focus |
+|-------------|-------|
+| [13.1](SESSION-13.1-INSPECTOR-OVERLAY.md) | Inspector overlay + DOM extraction |
+| [13.2](SESSION-13.2-CONTEXT-INJECTION.md) | Screenshot capture + element messages |
+| [13.3](SESSION-13.3-AGENT-INTEGRATION.md) | Agent awareness + keyboard shortcuts |
 
 ## How to Use
 

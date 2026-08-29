@@ -1,10 +1,12 @@
 ---
-description: MCP server/client implementation patterns
-globs: "**/sources/**/*.ts"
-alwaysApply: false
+paths:
+  - "packages/shared/src/sources/**/*.ts"
 ---
 
-# MCP TypeScript SDK Best Practices
+# MCP TypeScript SDK
+
+Sources are external MCP servers the agent can connect to. Client and manager
+live in `packages/shared/src/sources/`.
 
 ## Version Requirements
 
@@ -21,7 +23,7 @@ Use v1.x (stable). v2 is pre-alpha and not production ready.
 
 ## Import Paths
 
-Always use specific import paths with .js extension:
+Always use specific import paths with the `.js` extension:
 
 ```typescript
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -45,7 +47,6 @@ const transport = new StdioClientTransport({
 
 await client.connect(transport)
 
-// Call tools
 const result = await client.callTool({
   name: 'list_repos',
   arguments: { owner: 'anthropics' }
@@ -93,6 +94,8 @@ await server.connect(transport)
 ```
 
 ## Error Handling
+
+Connections are user-configured and routinely fail. Always close the client:
 
 ```typescript
 try {

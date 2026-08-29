@@ -1,17 +1,17 @@
 ---
-description: Documentation conventions for markdown files and when to create docs
-globs: docs/**
-alwaysApply: false
+paths:
+  - "docs/**/*.md"
 ---
 
 # Documentation Practices
 
 ## Location and Naming
 
-- All project documentation files (`*.md`) go in `docs/`
-- Use `SCREAMING_SNAKE_CASE.md` for feature docs (e.g., `SELF_MODIFICATION_SYSTEM.md`)
-- Exception: `README.md` stays at repository root
-- Exception: `CLAUDE.md` stays at repository root (agent context)
+- All project documentation (`*.md`) goes in `docs/`
+- Use `SCREAMING_SNAKE_CASE.md` for feature docs (e.g. `SELF_MODIFICATION_SYSTEM.md`)
+- Exceptions that stay at the repository root: `README.md`, `AGENTS.md`, `CLAUDE.md`, `LICENSE`
+- `docs/plans/` holds one document per implementation session, plus a `-NOTES.md`
+  counterpart written after the work lands. `docs/plans/README.md` indexes them.
 
 ## When to Create Documentation
 
@@ -23,7 +23,7 @@ Create documentation for:
 - Learnings that are non-obvious or surprising (what worked, what didn't, why)
 - Integration guides for external services (MCP servers, APIs)
 
-## Documentation Structure
+## Structure
 
 ```markdown
 # Feature Name
@@ -44,15 +44,15 @@ Any settings or environment variables.
 Common issues and solutions.
 ```
 
-## Code Examples in Docs
+## Code Examples
 
 - Include working code examples
 - Use language-specific code blocks
 - Keep examples minimal but complete
-- Update examples when code changes
+- Update examples when the code changes
 
 ## Don't Document
 
-- Obvious behavior already clear from code
+- Obvious behavior already clear from the code
 - Implementation details that change frequently
-- Information already in TSDoc comments
+- Information already covered by TSDoc comments
