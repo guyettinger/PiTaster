@@ -5,7 +5,8 @@
 import { ipcMain, BrowserWindow, safeStorage, shell } from 'electron'
 import { nanoid } from 'nanoid'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { promises as fs } from 'node:fs'
 import { runAgentQuery, setProjectRoot, getProjectRoot } from './agent'
 import { VersionManager, SourceManager, SkillsLoader, AppManager, AppRunner, ChatHistoryManager } from '@anyapp/shared'
@@ -13,6 +14,9 @@ import type { PermissionMode, StreamChunk, MessageParam } from './agent'
 import type { Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, SerializedTextBlock, CreateChatSessionParams, SerializedContentBlock } from '@anyapp/core'
 import { captureElement, type ElementInfo } from './screenshot'
 import type { ElementContext } from '@anyapp/core'
+
+/** Directory of this module, for resolving bundled assets under ESM. */
+const moduleDir = dirname(fileURLToPath(import.meta.url))
 
 /** Tool approval request sent to renderer. */
 interface ToolApprovalRequest {
@@ -771,7 +775,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   ipcMain.handle('inspector:get-script', async () => {
     try {
       // Read the compiled inspector script
-      const scriptPath = join(__dirname, '../../packages/shared/dist/inspector/overlay.js')
+      const scriptPath = join(moduleDir, '../../packages/shared/dist/inspector/overlay.js')
       const script = await fs.readFile(scriptPath, 'utf-8')
       return script
     } catch (err) {

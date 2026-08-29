@@ -33,9 +33,11 @@ The implementation is split into **6 independent sessions**, each resulting in a
 | [8. App Preview](SESSION-8-APP-PREVIEW.md) | Dev Server + Preview | Run and view apps during development | Planned | 6 sub-sessions |
 | [9. Chat History](SESSION-9-CHAT-HISTORY.md) | Persistent History | Chat history saved per app | Complete | [Notes](SESSION-9-NOTES.md) |
 | [10. Rate Limits](SESSION-10-RATE-LIMITS.md) | API rate limits | 429 handling, retry with backoff | Complete | [Notes](SESSION-10-NOTES.md) |
+| [11. Chat Sessions](SESSION-11-CHAT-SESSIONS.md) | Multiple Sessions | Named chat sessions per app | Complete | [Notes](SESSION-11-NOTES.md) |
 | [12. Add Source](SESSION-12-ADD-SOURCE.md) | Source CRUD UI | Add/edit/delete MCP sources from UI | Complete | [Notes](SESSION-12-NOTES.md) |
-| [13. Addressable UI](SESSION-13-ADDRESSABLE-UI.md) | Element Inspection | Click elements in preview to add to chat context | Planned | 3 sub-sessions |
+| [13. Addressable UI](SESSION-13-ADDRESSABLE-UI.md) | Element Inspection | Click elements in preview to add to chat context | Complete | 3 sub-sessions |
 | [14. Agent Config](SESSION-14-AGENT-CONFIG.md) | Claude Code Setup | AGENTS.md, path-scoped rules, skills, review subagents | Complete | [Notes](SESSION-14-NOTES.md) |
+| [15. Pi Agent](SESSION-15-PI-AGENT.md) | Pi + Ollama | Replace the hand-rolled Anthropic loop with Pi on local models | Planned | 4 sub-sessions |
 
 ## Session 6 Sub-Sessions
 
@@ -72,6 +74,17 @@ Session 13 adds the addressable UI element inspection, broken into 3 sub-session
 | [13.1](SESSION-13.1-INSPECTOR-OVERLAY.md) | Inspector overlay + DOM extraction |
 | [13.2](SESSION-13.2-CONTEXT-INJECTION.md) | Screenshot capture + element messages |
 | [13.3](SESSION-13.3-AGENT-INTEGRATION.md) | Agent awareness + keyboard shortcuts |
+
+## Session 15 Sub-Sessions
+
+Session 15 replaces the agent infrastructure, broken into 4 sub-sessions:
+
+| Sub-Session | Focus |
+|-------------|-------|
+| [15.1](SESSION-15.1-ESM-RUNTIME.md) | Electron 39 + ESM main process + build config |
+| [15.2](SESSION-15.2-OLLAMA-PROVIDER.md) | Ollama discovery, models.json, model picker |
+| [15.3](SESSION-15.3-PI-AGENT-CORE.md) | The agent swap - deletes agent.ts |
+| [15.4](SESSION-15.4-PI-SESSIONS.md) | Pi SessionManager, deletions, docs |
 
 ## How to Use
 
@@ -139,7 +152,7 @@ anyapp/
 | Runtime | Bun |
 | Desktop | Electron + electron-vite |
 | UI | React 19 + shadcn/ui + Tailwind v4 |
-| AI | Anthropic SDK (@anthropic-ai/sdk) |
+| AI | Pi (@earendil-works/pi-coding-agent) on Ollama |
 | Version Control | isomorphic-git |
 | Sources | MCP TypeScript SDK v1.x |
 
@@ -183,7 +196,7 @@ bun run typecheck:all
 
 | File | Purpose |
 |------|---------|
-| `apps/electron/src/main/agent.ts` | Claude SDK integration |
+| `apps/electron/src/main/agent/` | Pi agent session, tools, permission gate |
 | `packages/shared/src/versions/manager.ts` | Version control |
 | `packages/shared/src/sources/mcp-client.ts` | MCP connections |
 | `packages/shared/src/skills/loader.ts` | Skills system |
