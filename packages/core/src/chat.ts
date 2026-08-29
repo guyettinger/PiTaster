@@ -21,6 +21,13 @@ export interface SerializedToolBlock {
   type: 'tool'
   /** The tool name. */
   name: string
+  /**
+   * Stable identifier for this tool call.
+   *
+   * Correlates a call with its result, which is what makes a persisted
+   * transcript replayable rather than display-only.
+   */
+  toolCallId?: string
   /** Tool input parameters. */
   input?: Record<string, unknown>
   /** Tool output result. */

@@ -1,68 +1,88 @@
 /**
- * Utilities for converting app-specific types to Claude API format.
+ * Utilities for turning inspected UI elements into agent prompt input.
  */
 
+import type { ImageContent } from '@earendil-works/pi-ai'
 import type { ElementContext } from '@anyapp/core'
 
 /**
- * Claude API message content block.
+ * A prompt assembled from user text plus any attached UI element context.
  */
-interface ClaudeContentBlock {
-  /** Content type. */
-  type: 'text' | 'image'
-  /** Text content (for type='text'). */
-  text?: string
-  /** Image source (for type='image'). */
-  source?: {
-    type: 'base64'
-    media_type: 'image/png'
-    data: string
-  }
+export interface ElementPrompt {
+  /** The full prompt text, with element descriptions appended. */
+  prompt: string
+  /** Screenshots of the selected elements, in the order they were attached. */
+  images: ImageContent[]
 }
 
 /**
- * Convert element context to Claude message format with text and image.
- * @param context - The element context to convert
- * @returns Array of Claude API content blocks
+ * Parameters for {@link elementContextToPrompt}.
  */
-export function convertElementContextToContent(
-  context: ElementContext
-): ClaudeContentBlock[] {
-  const { element, screenshot } = context
-  const content: ClaudeContentBlock[] = []
+export interface ElementContextToPromptParams {
+  /** The user's own message text. */
+  text: string
+  /** Element contexts captured from the preview panel. */
+  elements: ElementContext[]
+}
 
-  // Text description
-  let prompt = `[UI Element Context]\n`
-  prompt += `Tag: <${element.tag}>\n`
-  if (element.id) prompt += `ID: #${element.id}\n`
-  if (element.classes.length > 0) {
-    prompt += `Classes: ${element.classes.join(' ')}\n`
-  }
-  if (element.text) {
-    prompt += `Text: "${element.text}"\n`
-  }
-  prompt += `CSS Selector: ${element.selector}\n`
-  prompt += `XPath: ${element.xpath}\n`
-  prompt += `Bounds: ${element.bounds.width}×${element.bounds.height}px at (${element.bounds.x}, ${element.bounds.y})\n`
-  prompt += `\nYou can use the selector to locate this element in the source files.`
+/**
+ * Describe one inspected element in plain text for the model.
+ * @param context - The captured element context
+ * @returns A `[UI Element Context]` block describing the element
+ */
+export function describeElementContext(context: ElementContext): string {
+  const { element } = context
 
-  content.push({
-    type: 'text',
-    text: prompt
-  })
+  const lines = [
+    '[UI Element Context]',
+    `Tag: <${element.tag}>`,
+    ...(element.id ? [`ID: #${element.id}`] : []),
+    ...(element.classes.length > 0 ? [`Classes: ${element.classes.join(' ')}`] : []),
+    ...(element.text ? [`Text: "${element.text}"`] : []),
+    `CSS Selector: ${element.selector}`,
+    `XPath: ${element.xpath}`,
+    `Bounds: ${element.bounds.width}×${element.bounds.height}px at (${element.bounds.x}, ${element.bounds.y})`,
+    '',
+    'You can use the selector to locate this element in the source files.'
+  ]
 
-  // Screenshot
-  if (screenshot) {
-    const base64Data = screenshot.replace(/^data:image\/\w+;base64,/, '')
-    content.push({
+  return lines.join('\n')
+}
+
+/**
+ * Extract the raw base64 payload from a data URL.
+ * @param screenshot - A `data:image/...;base64,...` URL
+ * @returns The base64 payload without its data-URL prefix
+ */
+function stripDataUrlPrefix(screenshot: string): string {
+  return screenshot.replace(/^data:image\/\w+;base64,/, '')
+}
+
+/**
+ * Build the prompt text and image attachments for a message.
+ *
+ * Pi takes images alongside the prompt rather than interleaved in a content array,
+ * and its `ImageContent` uses a flat `data`/`mimeType` pair where the Anthropic API
+ * used a nested `source` object with `media_type`.
+ *
+ * @param params - The user's text and any attached element contexts
+ * @returns The combined prompt text and its image attachments
+ */
+export function elementContextToPrompt(
+  params: ElementContextToPromptParams
+): ElementPrompt {
+  const { text, elements } = params
+
+  const sections = elements.map(describeElementContext)
+  const prompt = [text, ...sections].filter((part) => part.length > 0).join('\n\n')
+
+  const images: ImageContent[] = elements
+    .filter((context) => Boolean(context.screenshot))
+    .map((context) => ({
       type: 'image',
-      source: {
-        type: 'base64',
-        media_type: 'image/png',
-        data: base64Data
-      }
-    })
-  }
+      data: stripDataUrlPrefix(context.screenshot as string),
+      mimeType: 'image/png'
+    }))
 
-  return content
+  return { prompt, images }
 }
