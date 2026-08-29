@@ -540,14 +540,6 @@ const electronAPI = {
   },
 
   /**
-   * Save a chat message to history.
-   * @param message - The message to save
-   */
-  saveChatMessage: (message: PersistedMessage): Promise<void> => {
-    return ipcRenderer.invoke('chat:save-message', message)
-  },
-
-  /**
    * Clear chat history for the active app.
    */
   clearChatHistory: (): Promise<void> => {

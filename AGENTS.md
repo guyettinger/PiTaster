@@ -4,9 +4,13 @@ Self-modifying Electron desktop app. The agent reads and writes its own source
 code — and the source of sandboxed sub-apps it creates — with every write
 auto-committed to git so any change can be rolled back.
 
-The agent is built directly on the Anthropic Messages API: `@anthropic-ai/sdk`
-with ~25 hand-rolled tools defined in `apps/electron/src/main/agent.ts`. It does
-**not** use `@anthropic-ai/claude-agent-sdk`.
+The agent is [Pi](https://pi.dev/) (`@earendil-works/pi-coding-agent`), embedded
+through its SDK in `apps/electron/src/main/agent/`. It runs entirely on local
+models served by **Ollama** — there is no API key and no inference network call.
+
+Pi owns the agent loop, the built-in tools (`read`, `write`, `edit`, `bash`,
+`grep`, `find`, `ls`), and the session transcript. anyapp adds the permission
+gate, path confinement, git auto-commit, and its own version-control tools.
 
 ## Monorepo layout
 
@@ -40,6 +44,19 @@ package may import from `apps/electron/`.
 Run `bun run typecheck:all` after changing any source file. It is the gate that
 the self-modification flow relies on.
 
+## Runtime prerequisite
+
+The agent needs a running Ollama daemon and a **tool-calling** model. A model
+without tool support will connect and then be unable to act.
+
+```bash
+ollama serve
+ollama pull qwen3-coder:30b   # or llama3.1, gpt-oss, mistral-nemo
+```
+
+Models are discovered from the daemon and written to `~/.anyapp/pi/models.json`;
+pick one in Settings. Electron 39+ is required — Pi needs Node >= 22.19.
+
 ## Conventions
 
 Detailed, path-scoped guidance lives in `.claude/rules/` and loads automatically
@@ -68,11 +85,20 @@ bridge; expose narrow, named functions that unwrap the event first.
 out of the environment before spawning any child process.
 
 **Credentials.** Store secrets with Electron's `safeStorage`, never in plain
-files or `localStorage`.
+files or `localStorage`. There are currently no secrets to store — inference is
+local — so nothing in the app calls it. Reinstate it before adding any remote
+provider.
 
-**Self-modification.** File writes are scoped to the active sub-app root and
-must pass through path-traversal normalization. Shell commands are checked
-against a blocklist. Nothing bypasses the permission mode.
+**Self-modification.** Pi ships no sandbox: its built-in tools resolve `~` and
+absolute paths and run with the process's permissions. Confinement to the active
+sub-app root therefore lives in the `tool_call` handler in
+`apps/electron/src/main/agent/permission-gate.ts`, which is the *only* boundary
+between the model and the filesystem. Path arguments are resolved the way Pi
+will resolve them and rejected if they land outside the root; shell commands are
+checked against a blocklist and scanned for literal out-of-root paths, including
+relative traversal. That scan is best-effort — variable expansion defeats it —
+which is why `bash` is never auto-approved outside `bypassPermissions`. Nothing
+bypasses the permission mode.
 
 ## Permission modes
 
@@ -86,8 +112,13 @@ against a blocklist. Nothing bypasses the permission mode.
 ## Version control
 
 Versioning uses isomorphic-git (`packages/shared/src/versions/`). Every
-`write_source` auto-commits. Create branches for experiments, roll back to any
-commit, merge what works.
+successful `write` or `edit` auto-commits, via the `tool_result` handler in
+`apps/electron/src/main/agent/auto-commit.ts`, when the `autoCommit` setting is
+on. Create branches for experiments, roll back to any commit, merge what works.
+
+Chat history is Pi's own tree-structured JSONL transcript, stored under
+`~/.anyapp/pi/sessions/`, adapted to the app's types by
+`packages/shared/src/chat/manager.ts`.
 
 ## Where things live
 

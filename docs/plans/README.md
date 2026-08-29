@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project implements a **self-modifying Electron app** using the Anthropic SDK. The app can read and modify its own source code, with full version control, external source connections, and a skills system.
+This project implements a **self-modifying Electron app** driven by Pi running on local Ollama models. The app can read and modify its own source code, with full version control, external source connections, and a skills system.
 
 ## Implementation Strategy
 
@@ -37,7 +37,7 @@ The implementation is split into **6 independent sessions**, each resulting in a
 | [12. Add Source](SESSION-12-ADD-SOURCE.md) | Source CRUD UI | Add/edit/delete MCP sources from UI | Complete | [Notes](SESSION-12-NOTES.md) |
 | [13. Addressable UI](SESSION-13-ADDRESSABLE-UI.md) | Element Inspection | Click elements in preview to add to chat context | Complete | 3 sub-sessions |
 | [14. Agent Config](SESSION-14-AGENT-CONFIG.md) | Claude Code Setup | AGENTS.md, path-scoped rules, skills, review subagents | Complete | [Notes](SESSION-14-NOTES.md) |
-| [15. Pi Agent](SESSION-15-PI-AGENT.md) | Pi + Ollama | Replace the hand-rolled Anthropic loop with Pi on local models | Planned | 4 sub-sessions |
+| [15. Pi Agent](SESSION-15-PI-AGENT.md) | Pi + Ollama | Replace the hand-rolled Anthropic loop with Pi on local models | Complete | [Notes](SESSION-15-NOTES.md) |
 
 ## Session 6 Sub-Sessions
 
