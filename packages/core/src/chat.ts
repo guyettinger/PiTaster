@@ -45,12 +45,47 @@ export interface SerializedApprovalBlock {
 }
 
 /**
+ * Element context attached to a message.
+ */
+export interface ElementContext {
+  /** Element info from DOM. */
+  element: {
+    tag: string
+    text: string
+    classes: string[]
+    id?: string
+    selector: string
+    xpath: string
+    bounds: {
+      x: number
+      y: number
+      width: number
+      height: number
+    }
+  }
+  /** Screenshot of the element (base64 data URL). */
+  screenshot?: string
+  /** Timestamp when element was captured. */
+  capturedAt: string
+}
+
+/**
+ * Serialized element context block.
+ */
+export interface SerializedElementBlock {
+  type: 'element'
+  /** The element context data. */
+  elementContext: ElementContext
+}
+
+/**
  * Union of all serializable content block types.
  */
 export type SerializedContentBlock =
   | SerializedTextBlock
   | SerializedToolBlock
   | SerializedApprovalBlock
+  | SerializedElementBlock
 
 /**
  * A persisted chat message.

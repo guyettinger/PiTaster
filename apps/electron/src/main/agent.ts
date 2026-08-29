@@ -12,7 +12,8 @@ import { homedir } from 'node:os'
 import * as git from 'isomorphic-git'
 import nodeFs from 'node:fs'
 import { VersionManager, SkillsLoader, extractSkillMentions, buildSystemPrompt } from '@anyapp/shared'
-import type { Commit, Branch, Skill, SubApp, AppTemplate } from '@anyapp/core'
+import type { Commit, Branch, Skill, SubApp, AppTemplate, SerializedContentBlock } from '@anyapp/core'
+import { convertElementContextToContent } from './agent-utils'
 
 /** Permission mode type for tool execution. */
 export type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
@@ -974,7 +975,28 @@ ${TEMPLATE_HINTS[app.template]}
 2. **Use branches for experiments**: Create a branch before risky changes
 3. **Keep changes focused**: One logical change per commit
 4. **Explain your actions**: Tell the user what you're doing and why
-5. **Test when possible**: Run the app after changes to verify they work`
+5. **Test when possible**: Run the app after changes to verify they work
+
+## Element Context
+
+When you receive a message with [UI Element Context], the user has selected a specific element from the preview panel. You'll receive:
+- A screenshot showing the visual appearance
+- DOM information (tag, classes, ID, text)
+- CSS selector and XPath for locating the element in code
+
+When responding to element context:
+1. Use the selector to search for the element in the relevant component files
+2. Consider the visual appearance and DOM structure when making changes
+3. Make targeted changes to ONLY the selected element when possible
+4. If the element is part of a reusable component, clarify with the user whether to change all instances or just this one
+5. After making changes, explain what you modified and why
+
+Example workflow:
+- User selects a button in the preview
+- You search for the button using the provided selector
+- You find it in src/components/Header.tsx
+- You make the requested change (e.g., color, text, size)
+- You confirm the change and ask if the user wants to preview it`
 }
 
 /** Base system prompt for the self-modifying agent (legacy, for backward compatibility). */
@@ -986,8 +1008,8 @@ You can help users create and manage applications. Select an app from the Apps p
  * Parameters for running an agent query.
  */
 export interface RunAgentQueryParams {
-  /** The user's prompt/message. */
-  prompt: string
+  /** The user's prompt/message (string or content blocks). */
+  prompt: string | SerializedContentBlock[]
   /** Current permission mode. */
   permissionMode: PermissionMode
   /** Callback to request user approval for a tool. */
@@ -1011,12 +1033,14 @@ export async function runAgentQuery(params: RunAgentQueryParams): Promise<Messag
   const { prompt, permissionMode, requestApproval, onStream, conversationHistory = [], signal, activeApp = null } = params
 
   const client = new Anthropic()
-  
-  // Extract skill mentions and load skills
-  const mentions = extractSkillMentions(prompt)
+
+  // Extract skill mentions and load skills (only from string prompts)
+  const promptText = typeof prompt === 'string' ? prompt :
+    prompt.filter(b => b.type === 'text').map(b => b.content).join(' ')
+  const mentions = extractSkillMentions(promptText)
   const loader = getSkillsLoader()
   const loadedSkills: Skill[] = []
-  
+
   for (const mention of mentions) {
     try {
       const skill = await loader.load(mention.name)
@@ -1036,11 +1060,35 @@ export async function runAgentQuery(params: RunAgentQueryParams): Promise<Messag
   const scopedTools = createScopedTools(activeApp)
   const toolDefinitions = scopedTools.map(t => t.definition)
   const toolHandlers = new Map(scopedTools.map(t => [t.definition.name, t.handler]))
-  
+
+  // Convert prompt to content for Claude API
+  let userContent: string | Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam>
+
+  if (typeof prompt === 'string') {
+    // Simple text prompt
+    userContent = prompt
+  } else {
+    // Content blocks - process each block
+    const contentBlocks: Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> = []
+
+    for (const block of prompt) {
+      if (block.type === 'text') {
+        contentBlocks.push({ type: 'text', text: block.content })
+      } else if (block.type === 'element' && 'elementContext' in block) {
+        // Convert element context to text + image blocks
+        const elementContent = convertElementContextToContent(block.elementContext)
+        contentBlocks.push(...elementContent as Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam>)
+      }
+      // Other block types can be added here
+    }
+
+    userContent = contentBlocks
+  }
+
   // Build messages with conversation history
   const messages: MessageParam[] = [
     ...conversationHistory,
-    { role: 'user', content: prompt }
+    { role: 'user', content: userContent }
   ]
 
   // Agentic loop - continue until no more tool use
