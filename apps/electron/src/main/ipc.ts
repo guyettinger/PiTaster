@@ -279,17 +279,20 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
 
   await disposeAgentHost()
 
-  // Resume the active transcript when one exists. A freshly created session is a
-  // draft with no file yet, so Pi starts a new transcript and we adopt its id below.
-  const sessionFile = (await chatHistoryManager.getActiveSessionPath(app.id)) ?? undefined
-  const draft = sessionFile ? null : await chatHistoryManager.getDraftSession(app.id)
+  // Sessions are materialized on creation, so there is always a transcript to
+  // resume. Create one only if the app has never had a session at all.
+  let sessionFile = await chatHistoryManager.getActiveSessionPath(app.id)
+  if (!sessionFile) {
+    const created = await chatHistoryManager.createSession(app.id)
+    activeSessionId = created.id
+    sessionFile = await chatHistoryManager.getActiveSessionPath(app.id)
+  }
 
   agentHost = await createAgentHost({
     app,
     agentDir: piAgentDir,
     modelId: config.ollamaModel,
-    sessionFile,
-    sessionTitle: draft?.title,
+    sessionFile: sessionFile ?? undefined,
     callbacks: {
       getPermissionMode: () => currentPermissionMode,
       getAutoCommit: () => getConfig().autoCommit,
@@ -324,19 +327,6 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
       }
     }
   })
-
-  // Replace the UI's placeholder with the session Pi actually created.
-  if (!sessionFile) {
-    await chatHistoryManager.attachSession({ appId: app.id, sessionId: agentHost.sessionId })
-    activeSessionId = agentHost.sessionId
-    if (!mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('chat:session-changed', activeSessionId)
-      mainWindow.webContents.send(
-        'sessions:list-updated',
-        await chatHistoryManager.listSessions(app.id)
-      )
-    }
-  }
 
   return agentHost
 }

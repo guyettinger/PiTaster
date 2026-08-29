@@ -2,7 +2,7 @@
  * Agent-related type definitions for anyapp.
  */
 
-import type { PermissionMode } from './permissions'
+import type { PermissionMode } from './permissions.js'
 
 /**
  * Tool execution result from the agent.

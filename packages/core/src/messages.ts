@@ -2,7 +2,7 @@
  * Message-related type definitions for anyapp.
  */
 
-import type { ToolResult } from './agent'
+import type { ToolResult } from './agent.js'
 
 /**
  * A chat message in a session.

@@ -13,7 +13,7 @@
 import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
-import { SessionManager } from '@earendil-works/pi-coding-agent'
+import { CURRENT_SESSION_VERSION, SessionManager } from '@earendil-works/pi-coding-agent'
 import type {
   ChatSession,
   ChatSessionManifest,
@@ -21,7 +21,7 @@ import type {
   PersistedMessage,
   SerializedContentBlock
 } from '@anyapp/core'
-import { getAppPath, getAppSessionDir, getPiAgentDir } from './session-paths'
+import { getAppPath, getAppSessionDir, getPiAgentDir } from './session-paths.js'
 
 /** Filename holding the active-session pointer, inside the sub-app directory. */
 const ACTIVE_SESSION_FILE = '.chat-sessions.json'
@@ -33,30 +33,11 @@ const UNTITLED_SESSION = 'New Chat'
 const TITLE_MAX_CHARS = 60
 
 /**
- * A session the user has created but that has no messages yet.
- *
- * Pi deliberately defers writing a transcript file until the first assistant reply,
- * so an empty session does not exist on disk. anyapp's UI shows a new chat as soon
- * as the user asks for one, so the gap is bridged by recording the intent here and
- * materializing it when the agent first runs.
- */
-interface DraftSession {
-  /** Placeholder id, replaced by Pi's real session id once the transcript exists. */
-  id: string
-  /** Title to apply to the real session. */
-  title: string
-  /** ISO creation timestamp. */
-  createdAt: string
-}
-
-/**
  * The per-app state anyapp persists alongside Pi's transcripts.
  */
 interface ActiveSessionPointer {
   /** Pi session id currently selected in the UI, or null. */
   activeSessionId: string | null
-  /** A created-but-empty session, or null. */
-  draft?: DraftSession | null
 }
 
 /**
@@ -140,11 +121,10 @@ export class ChatHistoryManager {
       const parsed = JSON.parse(raw) as Partial<ActiveSessionPointer>
       return {
         activeSessionId:
-          typeof parsed.activeSessionId === 'string' ? parsed.activeSessionId : null,
-        draft: parsed.draft ?? null
+          typeof parsed.activeSessionId === 'string' ? parsed.activeSessionId : null
       }
     } catch {
-      return { activeSessionId: null, draft: null }
+      return { activeSessionId: null }
     }
   }
 
@@ -182,7 +162,7 @@ export class ChatHistoryManager {
   async listSessions(appId: string): Promise<ChatSession[]> {
     const infos = await SessionManager.list(getAppPath(appId), this.sessionDir(appId))
 
-    const sessions: ChatSession[] = infos
+    return infos
       .map((info) => ({
         id: info.id,
         title: info.name?.trim() || deriveTitle(info.firstMessage),
@@ -191,19 +171,6 @@ export class ChatHistoryManager {
         messageCount: info.messageCount
       }))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-
-    const { draft } = await this.readPointer(appId)
-    if (draft) {
-      sessions.unshift({
-        id: draft.id,
-        title: draft.title,
-        createdAt: draft.createdAt,
-        updatedAt: draft.createdAt,
-        messageCount: 0
-      })
-    }
-
-    return sessions
   }
 
   /**
@@ -229,8 +196,7 @@ export class ChatHistoryManager {
    * @param manifest - The manifest whose pointer should be stored
    */
   async saveManifest(appId: string, manifest: ChatSessionManifest): Promise<void> {
-    const { draft } = await this.readPointer(appId)
-    await this.writePointer(appId, { activeSessionId: manifest.activeSessionId, draft })
+    await this.writePointer(appId, { activeSessionId: manifest.activeSessionId })
   }
 
   /**
@@ -243,51 +209,33 @@ export class ChatHistoryManager {
     appId: string,
     params?: CreateChatSessionParams
   ): Promise<ChatSession> {
-    const draft: DraftSession = {
-      id: `draft-${randomUUID()}`,
-      title: params?.title?.trim() || UNTITLED_SESSION,
-      createdAt: new Date().toISOString()
+    const appPath = getAppPath(appId)
+    const sessionDir = this.sessionDir(appId)
+    await fs.mkdir(appPath, { recursive: true })
+    await fs.mkdir(sessionDir, { recursive: true })
+
+    // Pi defers writing a transcript until the first assistant reply, so a session
+    // created here would not exist on disk and would vanish from the UI. Writing the
+    // header ourselves makes it real immediately, with an id that never changes:
+    // SessionManager.open() then appends to it normally.
+    const id = randomUUID()
+    const createdAt = new Date().toISOString()
+    const file = join(sessionDir, `${createdAt.replace(/[:.]/g, '-')}_${id}.jsonl`)
+    const header = {
+      type: 'session',
+      version: CURRENT_SESSION_VERSION,
+      id,
+      timestamp: createdAt,
+      cwd: appPath
     }
+    await fs.writeFile(file, `${JSON.stringify(header)}\n`, 'utf-8')
 
-    await this.writePointer(appId, { activeSessionId: draft.id, draft })
+    const title = params?.title?.trim() || UNTITLED_SESSION
+    SessionManager.open(file, sessionDir).appendSessionInfo(title)
 
-    return {
-      id: draft.id,
-      title: draft.title,
-      createdAt: draft.createdAt,
-      updatedAt: draft.createdAt,
-      messageCount: 0
-    }
-  }
+    await this.writePointer(appId, { activeSessionId: id })
 
-  /**
-   * Adopt the Pi session that a run just materialized, replacing any draft.
-   *
-   * Called once the agent has a real transcript, so the UI's placeholder is
-   * superseded by the session Pi actually wrote.
-   *
-   * @param params - The app, Pi's session id, and the title to apply
-   */
-  async attachSession(params: {
-    /** The sub-app identifier. */
-    appId: string
-    /** Pi's session id for the materialized transcript. */
-    sessionId: string
-  }): Promise<void> {
-    await this.writePointer(params.appId, {
-      activeSessionId: params.sessionId,
-      draft: null
-    })
-  }
-
-  /**
-   * Get the pending draft session for an app, if any.
-   * @param appId - The sub-app identifier
-   * @returns The draft, or null when the active session already exists on disk
-   */
-  async getDraftSession(appId: string): Promise<{ id: string; title: string } | null> {
-    const { draft } = await this.readPointer(appId)
-    return draft ? { id: draft.id, title: draft.title } : null
+    return { id, title, createdAt, updatedAt: createdAt, messageCount: 0 }
   }
 
   /**
@@ -296,25 +244,15 @@ export class ChatHistoryManager {
    * @param sessionId - The session to delete
    */
   async deleteSession(appId: string, sessionId: string): Promise<void> {
-    const pointer = await this.readPointer(appId)
-
-    if (pointer.draft?.id === sessionId) {
-      // A draft has no transcript; discarding the record is the whole deletion.
-      await this.writePointer(appId, { activeSessionId: null, draft: null })
-    } else {
-      const path = await this.getSessionPath(appId, sessionId)
-      if (path) {
-        await fs.rm(path, { force: true })
-      }
+    const path = await this.getSessionPath(appId, sessionId)
+    if (path) {
+      await fs.rm(path, { force: true })
     }
 
-    const current = await this.readPointer(appId)
-    if (current.activeSessionId === sessionId) {
+    const { activeSessionId } = await this.readPointer(appId)
+    if (activeSessionId === sessionId) {
       const remaining = await this.listSessions(appId)
-      await this.writePointer(appId, {
-        activeSessionId: remaining[0]?.id ?? null,
-        draft: current.draft
-      })
+      await this.writePointer(appId, { activeSessionId: remaining[0]?.id ?? null })
     }
   }
 
@@ -331,19 +269,6 @@ export class ChatHistoryManager {
     sessionId: string,
     title: string
   ): Promise<ChatSession> {
-    const pointer = await this.readPointer(appId)
-    if (pointer.draft?.id === sessionId) {
-      const draft = { ...pointer.draft, title }
-      await this.writePointer(appId, { activeSessionId: pointer.activeSessionId, draft })
-      return {
-        id: draft.id,
-        title: draft.title,
-        createdAt: draft.createdAt,
-        updatedAt: draft.createdAt,
-        messageCount: 0
-      }
-    }
-
     const path = await this.getSessionPath(appId, sessionId)
     if (!path) throw new Error(`Session not found: ${sessionId}`)
 
@@ -370,8 +295,7 @@ export class ChatHistoryManager {
    * @param sessionId - The session to activate
    */
   async setActiveSession(appId: string, sessionId: string): Promise<void> {
-    const { draft } = await this.readPointer(appId)
-    await this.writePointer(appId, { activeSessionId: sessionId, draft })
+    await this.writePointer(appId, { activeSessionId: sessionId })
   }
 
   /**
@@ -408,11 +332,11 @@ export class ChatHistoryManager {
   /**
    * Resolve the transcript file backing the active session.
    * @param appId - The sub-app identifier
-   * @returns The transcript path, or null when the active session is a draft
+   * @returns The transcript path, or null when there is no active session
    */
   async getActiveSessionPath(appId: string): Promise<string | null> {
-    const { activeSessionId, draft } = await this.readPointer(appId)
-    if (!activeSessionId || activeSessionId === draft?.id) return null
+    const { activeSessionId } = await this.readPointer(appId)
+    if (!activeSessionId) return null
     return this.getSessionPath(appId, activeSessionId)
   }
 }

@@ -85,8 +85,6 @@ export interface CreateAgentHostParams {
   modelId: string
   /** Existing Pi session file to resume, or undefined to start a new one. */
   sessionFile?: string
-  /** Title to name a newly created session with. Ignored when resuming. */
-  sessionTitle?: string
   /** Application callbacks. */
   callbacks: AgentHostCallbacks
 }
@@ -242,7 +240,7 @@ function createAnyappExtension(params: {
  * @throws {Error} If the configured model is not available from Ollama
  */
 export async function createAgentHost(params: CreateAgentHostParams): Promise<AgentHost> {
-  const { app, agentDir, modelId, sessionFile, sessionTitle, callbacks } = params
+  const { app, agentDir, modelId, sessionFile, callbacks } = params
 
   const modelRuntime = await ModelRuntime.create({
     authPath: join(agentDir, 'auth.json'),
@@ -278,11 +276,6 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
   const sessionManager = sessionFile
     ? SessionManager.open(sessionFile, sessionDir)
     : SessionManager.create(app.path, sessionDir)
-
-  if (!sessionFile && sessionTitle) {
-    // Buffered until Pi flushes the transcript on the first assistant reply.
-    sessionManager.appendSessionInfo(sessionTitle)
-  }
 
   const { session } = await createAgentSession({
     cwd: app.path,
