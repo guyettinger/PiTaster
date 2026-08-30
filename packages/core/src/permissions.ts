@@ -5,7 +5,7 @@
 /**
  * Permission modes for tool execution.
  *
- * - `plan`: Read-only mode, no modifications allowed
+ * - `plan`: No side effects; reads and read-only network access only
  * - `default`: Prompt user for approval on each tool use
  * - `acceptEdits`: Auto-approve file operations
  * - `bypassPermissions`: Auto-approve all tool uses (use with caution)
@@ -34,6 +34,13 @@ export interface ToolApprovalRequest {
   input: Record<string, unknown>
   /** Suggested action. */
   suggestion?: 'allow' | 'deny'
+  /**
+   * Advisory note about what the call does, shown alongside the prompt.
+   *
+   * Informational only — the request reached the user regardless. Used to say
+   * that a shell command reaches the network, which the gate does not block.
+   */
+  notice?: string
 }
 
 /**

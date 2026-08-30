@@ -7,11 +7,14 @@ auto-committed to git so any change can be rolled back.
 The agent is [Pi](https://pi.dev/) (`@earendil-works/pi-coding-agent`), embedded
 through its SDK in `apps/electron/src/main/agent/`. It runs entirely on local
 models served by **Ollama** — there is no API key and no inference network call.
+The agent can reach the internet with its `web_fetch` tool, but inference itself
+never leaves the machine.
 
 Pi owns the agent loop, the built-in tools (`read`, `write`, `edit`, `bash`,
 `grep`, `find`, `ls`), and the session transcript. anyapp adds the permission
-gate, path confinement, git auto-commit, its own version-control tools, and a
-bridge that exposes connected MCP sources' tools as `mcp__<source>__<tool>`.
+gate, path confinement, git auto-commit, its own version-control and network
+tools, and a bridge that exposes connected MCP sources' tools as
+`mcp__<source>__<tool>`.
 
 ## Monorepo layout
 
@@ -101,18 +104,46 @@ relative traversal. That scan is best-effort — variable expansion defeats it �
 which is why `bash` is never auto-approved outside `bypassPermissions`. Nothing
 bypasses the permission mode.
 
+**Network access is not confined.** There is deliberately no host allowlist:
+`web_fetch` can reach `localhost`, the LAN, and link-local metadata addresses.
+`checkConfinement` validates only that the URL is well-formed `http(s)`. `bash`
+reaches the network too and always has — `curl` was never in the blocklist —
+so `describeNetworkUse` annotates such commands for the approval prompt. That
+annotation is legibility, not enforcement: it refuses nothing, and under
+`bypassPermissions` a `bash curl` still runs unwatched.
+
 ## Permission modes
 
 | Mode | Behavior |
 |------|----------|
-| `plan` | Read-only. No modifications allowed. |
+| `plan` | No side effects. Reads and `web_fetch` only; nothing may change. |
 | `default` | Prompt the user for approval on each tool use. |
-| `acceptEdits` | Auto-approve file operations. |
+| `acceptEdits` | Auto-approve file operations and version tools. |
 | `bypassPermissions` | Auto-approve everything. Use with caution. |
 
-MCP source tools are the exception to `acceptEdits`: they always prompt outside
-`bypassPermissions`. Path confinement cannot reach inside a separate server
-process, so approval is their only boundary.
+Three tools sit outside that table:
+
+**`web_fetch` is the one `plan` exception.** It issues a GET with no request
+body, so it cannot write a file, run a command, or modify the app — which is what
+`plan` promises — and it is allowed wherever `read` is. This holds only while the
+tool stays GET-only; a `method` or `body` parameter would have to change
+`checkPermission` with it.
+
+That is narrower than "it only reads". The model controls the whole URL, so a
+GET's query string carries data *out*: with no host policy and no prompt in
+`plan` or `acceptEdits`, a fetch can exfiltrate anything already in context. That
+is an accepted residual risk, mitigated only by every call and its URL being
+visible in the transcript.
+
+**MCP source tools are the exception to `acceptEdits`**: they always prompt
+outside `bypassPermissions`. Path confinement cannot reach inside a separate
+server process, so approval is their only boundary.
+
+**`install_deps` is the other**, for the same reason `bash` is. Its command is
+fixed (`bun install`), which looks safe but is not: `bun` runs the project's own
+`preinstall` and `postinstall` scripts, and in `acceptEdits` the agent can
+already write `package.json` unprompted. Auto-approving the install would hand
+the model unprompted arbitrary shell in two innocuous-looking steps.
 
 ## Version control
 

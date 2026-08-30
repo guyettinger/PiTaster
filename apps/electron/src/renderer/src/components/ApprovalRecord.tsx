@@ -21,18 +21,25 @@ interface ApprovalRecordProps {
  */
 function getSummary(tool: string, input: Record<string, unknown>): string {
   switch (tool) {
-    case 'run_command':
+    case 'bash':
       return `${(input.command as string) ?? 'command'}`
-    case 'write_file':
+    case 'read':
+    case 'write':
+    case 'edit':
+    case 'ls':
       return `${(input.path as string) ?? 'file'}`
-    case 'delete_file':
-      return `${(input.path as string) ?? 'file'}`
+    case 'grep':
+    case 'find':
+      return `${(input.pattern as string) ?? 'pattern'}`
     case 'create_branch':
-      return `branch: ${(input.name as string) ?? ''}`
     case 'switch_branch':
       return `branch: ${(input.name as string) ?? ''}`
     case 'rollback':
       return `commit: ${(input.commit as string) ?? ''}`
+    case 'web_fetch':
+      return `${(input.url as string) ?? 'URL'}`
+    case 'install_deps':
+      return 'bun install'
     default:
       return tool
   }

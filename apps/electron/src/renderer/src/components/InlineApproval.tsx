@@ -22,7 +22,7 @@ interface InlineApprovalProps {
  * Inline approval bubble that appears in the chat flow.
  */
 export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalProps) {
-  const { tool, input } = request
+  const { tool, input, notice } = request
   const mcp = parseMcpToolName(tool)
 
   // Get a user-friendly summary of what the tool wants to do
@@ -61,6 +61,10 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
         return 'Check git status'
       case 'rollback':
         return `Rollback to: ${(input.commit as string) ?? 'commit'}`
+      case 'web_fetch':
+        return `Fetch: ${(input.url as string) ?? 'URL'}`
+      case 'install_deps':
+        return 'Install dependencies (bun install)'
       default:
         return `Use ${tool}`
     }
@@ -94,6 +98,17 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
             {summarizeMcpInput(input)}
           </p>
         </div>
+      )}
+
+      {/*
+        An advisory note from the gate — currently that a shell command reaches
+        the network. The command was going to prompt anyway; this says why it is
+        worth reading closely before approving.
+      */}
+      {notice && (
+        <p className="mb-3 text-xs text-brass">
+          This command {notice}.
+        </p>
       )}
 
       {/* Input details (collapsed by default for non-sensitive tools) */}

@@ -12,6 +12,8 @@ import {
   BranchIcon,
   HistoryIcon,
   SourceIcon,
+  GlobeIcon,
+  PlusIcon,
   ToolIcon
 } from './icons'
 import { isMcpToolName, parseMcpToolName, summarizeMcpInput } from '../lib/mcpToolDisplay'
@@ -44,7 +46,7 @@ interface ToolDisplay {
   label: string
 }
 
-/** Every built-in tool Pi exposes, plus anyapp's own version-control tools. */
+/** Every built-in tool Pi exposes, plus anyapp's own version-control and network tools. */
 const TOOL_DISPLAY: Record<string, ToolDisplay> = {
   bash: { Icon: CommandIcon, label: 'Command' },
   read: { Icon: FileIcon, label: 'Read file' },
@@ -58,7 +60,9 @@ const TOOL_DISPLAY: Record<string, ToolDisplay> = {
   list_branches: { Icon: BranchIcon, label: 'List branches' },
   get_history: { Icon: HistoryIcon, label: 'History' },
   rollback: { Icon: HistoryIcon, label: 'Roll back' },
-  git_status: { Icon: HistoryIcon, label: 'Git status' }
+  git_status: { Icon: HistoryIcon, label: 'Git status' },
+  web_fetch: { Icon: GlobeIcon, label: 'Fetch URL' },
+  install_deps: { Icon: PlusIcon, label: 'Install dependencies' }
 }
 
 /**
@@ -125,6 +129,8 @@ function getInputSummary(tool: string, input?: Record<string, unknown>): string 
       return (input.name as string) ?? null
     case 'rollback':
       return (input.commit as string) ?? null
+    case 'web_fetch':
+      return (input.url as string) ?? null
     default:
       return null
   }
