@@ -88,7 +88,7 @@ export function PermissionModeControl({ mode, onModeChange }: PermissionModeCont
   return (
     <div className="no-drag relative flex items-center">
       <span
-        className={`pointer-events-none absolute left-2.5 h-1.5 w-1.5 rounded-full ${DOT_CLASS[active.accent]}`}
+        className={`pointer-events-none absolute left-2 h-1.5 w-1.5 rounded-full ${DOT_CLASS[active.accent]}`}
       />
       <select
         value={mode}

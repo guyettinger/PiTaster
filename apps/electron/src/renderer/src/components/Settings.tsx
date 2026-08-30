@@ -152,9 +152,9 @@ export function Settings() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-b border-line px-6 pt-3.5">
+      <header className="border-b border-line px-6 pt-4">
         <h1 className="text-[15px] font-semibold text-bone">Settings</h1>
-        <nav className="mt-2.5 flex gap-1" aria-label="Settings sections">
+        <nav className="mt-3 flex gap-1" aria-label="Settings sections">
           {TABS.map((entry) => (
             <button
               key={entry.id}
@@ -294,7 +294,7 @@ export function Settings() {
                 </Field>
 
                 <div className="mt-5">
-                  <label className="flex items-start gap-2.5">
+                  <label className="flex items-start gap-2">
                     <input
                       type="checkbox"
                       checked={config.autoCommit}

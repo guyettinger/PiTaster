@@ -13,6 +13,9 @@ interface AppListingProps {
   activeAppId: string | null
 }
 
+/** Templates that can be started as a dev server. */
+const RUNNABLE_TEMPLATES: AppTemplate[] = ['react-vite', 'node-server', 'node-cli', 'static-site']
+
 const TEMPLATES: { id: AppTemplate; name: string; icon: string }[] = [
   { id: 'react-vite', name: 'React + Vite', icon: '⚛️' },
   { id: 'node-cli', name: 'Node CLI', icon: '💻' },
@@ -83,7 +86,7 @@ export function AppListing({ onAppSelect, activeAppId }: AppListingProps) {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-line px-6 py-3.5">
+      <div className="flex items-center justify-between border-b border-line px-6 py-4">
         <div>
           <h1 className="text-[15px] font-semibold text-bone">Apps</h1>
           <p className="text-[12px] text-ash">
@@ -106,7 +109,7 @@ export function AppListing({ onAppSelect, activeAppId }: AppListingProps) {
           <p className="flex-1 text-[13px] text-bone">{error}</p>
           <button
             onClick={() => setError(null)}
-            className="shrink-0 rounded p-0.5 text-ash transition-colors hover:text-bone"
+            className="shrink-0 rounded p-1 text-ash transition-colors hover:text-bone"
             title="Dismiss"
           >
             <CloseIcon size={14} />
@@ -135,7 +138,7 @@ export function AppListing({ onAppSelect, activeAppId }: AppListingProps) {
         ) : apps.length === 0 ? (
           <EmptyState onCreateClick={() => setIsCreating(true)} />
         ) : (
-          <div className="max-w-4xl space-y-2 px-6 py-5">
+          <ul className="max-w-4xl space-y-2 px-6 py-5">
             {apps.map(app => (
               <AppCard
                 key={app.id}
@@ -145,7 +148,7 @@ export function AppListing({ onAppSelect, activeAppId }: AppListingProps) {
                 onDelete={() => handleDelete(app)}
               />
             ))}
-          </div>
+          </ul>
         )}
       </div>
     </div>
@@ -256,53 +259,56 @@ interface AppCardProps {
  */
 function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
   const { isRunning, getStatus, getUrl, startApp, stopApp } = useRunningApps()
-  
+
   const running = isRunning(app.id)
   const status = getStatus(app.id)
   const url = getUrl(app.id)
 
-  const templateIcons: Record<AppTemplate, string> = {
-    'react-vite': '⚛️',
-    'node-cli': '💻',
-    'node-server': '🌐',
-    'static-site': '📄',
-    'blank': '📁'
-  }
-
-  const isRunnable = ['react-vite', 'node-server', 'node-cli', 'static-site'].includes(app.template)
-
-  const handleRun = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    await startApp(app.id)
-  }
-
-  const handleStop = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    await stopApp(app.id)
-  }
+  const template = TEMPLATES.find((t) => t.id === app.template)
+  const isRunnable = RUNNABLE_TEMPLATES.includes(app.template)
 
   return (
-    <div
-      className={`cursor-pointer rounded-lg border p-3.5 transition-colors ${
+    <li
+      className={`relative rounded-lg border p-4 transition-colors ${
         isActive
           ? 'border-brass/50 bg-brass/10'
           : 'border-line bg-panel hover:border-ash/50'
       }`}
-      onClick={onSelect}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-lg">{templateIcons[app.template]}</span>
+          <span role="img" aria-label={template?.name ?? app.template} className="text-lg">
+            {template?.icon ?? '📁'}
+          </span>
           <div>
             <div className="flex items-center gap-2">
-              <h4 className="font-medium">{app.name}</h4>
+              <h4 className="font-medium">
+                {/*
+                 * The card's whole surface opens the app, but the control that
+                 * does it is this one real button — stretched over the card by
+                 * its own `::after`. That keeps one tab stop and one accessible
+                 * name (the app's) for the card, while the run and delete
+                 * buttons stay siblings above it rather than nested inside a
+                 * clickable ancestor. The focus ring is drawn on the stretched
+                 * pseudo-element, so it outlines the card, not the name.
+                 */}
+                <button
+                  onClick={onSelect}
+                  aria-current={isActive ? 'true' : undefined}
+                  className="cursor-pointer text-left after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-brass"
+                >
+                  {app.name}
+                </button>
+              </h4>
               {/* Running indicator */}
               {status && (
                 <span className={`h-2 w-2 rounded-full ${
                   status === 'running' ? 'bg-patina' :
                   status === 'starting' ? 'animate-pulse bg-brass' :
                   status === 'error' ? 'bg-rust' : ''
-                }`} />
+                }`}>
+                  <span className="sr-only">{status}</span>
+                </span>
               )}
             </div>
             {app.description && (
@@ -312,38 +318,39 @@ function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
             )}
           </div>
         </div>
-        
-        <div className="flex items-center gap-1">
+
+        {/* Raised above the stretched button so these keep their own clicks. */}
+        <div className="relative z-10 flex items-center gap-1">
           {/* Quick run/stop button */}
           {isRunnable && (
             running ? (
               <button
-                onClick={handleStop}
+                onClick={() => stopApp(app.id)}
                 disabled={status === 'starting'}
                 className="rounded p-1.5 text-ash transition-colors hover:bg-raised hover:text-rust disabled:opacity-50"
+                aria-label={`Stop ${app.name}`}
                 title="Stop the dev server"
               >
                 <StopIcon size={15} />
               </button>
             ) : (
               <button
-                onClick={handleRun}
+                onClick={() => startApp(app.id)}
                 className="rounded p-1.5 text-ash transition-colors hover:bg-raised hover:text-patina"
+                aria-label={`Start ${app.name}`}
                 title="Start the dev server"
               >
                 <PlayIcon size={15} />
               </button>
             )
           )}
-          
+
           {/* Delete button - disabled while running */}
           <button
-            onClick={(e) => {
-              e.stopPropagation()
-              if (!running) onDelete()
-            }}
+            onClick={onDelete}
             disabled={running}
-            className="rounded p-1 text-ash transition-colors hover:text-rust disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded p-1.5 text-ash transition-colors hover:text-rust disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label={`Delete ${app.name}`}
             title={running ? 'Stop this app before deleting it' : 'Delete this app'}
           >
             <TrashIcon size={15} />
@@ -351,7 +358,7 @@ function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
         </div>
       </div>
       
-      <div className="mt-2.5 flex flex-wrap items-center gap-3 text-[11.5px] text-ash">
+      <div className="mt-3 flex flex-wrap items-center gap-3 text-[11.5px] text-ash">
         {app.currentBranch && (
           <span className="flex items-center gap-1 font-mono">
             <BranchIcon size={12} />
@@ -372,7 +379,7 @@ function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
         )}
         <span>Updated {formatRelativeTime(app.updatedAt)}</span>
       </div>
-    </div>
+    </li>
   )
 }
 
@@ -381,7 +388,7 @@ function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
  */
 function EmptyState({ onCreateClick }: { onCreateClick: () => void }) {
   return (
-    <div className="flex flex-col items-center px-8 py-14 text-center">
+    <div className="flex flex-col items-center px-6 py-16 text-center">
       <span className="text-ash">
         <AppsIcon size={28} />
       </span>

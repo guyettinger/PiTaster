@@ -66,7 +66,7 @@ export function SkillsPanel({ onSkillSelect, canInsertMention }: SkillsPanelProp
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-line px-6 py-3.5">
+      <header className="flex items-center justify-between border-b border-line px-6 py-4">
         <div>
           <h1 className="text-[15px] font-semibold text-bone">Skills</h1>
           <p className="text-[12px] text-ash">

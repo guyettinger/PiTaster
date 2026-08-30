@@ -27,6 +27,29 @@
 
   --font-sans: "Archivo Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /*
+   * Spacing. Tailwind's 4px scale carries the whole UI; what needs stating is
+   * which gutter belongs to which environment, because the shell has three
+   * densities and they were drifting into each other:
+   *
+   *   chrome   px-3  bars that frame content and never scroll — the title bar,
+   *                  docked panel headers, the terminal and preview toolbars
+   *   column   px-2  the nav rail and the app context column. Rows inside add
+   *                  their own px-2, which lands every label 16px from the
+   *                  column's edge — the line the column head is set to as well
+   *   page     px-6  full views — Apps, Skills, Help, Settings, the transcript
+   *                  and its composer. Headers py-4, bodies py-5
+   *
+   * Vertically, 6px (py-1.5) is the dense row and the only half-step in the
+   * system; 10px and 14px are not steps at all.
+   *
+   * `titlebar` is the one measured value. macOS draws the traffic lights as
+   * three 12px dots on a 20px pitch from `trafficLightPosition.x` (16), so the
+   * group ends at 68px. A page gutter past that is 92 — the widest step in the
+   * scale, which is the right distance between the OS's chrome and ours.
+   */
+  --spacing-titlebar: 92px;
 }
 
 /*

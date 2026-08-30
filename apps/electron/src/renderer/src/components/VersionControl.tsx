@@ -125,7 +125,7 @@ export function VersionControl({
         <h2 className="eyebrow text-ash">History</h2>
         <button
           onClick={loadVersionData}
-          className="rounded p-1 text-ash transition-colors hover:bg-raised hover:text-bone"
+          className="rounded p-1.5 text-ash transition-colors hover:bg-raised hover:text-bone"
           title="Reload history"
         >
           <RefreshIcon size={15} />
@@ -210,7 +210,7 @@ export function VersionControl({
 
           {/* Uncommitted work */}
           {state?.hasChanges && (
-            <div className="border-b border-line bg-brass/10 px-3 py-2.5">
+            <div className="border-b border-line bg-brass/10 px-3 py-3">
               <p className="text-[12.5px] text-bone">
                 {state.modifiedFiles.length} uncommitted change
                 {state.modifiedFiles.length === 1 ? '' : 's'}
@@ -236,7 +236,7 @@ export function VersionControl({
                 {history.map((commit, i) => (
                   <li
                     key={commit.oid}
-                    className="group relative flex items-start gap-2.5 rounded p-2 transition-colors hover:bg-raised/60"
+                    className="group relative flex items-start gap-2 rounded p-2 transition-colors hover:bg-raised/60"
                   >
                     <span
                       aria-hidden="true"
