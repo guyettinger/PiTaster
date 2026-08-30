@@ -4,7 +4,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { SourcesPanel } from './SourcesPanel'
+import { PermissionModeControl, describePermissionMode } from './PermissionModeControl'
 import { WarningIcon, CheckIcon } from './icons'
+import type { PermissionMode } from '../types/electron'
 
 /**
  * Application configuration.
@@ -73,12 +75,22 @@ interface FieldProps {
  */
 function Field({ label, hint, children }: FieldProps) {
   return (
-    <div className="mt-5">
+    <div className="mt-5 max-w-xl">
       <label className="block text-[12.5px] font-medium text-bone">{label}</label>
       <div className="mt-1.5">{children}</div>
       {hint && <p className="mt-1.5 text-[12px] text-ash">{hint}</p>}
     </div>
   )
+}
+
+/**
+ * Props for the Settings component.
+ */
+interface SettingsProps {
+  /** The agent's permission mode. */
+  permissionMode: PermissionMode
+  /** Change how much the agent is allowed to do. */
+  onModeChange: (mode: PermissionMode) => void
 }
 
 /**
@@ -89,7 +101,7 @@ function Field({ label, hint, children }: FieldProps) {
  * configuration stored under `~/.anyapp/sources`, not something scoped to the
  * app you happen to have open.
  */
-export function Settings() {
+export function Settings({ permissionMode, onModeChange }: SettingsProps) {
   const [tab, setTab] = useState<SettingsTab>('general')
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG)
   const [models, setModels] = useState<OllamaModel[]>([])
@@ -181,7 +193,7 @@ export function Settings() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-        <div className="max-w-2xl pb-8">
+        <div className="pb-8">
           {error && (
             <div className="mb-4 flex items-start gap-2 rounded-lg border border-rust/40 bg-rust/10 p-3">
               <span className="mt-0.5 shrink-0 text-rust">
@@ -196,6 +208,18 @@ export function Settings() {
               <p className="text-[13px] text-ash">Loading settings…</p>
             ) : (
               <>
+                {/* The composer is where this is normally set, but that only
+                    exists with an app open — so it is settable here too. */}
+                <Field
+                  label="Agent permissions"
+                  hint={describePermissionMode(permissionMode).hint}
+                >
+                  <PermissionModeControl
+                    mode={permissionMode}
+                    onModeChange={onModeChange}
+                  />
+                </Field>
+
                 <Field
                   label="Ollama server"
                   hint="anyapp runs entirely on local models. No API key is needed."

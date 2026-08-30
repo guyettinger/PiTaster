@@ -7,7 +7,7 @@ import { nanoid } from 'nanoid'
 import { MessageBubble } from './MessageBubble'
 import { InlineApproval } from './InlineApproval'
 import { ElementContextBubble } from './ElementContextBubble'
-import { describePermissionMode } from './PermissionModeControl'
+import { PermissionModeControl, describePermissionMode } from './PermissionModeControl'
 import type { Message, ContentBlock } from './MessageBubble'
 import type {
   PermissionMode,
@@ -33,8 +33,10 @@ interface Skill {
 interface ChatProps {
   /** The focused app this conversation is about. */
   app: SubApp
-  /** Current permission mode. Set from the shell header; shown here as context. */
+  /** Current permission mode. Set from this conversation's composer. */
   permissionMode: PermissionMode
+  /** Change how much the agent is allowed to do. */
+  onModeChange: (mode: PermissionMode) => void
   /** Callback when a skill is selected from the skills panel. */
   onSkillSelect?: (skill: Skill) => void
   /** Input ref for external control (e.g., inserting @mentions). */
@@ -124,6 +126,7 @@ function convertToSerializedBlocks(blocks: ContentBlock[]): SerializedContentBlo
 export function Chat({
   app,
   permissionMode,
+  onModeChange,
   inputRef: externalInputRef,
   externalInput,
   onExternalInputChange,
@@ -509,16 +512,21 @@ export function Chat({
             )}
           </div>
 
-          {messages.length > 0 && (
-            <div className="mt-2 flex justify-end">
+          {/* Always rendered: the mode is set here, so it has to be reachable
+              in an empty conversation too. `Clear this chat` is the part that
+              depends on there being something to clear. */}
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <PermissionModeControl mode={permissionMode} onModeChange={onModeChange} />
+
+            {messages.length > 0 && (
               <button
                 onClick={clearHistory}
                 className="rounded px-2 py-0.5 text-[11px] text-ash transition-colors hover:bg-raised hover:text-bone"
               >
                 Clear this chat
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>

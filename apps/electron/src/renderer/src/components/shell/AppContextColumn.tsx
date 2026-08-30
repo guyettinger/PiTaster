@@ -1,4 +1,5 @@
 import { PanelToggle } from './PanelToggle'
+import { AppServerBlock } from './AppServerBlock'
 import { ChatSessionList } from '../ChatSessionList'
 import { HistoryIcon, TerminalIcon, PreviewIcon, BranchIcon, CloseIcon } from '../icons'
 import type { SubApp } from '@anyapp/core'
@@ -95,6 +96,9 @@ export function AppContextColumn({
         onSessionSelect={onSessionSelect}
         onSessionCreate={onSessionCreate}
       />
+
+      {/* The app's own dev server, directly above the Preview toggle that shows it */}
+      <AppServerBlock appId={app.id} template={app.template} />
 
       {/* Inspectors on the workspace */}
       <div className="border-t border-line px-2 py-3">

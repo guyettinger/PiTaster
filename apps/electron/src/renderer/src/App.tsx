@@ -174,11 +174,7 @@ export function App() {
   return (
     <RunningAppsProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-ground text-bone">
-        <AppShellHeader
-          app={activeApp}
-          permissionMode={permissionMode}
-          onModeChange={handleModeChange}
-        />
+        <AppShellHeader app={activeApp} permissionMode={permissionMode} />
 
         <div className="flex min-h-0 flex-1">
           <NavRail panel={mainPanel} onNavigate={setMainPanel} />
@@ -214,6 +210,7 @@ export function App() {
                     <Chat
                       app={activeApp}
                       permissionMode={permissionMode}
+                      onModeChange={handleModeChange}
                       inputRef={chatInputRef}
                       externalInput={chatInput}
                       onExternalInputChange={setChatInput}
@@ -230,7 +227,12 @@ export function App() {
                   />
                 )}
                 {mainPanel === 'help' && <Help />}
-                {mainPanel === 'settings' && <Settings />}
+                {mainPanel === 'settings' && (
+                  <Settings
+                    permissionMode={permissionMode}
+                    onModeChange={handleModeChange}
+                  />
+                )}
               </div>
 
               {showDockedPanels && rightPanel === 'versions' && (

@@ -31,7 +31,7 @@ function HelpSection({
         <span className="text-ash">{isExpanded ? '−' : '+'}</span>
       </button>
       {isExpanded && (
-        <div className="border-t border-line p-4">
+        <div className="border-t border-line p-4 [&_p]:max-w-prose">
           {children}
         </div>
       )}
@@ -87,7 +87,7 @@ export function Help() {
 
       {/* Content */}
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-        <div className="max-w-4xl space-y-6">
+        <div className="space-y-6">
           
           {/* Quick Start */}
           <HelpSection title="Quick start" defaultExpanded={true}>
@@ -117,9 +117,10 @@ export function Help() {
           <HelpSection title="Permission modes">
             <div className="space-y-4">
               <p className="text-bone">
-                Set the mode in the header, next to the run controls. The header&rsquo;s
-                bottom hairline takes the mode&rsquo;s color, so the top of the window always
-                shows how much the agent is allowed to do.
+                Set the mode under the chat composer, where it takes effect — or in
+                Settings when no app is open. The header&rsquo;s bottom hairline takes the
+                mode&rsquo;s color, so the top of the window always shows how much the
+                agent is allowed to do.
               </p>
               
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -343,7 +344,7 @@ export function Help() {
                   <ul className="text-sm text-bone mt-2 space-y-1">
                     <li>• Be specific about what you want to change</li>
                     <li>• Use @enhance-ui for UI-related requests</li>
-                    <li>• Start with "Ask to Edit" mode if you're new</li>
+                    <li>• Start in "Ask to edit" mode if you're new</li>
                     <li>• Test changes in the UI before moving on</li>
                     <li>• Create branches for experimental features</li>
                   </ul>
