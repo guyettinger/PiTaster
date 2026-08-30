@@ -95,7 +95,22 @@ steps, and reintroducing one is what makes the shell drift.
 
 Buttons come in two sizes: `px-3 py-1.5` inside a bar, `px-4 py-2` for a page
 action. Icon-only buttons are `p-1.5`, or `p-1` when they sit inside a 13px
-row. Adjacent buttons always share a size.
+row. Adjacent buttons always share a size. Every button needs a hit area — a
+bare text label with no padding is not a target.
+
+**A stack owns its own gaps.** Never put `my-*` on a component that renders
+into a `space-y-*` parent. Tailwind v4 emits space-y inside `:where()`, which
+has zero specificity, so the child's margin silently *overrides* the parent's
+rhythm instead of adding to it — and the parent looks like it is in control
+when it is not. Gaps belong to the list; padding belongs to the item.
+
+Blocks stacked in the same column share one horizontal inset, so their content
+reads as one column. In the chat transcript that is `px-4` for message bubbles,
+tool bubbles, approval records and the approval gate alike; vertical padding
+still tracks each one's density.
+
+Chrome is drawn from `components/icons`, never from an emoji. The only emoji in
+the UI are the app-listing template glyphs, which are content.
 
 The title bar's left padding is `pl-titlebar`, a measured token that clears the
 macOS traffic lights. Don't hardcode it — the arithmetic depends on

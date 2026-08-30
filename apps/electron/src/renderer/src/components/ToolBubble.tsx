@@ -140,7 +140,7 @@ export function ToolBubble({ tool, status, input, output, error }: ToolBubblePro
   
   return (
     <div 
-      className={`my-2 rounded-lg border px-3 py-2 ${getStatusStyle(status)}`}
+      className={`rounded-lg border px-4 py-2 ${getStatusStyle(status)}`}
     >
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -167,7 +167,7 @@ export function ToolBubble({ tool, status, input, output, error }: ToolBubblePro
         {(input || output) && (
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="text-xs text-ash hover:text-bone"
+            className="-mr-2 rounded px-2 py-1 text-xs text-ash transition-colors hover:bg-raised hover:text-bone"
           >
             {isExpanded ? 'Hide' : 'Details'}
           </button>

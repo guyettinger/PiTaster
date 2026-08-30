@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
-import { ArrowLeftIcon, RefreshIcon, GlobeIcon, SearchIcon, CheckIcon } from './icons'
+import { ArrowLeftIcon, RefreshIcon, GlobeIcon, SearchIcon, CheckIcon, WarningIcon } from './icons'
 import { useRunningApps } from '../context/RunningAppsContext'
 
 /**
@@ -308,7 +308,9 @@ export function PreviewPanel({ appId, isVisible }: PreviewPanelProps) {
         {/* Error state */}
         {error && running && (
           <div className="flex h-full flex-col items-center justify-center text-ash">
-            <div className="mb-3 text-4xl">⚠️</div>
+            <span className="mb-3 text-rust">
+              <WarningIcon size={28} />
+            </span>
             <h3 className="mb-1 font-medium text-rust">Load Error</h3>
             <p className="mb-3 text-sm">{error}</p>
             <button
