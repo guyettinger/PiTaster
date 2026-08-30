@@ -1,15 +1,90 @@
 import { app, BrowserWindow, nativeImage } from 'electron'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import sharp from 'sharp'
 import { dockIconSvg } from '@anyapp/shared'
 import { setupIpcHandlers, cleanupIpcHandlers, initializeConfig, initializeSources } from './ipc'
+import { isSafeExternalUrl, openExternalUrl } from './external-links'
 
 /** Directory of this module, for resolving bundled assets under ESM. */
 const moduleDir = dirname(fileURLToPath(import.meta.url))
 
 /** Reference to the main window for cleanup. */
 let mainWindow: BrowserWindow | null = null
+
+/** The packaged renderer entry, loaded in production builds. */
+const rendererFile = join(moduleDir, '../renderer/index.html')
+
+/**
+ * Whether a URL is the renderer itself, and so may be navigated to.
+ *
+ * The dev server is matched by origin, not by exact URL, because Vite changes
+ * path and query across HMR reloads. The production bundle is matched on its
+ * exact path: `file:` as a whole is far too broad a grant, since it would let
+ * a link navigate the window to any readable file on the machine and render
+ * its contents.
+ * @param url - The navigation target
+ * @returns True when the target is the app's own renderer
+ */
+function isRendererUrl(url: string): boolean {
+  try {
+    const target = new URL(url)
+
+    if (target.protocol === 'file:') {
+      // Query and fragment must be empty too. The app loads the bundle with
+      // neither, and `will-navigate` does not fire for in-page fragment
+      // changes — so anything carrying one here is a full reload of the
+      // renderer, which would silently discard the in-memory transcript.
+      return (
+        target.pathname === pathToFileURL(rendererFile).pathname &&
+        target.search === '' &&
+        target.hash === ''
+      )
+    }
+
+    const devServerUrl = process.env['ELECTRON_RENDERER_URL']
+    return devServerUrl !== undefined && target.origin === new URL(devServerUrl).origin
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Confines the main window to the renderer and routes outward links to the OS.
+ *
+ * The chat transcript renders model-authored markdown, so its links are
+ * untrusted. Without these guards a single link could navigate the whole
+ * window off the renderer — which would drop the app's UI and leave a remote
+ * page sitting behind the context bridge. Nothing is allowed to replace the
+ * renderer, and nothing is allowed to open a second window.
+ * @param window - The window to confine
+ */
+function guardNavigation(window: BrowserWindow): void {
+  // Anything that would spawn a window (target=_blank, window.open) is denied
+  // outright; an http(s) target is handed to the user's browser instead.
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (isSafeExternalUrl(url)) {
+      void openExternalUrl(url).catch((error) => {
+        console.error('Failed to open external URL:', error)
+      })
+    }
+    return { action: 'deny' }
+  })
+
+  // Top-level navigation stays on the renderer. This is scoped to the window's
+  // own webContents, so the `<webview>` in the preview panel — which exists to
+  // navigate — is unaffected.
+  window.webContents.on('will-navigate', (event, url) => {
+    if (!isRendererUrl(url)) {
+      event.preventDefault()
+      if (isSafeExternalUrl(url)) {
+        void openExternalUrl(url).catch((error) => {
+          console.error('Failed to open external URL:', error)
+        })
+      }
+    }
+  })
+}
 
 /**
  * Creates the main application window.
@@ -35,6 +110,8 @@ function createWindow(): void {
     show: false
   })
 
+  guardNavigation(mainWindow)
+
   // Setup IPC handlers for agent communication
   setupIpcHandlers(mainWindow)
 
@@ -58,7 +135,7 @@ function createWindow(): void {
     }
   } else {
     // In production, load from built files
-    mainWindow.loadFile(join(moduleDir, '../renderer/index.html'))
+    mainWindow.loadFile(rendererFile)
   }
 }
 

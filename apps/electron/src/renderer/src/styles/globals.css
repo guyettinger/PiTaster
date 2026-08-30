@@ -123,6 +123,71 @@
   }
 }
 
+/*
+ * Syntax highlighting for fenced code in the chat transcript.
+ *
+ * highlight.js emits `hljs-*` class names and ships stock themes to go with
+ * them, but every one of those themes carries its own palette and would put a
+ * second, louder color system inside a UI whose whole argument is that only
+ * brass and patina are saturated. So the tokens are mapped onto the existing
+ * palette instead: brass for the language's own words, patina for literal
+ * data, ash for anything the compiler ignores.
+ */
+@layer base {
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-literal,
+  .hljs-doctag,
+  .hljs-name {
+    color: var(--color-brass);
+  }
+
+  .hljs-string,
+  .hljs-regexp,
+  .hljs-addition,
+  .hljs-attribute,
+  .hljs-meta .hljs-string {
+    color: var(--color-patina);
+  }
+
+  .hljs-comment,
+  .hljs-quote,
+  .hljs-meta,
+  .hljs-deletion {
+    color: var(--color-ash);
+    font-style: italic;
+  }
+
+  .hljs-number,
+  .hljs-symbol,
+  .hljs-bullet,
+  .hljs-link,
+  .hljs-variable,
+  .hljs-template-variable {
+    color: var(--color-rust);
+  }
+
+  /* Identifiers the reader is scanning for: brighter than body code, unhued. */
+  .hljs-title,
+  .hljs-section,
+  .hljs-function .hljs-title,
+  .hljs-class .hljs-title,
+  .hljs-type,
+  .hljs-built_in,
+  .hljs-attr {
+    color: var(--color-bone);
+    font-weight: 600;
+  }
+
+  .hljs-emphasis {
+    font-style: italic;
+  }
+
+  .hljs-strong {
+    font-weight: 700;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

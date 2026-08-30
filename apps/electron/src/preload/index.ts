@@ -754,6 +754,17 @@ const electronAPI = {
   },
 
   /**
+   * Open an external link in the user's default browser.
+   *
+   * Used by links in the chat transcript, which are model-authored. The main
+   * process rejects anything that is not an absolute `http:`/`https:` URL.
+   * @param url - The URL to open
+   */
+  openExternalUrl: (url: string): Promise<void> => {
+    return ipcRenderer.invoke('shell:open-external', url)
+  },
+
+  /**
    * Install dependencies for an app.
    * @param id - The app ID
    */

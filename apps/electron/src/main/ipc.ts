@@ -19,6 +19,7 @@ import {
   type OllamaModel
 } from './agent/ollama'
 import { captureElement, type ElementInfo } from './screenshot'
+import { openExternalUrl } from './external-links'
 
 /** Directory of this module, for resolving bundled assets under ESM. */
 const moduleDir = dirname(fileURLToPath(import.meta.url))
@@ -970,6 +971,12 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     await shell.openExternal(info.url)
   })
 
+  // Links in the chat transcript are written by the model, so the URL arriving
+  // here is untrusted. `openExternalUrl` validates it before the OS sees it.
+  ipcMain.handle('shell:open-external', async (_, url: unknown) => {
+    await openExternalUrl(url)
+  })
+
   ipcMain.handle('apps:install-deps', async (_, id: string) => {
     if (typeof id !== 'string' || id.length === 0) {
       throw new Error('Invalid app ID')
@@ -1105,6 +1112,7 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('apps:is-running')
   ipcMain.removeHandler('apps:get-running-info')
   ipcMain.removeHandler('apps:open-browser')
+  ipcMain.removeHandler('shell:open-external')
   ipcMain.removeHandler('apps:install-deps')
 
   // Stop all running apps on cleanup

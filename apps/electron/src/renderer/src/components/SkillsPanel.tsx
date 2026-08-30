@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { SkillsIcon, SearchIcon, RefreshIcon, ChevronDownIcon } from './icons'
+import { Markdown } from './Markdown'
 
 /**
  * Skill definition.
@@ -170,11 +171,10 @@ export function SkillsPanel({ onSkillSelect, canInsertMention }: SkillsPanelProp
                   </div>
 
                   {expandedSkill === skill.name && (
-                    <div className="border-t border-line bg-ground p-3">
-                      <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed text-ash">
-                        {skill.content.slice(0, 1200)}
-                        {skill.content.length > 1200 && '\n…'}
-                      </pre>
+                    <div className="max-h-72 overflow-auto border-t border-line bg-ground p-3">
+                      {/* The loader has already stripped YAML frontmatter, so
+                          this is the skill body — which is plain markdown. */}
+                      <Markdown content={skill.content} />
                     </div>
                   )}
                 </li>
