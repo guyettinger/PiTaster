@@ -86,21 +86,25 @@ export function AppListing({ onAppSelect, activeAppId }: AppListingProps) {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-line px-6 py-4">
-        <div>
-          <h1 className="text-[15px] font-semibold text-bone">Apps</h1>
-          <p className="text-[12px] text-ash">
-            Sandboxed projects the agent builds and modifies, in{' '}
-            <code className="font-mono">~/.anyapp/apps</code>
-          </p>
+      <div className="border-b border-line px-6 py-4">
+        {/* The header's row takes the body's cap, so its action ends where the
+            cards below it end rather than out at the page gutter. */}
+        <div className="flex max-w-4xl items-center justify-between">
+          <div>
+            <h1 className="text-[15px] font-semibold text-bone">Apps</h1>
+            <p className="text-[12px] text-ash">
+              Sandboxed projects the agent builds and modifies, in{' '}
+              <code className="font-mono">~/.anyapp/apps</code>
+            </p>
+          </div>
+          <button
+            onClick={() => setIsCreating(true)}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brass px-3 py-1.5 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
+          >
+            <PlusIcon size={14} />
+            New app
+          </button>
         </div>
-        <button
-          onClick={() => setIsCreating(true)}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brass px-3 py-1.5 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
-        >
-          <PlusIcon size={14} />
-          New app
-        </button>
       </div>
 
       {/* Error */}
@@ -138,17 +142,21 @@ export function AppListing({ onAppSelect, activeAppId }: AppListingProps) {
         ) : apps.length === 0 ? (
           <EmptyState onCreateClick={() => setIsCreating(true)} />
         ) : (
-          <ul className="max-w-4xl space-y-2 px-6 py-5">
-            {apps.map(app => (
-              <AppCard
-                key={app.id}
-                app={app}
-                isActive={app.id === activeAppId}
-                onSelect={() => onAppSelect(app)}
-                onDelete={() => handleDelete(app)}
-              />
-            ))}
-          </ul>
+          <div className="px-6 py-5">
+            {/* The cap sits on the list, not the padded box, or the cards come
+                out 48px narrower than the header row above them. */}
+            <ul className="max-w-4xl space-y-2">
+              {apps.map(app => (
+                <AppCard
+                  key={app.id}
+                  app={app}
+                  isActive={app.id === activeAppId}
+                  onSelect={() => onAppSelect(app)}
+                  onDelete={() => handleDelete(app)}
+                />
+              ))}
+            </ul>
+          </div>
         )}
       </div>
     </div>

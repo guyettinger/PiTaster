@@ -27,7 +27,7 @@ function HelpSection({
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-raised/50"
       >
-        <h2 className="text-lg font-semibold text-bone">{title}</h2>
+        <h2 className="text-[14px] font-semibold text-bone">{title}</h2>
         <span className="text-ash">{isExpanded ? '−' : '+'}</span>
       </button>
       {isExpanded && (

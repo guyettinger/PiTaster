@@ -223,20 +223,20 @@ export function VersionControl({
           )}
 
           {/* Commits */}
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          <div className="min-h-0 flex-1 overflow-y-auto py-2">
             {history.length === 0 ? (
-              <p className="p-1 text-[13px] text-ash">No commits yet</p>
+              <p className="px-3 text-[13px] text-ash">No commits yet</p>
             ) : (
               <ol className="relative">
                 {/* The spine every commit hangs off. */}
                 <span
                   aria-hidden="true"
-                  className="absolute bottom-3 left-[13px] top-3 w-px bg-line"
+                  className="absolute bottom-3 left-4 top-3 w-px bg-line"
                 />
                 {history.map((commit, i) => (
                   <li
                     key={commit.oid}
-                    className="group relative flex items-start gap-2 rounded p-2 transition-colors hover:bg-raised/60"
+                    className="group relative flex items-start gap-2 px-3 py-2 transition-colors hover:bg-raised/60"
                   >
                     <span
                       aria-hidden="true"
@@ -255,7 +255,7 @@ export function VersionControl({
                     {i > 0 && (
                       <button
                         onClick={() => handleRollback(commit.oid)}
-                        className="hidden shrink-0 rounded px-1.5 py-0.5 text-[11.5px] text-ash transition-colors hover:bg-line hover:text-patina group-hover:block"
+                        className="hidden shrink-0 rounded px-1.5 py-0.5 text-[11.5px] text-ash transition-colors hover:bg-line hover:text-patina group-hover:block group-focus-within:block"
                         title={`Roll the app back to ${commit.oid.slice(0, 7)}`}
                       >
                         Restore

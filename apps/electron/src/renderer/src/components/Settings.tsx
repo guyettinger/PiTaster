@@ -154,7 +154,9 @@ export function Settings() {
     <div className="flex h-full flex-col">
       <header className="border-b border-line px-6 pt-4">
         <h1 className="text-[15px] font-semibold text-bone">Settings</h1>
-        <nav className="mt-3 flex gap-1" aria-label="Settings sections">
+        {/* -ml-3 cancels the first tab's own px-3, so its label starts on the
+            page gutter rather than 12px inside it. */}
+        <nav className="-ml-3 mt-3 flex gap-1" aria-label="Settings sections">
           {TABS.map((entry) => (
             <button
               key={entry.id}

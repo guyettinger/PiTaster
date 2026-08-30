@@ -83,7 +83,7 @@ export function AppContextColumn({
         <button
           onClick={onCloseApp}
           title={`Close ${app.name}`}
-          className="shrink-0 rounded p-1 text-ash opacity-0 transition-opacity hover:text-bone group-hover/head:opacity-100"
+          className="shrink-0 rounded p-1 text-ash opacity-0 transition-opacity hover:text-bone group-hover/head:opacity-100 group-focus-within/head:opacity-100"
         >
           <CloseIcon size={14} />
         </button>

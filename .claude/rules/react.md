@@ -81,11 +81,15 @@ The scale is Tailwind's 4px grid, documented in full at the top of
 
 | Environment | Gutter | Where |
 |-------------|--------|-------|
-| Chrome bars | `px-3` | Title bar, docked panel headers, terminal/preview toolbars |
+| Chrome | `px-3` | Title bar, and docked panels throughout — header and body |
 | Columns | `px-2` | Nav rail, app context column. Rows add their own `px-2` |
 | Pages | `px-6` | Apps, Skills, Help, Settings, the transcript and composer |
 
-Page headers are `py-4`, page bodies `py-5`. `py-1.5` (6px) is the dense row
+Page headers are `py-4`, page bodies `py-5`. A page header's own row takes the
+body's `max-w-*`, so a right-aligned action ends where the content it acts on
+ends instead of floating out at the page gutter. A scrolling list inside a
+docked panel goes full-bleed and carries `px-3` on its rows, so they sit on the
+panel's line. `py-1.5` (6px) is the dense row
 and the only half-step in the system — `p-2.5`, `py-3.5` and friends are not
 steps, and reintroducing one is what makes the shell drift.
 
