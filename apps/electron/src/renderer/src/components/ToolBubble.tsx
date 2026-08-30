@@ -3,7 +3,20 @@
  */
 
 import { useState } from 'react'
+import {
+  FileIcon,
+  FileEditIcon,
+  FolderIcon,
+  CommandIcon,
+  SearchIcon,
+  BranchIcon,
+  HistoryIcon,
+  SourceIcon,
+  ToolIcon
+} from './icons'
 import { isMcpToolName, parseMcpToolName, summarizeMcpInput } from '../lib/mcpToolDisplay'
+import type { ComponentType } from 'react'
+import type { IconProps } from './icons'
 
 /**
  * Props for the ToolBubble component.
@@ -22,33 +35,47 @@ interface ToolBubbleProps {
 }
 
 /**
- * Returns a user-friendly label for a tool name.
+ * How a tool is presented in the transcript.
  */
-function getToolLabel(tool: string): { icon: string; label: string } {
-  // MCP tools are named per connected source, so they cannot be enumerated in the
-  // map below. Label them by server and tool rather than by the raw qualified name.
+interface ToolDisplay {
+  /** The glyph for this tool. */
+  Icon: ComponentType<IconProps>
+  /** The tool's name, as a person would say it. */
+  label: string
+}
+
+/** Every built-in tool Pi exposes, plus anyapp's own version-control tools. */
+const TOOL_DISPLAY: Record<string, ToolDisplay> = {
+  bash: { Icon: CommandIcon, label: 'Command' },
+  read: { Icon: FileIcon, label: 'Read file' },
+  write: { Icon: FileEditIcon, label: 'Write file' },
+  edit: { Icon: FileEditIcon, label: 'Edit file' },
+  ls: { Icon: FolderIcon, label: 'List files' },
+  find: { Icon: SearchIcon, label: 'Find files' },
+  grep: { Icon: SearchIcon, label: 'Search' },
+  create_branch: { Icon: BranchIcon, label: 'Create branch' },
+  switch_branch: { Icon: BranchIcon, label: 'Switch branch' },
+  list_branches: { Icon: BranchIcon, label: 'List branches' },
+  get_history: { Icon: HistoryIcon, label: 'History' },
+  rollback: { Icon: HistoryIcon, label: 'Roll back' },
+  git_status: { Icon: HistoryIcon, label: 'Git status' }
+}
+
+/**
+ * Returns how to present a tool call.
+ *
+ * @param tool - The tool name as the agent reported it
+ * @returns The glyph and label to show
+ */
+function getToolDisplay(tool: string): ToolDisplay {
+  // MCP tools are named per connected source, so they cannot be enumerated
+  // above. Label them by server and tool rather than by the raw qualified name.
   const mcp = parseMcpToolName(tool)
   if (mcp) {
-    return { icon: '🔌', label: `${mcp.sourceId} → ${mcp.toolName}` }
+    return { Icon: SourceIcon, label: `${mcp.sourceId} → ${mcp.toolName}` }
   }
 
-  const toolMap: Record<string, { icon: string; label: string }> = {
-    bash: { icon: '⌘', label: 'Command' },
-    read: { icon: '📄', label: 'Read File' },
-    write: { icon: '✏️', label: 'Write File' },
-    edit: { icon: '✏️', label: 'Edit File' },
-    ls: { icon: '📁', label: 'List Files' },
-    find: { icon: '🔍', label: 'Find Files' },
-    grep: { icon: '🔍', label: 'Search' },
-    create_branch: { icon: '🌿', label: 'Create Branch' },
-    switch_branch: { icon: '🔀', label: 'Switch Branch' },
-    list_branches: { icon: '🌳', label: 'List Branches' },
-    get_history: { icon: '📜', label: 'History' },
-    rollback: { icon: '⏪', label: 'Rollback' },
-    git_status: { icon: '📊', label: 'Git Status' },
-    default: { icon: '🔧', label: tool }
-  }
-  return toolMap[tool] ?? toolMap.default
+  return TOOL_DISPLAY[tool] ?? { Icon: ToolIcon, label: tool }
 }
 
 /**
@@ -56,20 +83,17 @@ function getToolLabel(tool: string): { icon: string; label: string } {
  */
 function getStatusStyle(status: ToolBubbleProps['status']): string {
   switch (status) {
+    // Only states that want something from you are tinted. "Complete" is the
+    // common case, so it stays neutral — otherwise a long transcript becomes a
+    // wall of colored panels and the tint stops meaning anything.
     case 'pending':
-      return 'border-yellow-600 bg-yellow-900/20'
     case 'running':
-      return 'border-blue-600 bg-blue-900/20 animate-pulse'
-    case 'complete':
-      return 'border-green-600 bg-green-900/20'
+      return 'border-brass/40 bg-brass/10'
     case 'error':
-      return 'border-red-600 bg-red-900/20'
-    case 'approved':
-      return 'border-green-600 bg-green-900/30'
     case 'denied':
-      return 'border-red-600 bg-red-900/20'
+      return 'border-rust/40 bg-rust/10'
     default:
-      return 'border-neutral-600 bg-neutral-800'
+      return 'border-line bg-panel'
   }
 }
 
@@ -111,7 +135,7 @@ function getInputSummary(tool: string, input?: Record<string, unknown>): string 
  */
 export function ToolBubble({ tool, status, input, output, error }: ToolBubbleProps) {
   const [isExpanded, setIsExpanded] = useState(false)
-  const { icon, label } = getToolLabel(tool)
+  const { Icon: ToolGlyph, label } = getToolDisplay(tool)
   const summary = getInputSummary(tool, input)
   
   return (
@@ -121,19 +145,21 @@ export function ToolBubble({ tool, status, input, output, error }: ToolBubblePro
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-lg">{icon}</span>
-          <span className="text-sm font-medium text-neutral-200">{label}</span>
+          <span className="text-ash">
+            <ToolGlyph size={15} />
+          </span>
+          <span className="text-sm font-medium text-bone">{label}</span>
           {status === 'running' && (
-            <span className="text-xs text-blue-400">Running...</span>
+            <span className="animate-pulse text-xs text-brass">Running…</span>
           )}
           {status === 'approved' && (
-            <span className="text-xs text-green-400">✓ Approved</span>
+            <span className="text-xs text-patina">Approved</span>
           )}
           {status === 'denied' && (
-            <span className="text-xs text-red-400">✗ Denied</span>
+            <span className="text-xs text-rust">Denied</span>
           )}
           {status === 'complete' && (
-            <span className="text-xs text-green-400">✓ Complete</span>
+            <span className="text-xs text-ash">Complete</span>
           )}
         </div>
         
@@ -141,7 +167,7 @@ export function ToolBubble({ tool, status, input, output, error }: ToolBubblePro
         {(input || output) && (
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="text-xs text-neutral-400 hover:text-neutral-200"
+            className="text-xs text-ash hover:text-bone"
           >
             {isExpanded ? 'Hide' : 'Details'}
           </button>
@@ -150,7 +176,7 @@ export function ToolBubble({ tool, status, input, output, error }: ToolBubblePro
       
       {/* Summary line */}
       {summary && (
-        <div className="mt-1 font-mono text-xs text-neutral-400 truncate">
+        <div className="mt-1 font-mono text-xs text-ash truncate">
           {summary}
         </div>
       )}
@@ -159,17 +185,17 @@ export function ToolBubble({ tool, status, input, output, error }: ToolBubblePro
       {isExpanded && (
         <div className="mt-2 space-y-2">
           {input && (
-            <div className="rounded bg-neutral-900 p-2">
-              <div className="text-xs font-medium text-neutral-500 mb-1">Input</div>
-              <pre className="text-xs text-neutral-300 overflow-auto max-h-32">
+            <div className="rounded bg-panel p-2">
+              <div className="text-xs font-medium text-ash mb-1">Input</div>
+              <pre className="text-xs text-bone overflow-auto max-h-32">
                 {JSON.stringify(input, null, 2)}
               </pre>
             </div>
           )}
           {output && (
-            <div className="rounded bg-neutral-900 p-2">
-              <div className="text-xs font-medium text-neutral-500 mb-1">Output</div>
-              <pre className="text-xs text-neutral-300 overflow-auto max-h-32 whitespace-pre-wrap">
+            <div className="rounded bg-panel p-2">
+              <div className="text-xs font-medium text-ash mb-1">Output</div>
+              <pre className="text-xs text-bone overflow-auto max-h-32 whitespace-pre-wrap">
                 {output}
               </pre>
             </div>
@@ -179,7 +205,7 @@ export function ToolBubble({ tool, status, input, output, error }: ToolBubblePro
       
       {/* Error display */}
       {error && (
-        <div className="mt-2 text-xs text-red-400">
+        <div className="mt-2 text-xs text-rust">
           Error: {error}
         </div>
       )}

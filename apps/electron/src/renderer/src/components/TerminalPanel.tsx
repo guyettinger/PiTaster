@@ -3,19 +3,19 @@ import { useRunningApps } from '../context/RunningAppsContext'
 
 /** ANSI color code mappings. */
 const ANSI_COLORS: Record<string, string> = {
-  '30': 'text-neutral-900',
-  '31': 'text-red-500',
-  '32': 'text-green-500',
-  '33': 'text-yellow-500',
-  '34': 'text-blue-500',
+  '30': 'text-ash',
+  '31': 'text-rust',
+  '32': 'text-patina',
+  '33': 'text-brass',
+  '34': 'text-brass',
   '35': 'text-purple-500',
   '36': 'text-cyan-500',
-  '37': 'text-neutral-200',
-  '90': 'text-neutral-500',
-  '91': 'text-red-400',
-  '92': 'text-green-400',
-  '93': 'text-yellow-400',
-  '94': 'text-blue-400',
+  '37': 'text-bone',
+  '90': 'text-ash',
+  '91': 'text-rust',
+  '92': 'text-patina',
+  '93': 'text-brass',
+  '94': 'text-brass',
   '95': 'text-purple-400',
   '96': 'text-cyan-400',
   '97': 'text-white',
@@ -116,16 +116,16 @@ export function TerminalPanel({ appId, isVisible }: TerminalPanelProps) {
   if (!isVisible) return null
 
   return (
-    <div className="flex h-full flex-col bg-neutral-950">
+    <div className="flex h-full flex-col bg-ground">
       {/* Toolbar */}
-      <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
+      <div className="flex items-center justify-between border-b border-line px-3 py-2">
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium">Terminal</span>
           {status && (
             <span className={`text-xs ${
-              status === 'running' ? 'text-green-500' : 
-              status === 'starting' ? 'text-yellow-500' :
-              status === 'error' ? 'text-red-500' : 'text-neutral-500'
+              status === 'running' ? 'text-patina' : 
+              status === 'starting' ? 'text-brass' :
+              status === 'error' ? 'text-rust' : 'text-ash'
             }`}>
               {status}
             </span>
@@ -137,7 +137,7 @@ export function TerminalPanel({ appId, isVisible }: TerminalPanelProps) {
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as typeof filter)}
-            className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs"
+            className="rounded border border-line bg-raised px-2 py-1 text-xs"
           >
             <option value="all">All</option>
             <option value="stdout">stdout</option>
@@ -149,7 +149,7 @@ export function TerminalPanel({ appId, isVisible }: TerminalPanelProps) {
           <button
             onClick={() => setShowTimestamps(!showTimestamps)}
             className={`rounded px-2 py-1 text-xs ${
-              showTimestamps ? 'bg-neutral-700' : 'hover:bg-neutral-800'
+              showTimestamps ? 'bg-line' : 'hover:bg-raised'
             }`}
             title="Toggle timestamps"
           >
@@ -160,7 +160,7 @@ export function TerminalPanel({ appId, isVisible }: TerminalPanelProps) {
           <button
             onClick={() => setAutoScroll(!autoScroll)}
             className={`rounded px-2 py-1 text-xs ${
-              autoScroll ? 'bg-neutral-700' : 'hover:bg-neutral-800'
+              autoScroll ? 'bg-line' : 'hover:bg-raised'
             }`}
             title={autoScroll ? 'Auto-scroll on' : 'Auto-scroll off'}
           >
@@ -170,7 +170,7 @@ export function TerminalPanel({ appId, isVisible }: TerminalPanelProps) {
           {/* Clear */}
           <button
             onClick={() => clearLogs(appId)}
-            className="rounded px-2 py-1 text-xs hover:bg-neutral-800"
+            className="rounded px-2 py-1 text-xs hover:bg-raised"
             title="Clear logs"
           >
             Clear
@@ -185,7 +185,7 @@ export function TerminalPanel({ appId, isVisible }: TerminalPanelProps) {
         className="flex-1 overflow-y-auto p-3 font-mono text-sm"
       >
         {filteredLogs.length === 0 ? (
-          <div className="text-neutral-500">
+          <div className="text-ash">
             {status === 'starting' ? 'Starting...' : 'No logs yet. Run the app to see output.'}
           </div>
         ) : (
@@ -193,17 +193,17 @@ export function TerminalPanel({ appId, isVisible }: TerminalPanelProps) {
             <div
               key={`${log.timestamp}-${index}`}
               className={`whitespace-pre-wrap ${
-                log.type === 'stderr' ? 'text-red-400' :
-                log.type === 'system' ? 'text-blue-400' : ''
+                log.type === 'stderr' ? 'text-rust' :
+                log.type === 'system' ? 'text-brass' : ''
               }`}
             >
               {showTimestamps && (
-                <span className="mr-2 text-neutral-600">
+                <span className="mr-2 text-ash">
                   [{formatTimestamp(log.timestamp)}]
                 </span>
               )}
               {log.type === 'system' && (
-                <span className="mr-1 text-blue-500">[system]</span>
+                <span className="mr-1 text-brass">[system]</span>
               )}
               {parseAnsi(log.message)}
             </div>

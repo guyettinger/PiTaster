@@ -26,3 +26,7 @@ export { getTemplate, getTemplates } from './apps/templates.js'
 // Chat
 export { ChatHistoryManager } from './chat/manager.js'
 export { getAppPath, getAppSessionDir, getPiAgentDir } from './chat/session-paths.js'
+
+// Branding
+export { dockIconSvg, LOGO_COLORS } from './branding/logo.js'
+export type { DockIconOptions } from './branding/logo.js'

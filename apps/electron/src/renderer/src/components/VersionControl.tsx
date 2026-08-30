@@ -1,12 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
+import { RefreshIcon, PlusIcon } from './icons'
 import type { Branch, Commit, VersionState } from '../types/electron'
 
 /**
  * Props for the VersionControl component.
  */
 interface VersionControlProps {
-  /** Whether version control panel is visible. */
-  isVisible: boolean
   /** Path to the app directory for git operations. */
   appPath: string
   /** Callback when rollback is triggered. */
@@ -32,10 +31,12 @@ function formatTime(iso: string): string {
 }
 
 /**
- * Version control panel component showing branches and commit history.
+ * The focused app's branches and commit history, docked beside the workspace.
+ *
+ * The shell owns this panel's frame — width, background, and border — so the
+ * component contributes only its content.
  */
 export function VersionControl({
-  isVisible,
   appPath,
   onRollback,
   onBranchSwitch,
@@ -50,7 +51,7 @@ export function VersionControl({
   const [error, setError] = useState<string | null>(null)
 
   const loadVersionData = useCallback(async () => {
-    if (!isVisible || !appPath) return
+    if (!appPath) return
     
     try {
       setIsLoading(true)
@@ -69,13 +70,11 @@ export function VersionControl({
     } finally {
       setIsLoading(false)
     }
-  }, [isVisible, appPath])
+  }, [appPath])
 
   useEffect(() => {
-    if (isVisible) {
-      loadVersionData()
-    }
-  }, [isVisible, loadVersionData])
+    loadVersionData()
+  }, [loadVersionData])
 
   const handleBranchSwitch = useCallback(
     async (branchName: string) => {
@@ -120,68 +119,59 @@ export function VersionControl({
     [appPath, onRollback, loadVersionData]
   )
 
-  if (!isVisible) return null
-
   return (
-    <div className="flex w-72 flex-col border-l border-neutral-800 bg-neutral-900">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
-        <h2 className="text-sm font-medium text-neutral-300">Version Control</h2>
+    <div className="flex h-full flex-col">
+      <header className="flex items-center justify-between border-b border-line px-3 py-2">
+        <h2 className="eyebrow text-ash">History</h2>
         <button
           onClick={loadVersionData}
-          className="rounded p-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
-          title="Refresh"
+          className="rounded p-1 text-ash transition-colors hover:bg-raised hover:text-bone"
+          title="Reload history"
         >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
+          <RefreshIcon size={15} />
         </button>
-      </div>
+      </header>
 
       {isLoading ? (
-        <div className="flex flex-1 items-center justify-center">
-          <span className="text-sm text-neutral-500">Loading...</span>
-        </div>
+        <p className="flex flex-1 items-center justify-center text-[13px] text-ash">Loading…</p>
       ) : error ? (
         <div className="p-3">
-          <p className="text-sm text-red-400">{error}</p>
+          <p className="text-[13px] text-bone">{error}</p>
           <button
             onClick={loadVersionData}
-            className="mt-2 text-sm text-blue-400 hover:underline"
+            className="mt-2 text-[13px] text-brass hover:underline"
           >
-            Retry
+            Try again
           </button>
         </div>
       ) : !state?.head ? (
         <div className="flex flex-1 flex-col items-center justify-center p-4 text-center">
-          <p className="text-sm text-neutral-400">No git repository found or no commits yet.</p>
-          <p className="mt-2 text-xs text-neutral-500">
-            Initialize a git repository with at least one commit to enable version control.
+          <p className="text-[13px] text-bone">Nothing committed yet</p>
+          <p className="mt-1.5 text-[12px] text-ash">
+            The first change the agent writes starts this app&rsquo;s history.
           </p>
         </div>
       ) : (
         <>
-          {/* Branch Selector */}
-          <div className="border-b border-neutral-800 p-3">
-            <label className="text-xs font-medium text-neutral-500">Branch</label>
+          {/* Branch */}
+          <div className="border-b border-line p-3">
+            <label className="eyebrow block text-ash" htmlFor="vc-branch">
+              Branch
+            </label>
             <select
+              id="vc-branch"
               value={state?.currentBranch ?? 'main'}
               onChange={(e) => handleBranchSwitch(e.target.value)}
-              className="mt-1 w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 text-sm text-neutral-200"
+              className="mt-1.5 w-full rounded border border-line bg-raised px-2 py-1.5 font-mono text-[12.5px] text-bone transition-colors hover:border-ash"
             >
               {branches.map((b) => (
                 <option key={b.name} value={b.name}>
-                  {b.name} {b.isCurrent && '(current)'}
+                  {b.name}
+                  {b.isCurrent ? ' (current)' : ''}
                 </option>
               ))}
             </select>
 
-            {/* New Branch */}
             {isCreatingBranch ? (
               <div className="mt-2 flex gap-1">
                 <input
@@ -189,96 +179,98 @@ export function VersionControl({
                   value={newBranchName}
                   onChange={(e) => setNewBranchName(e.target.value)}
                   placeholder="branch-name"
-                  className="flex-1 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-neutral-200"
-                  onKeyDown={(e) => e.key === 'Enter' && handleCreateBranch()}
+                  autoFocus
+                  className="min-w-0 flex-1 rounded border border-line bg-raised px-2 py-1 font-mono text-[12.5px] text-bone placeholder-ash"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCreateBranch()
+                    if (e.key === 'Escape') {
+                      setIsCreatingBranch(false)
+                      setNewBranchName('')
+                    }
+                  }}
                 />
                 <button
                   onClick={handleCreateBranch}
                   disabled={!newBranchName.trim()}
-                  className="rounded bg-blue-600 px-2 py-1 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
+                  className="shrink-0 rounded bg-brass px-2 py-1 text-[12px] font-medium text-ground transition-opacity hover:opacity-90 disabled:opacity-40"
                 >
                   Create
-                </button>
-                <button
-                  onClick={() => {
-                    setIsCreatingBranch(false)
-                    setNewBranchName('')
-                  }}
-                  className="rounded px-2 py-1 text-sm text-neutral-400 hover:bg-neutral-800"
-                >
-                  Cancel
                 </button>
               </div>
             ) : (
               <button
                 onClick={() => setIsCreatingBranch(true)}
-                className="mt-2 text-sm text-blue-400 hover:underline"
+                className="mt-2 flex items-center gap-1 text-[12.5px] text-ash transition-colors hover:text-bone"
               >
-                + New Branch
+                <PlusIcon size={13} />
+                New branch
               </button>
             )}
           </div>
 
-          {/* Status */}
+          {/* Uncommitted work */}
           {state?.hasChanges && (
-            <div className="border-b border-neutral-800 bg-yellow-900/20 p-3">
-              <span className="text-sm text-yellow-400">
-                {state.modifiedFiles.length} uncommitted change(s)
-              </span>
-              <p className="mt-1 text-xs text-neutral-500">
+            <div className="border-b border-line bg-brass/10 px-3 py-2.5">
+              <p className="text-[12.5px] text-bone">
+                {state.modifiedFiles.length} uncommitted change
+                {state.modifiedFiles.length === 1 ? '' : 's'}
+              </p>
+              <p className="mt-0.5 truncate font-mono text-[11px] text-ash">
                 {state.modifiedFiles.slice(0, 3).join(', ')}
                 {state.modifiedFiles.length > 3 && ` +${state.modifiedFiles.length - 3} more`}
               </p>
             </div>
           )}
 
-          {/* History Timeline */}
-          <div className="flex-1 overflow-y-auto">
-            <div className="p-3">
-              <h3 className="mb-2 text-xs font-medium text-neutral-500">History</h3>
-              <div className="space-y-1">
-                {history.length === 0 ? (
-                  <p className="text-sm text-neutral-500">No commits yet</p>
-                ) : (
-                  history.map((commit, i) => (
-                    <div
-                      key={commit.oid}
-                      className="flex items-start gap-2 rounded p-2 hover:bg-neutral-800"
-                    >
-                      <div className="mt-1.5">
-                        <div
-                          className={`h-2 w-2 rounded-full ${i === 0 ? 'bg-blue-500' : 'bg-neutral-600'}`}
-                        />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-neutral-200" title={commit.message}>
-                          {commit.message}
-                        </p>
-                        <p className="text-xs text-neutral-500">
-                          {commit.oid.slice(0, 7)} · {formatTime(commit.timestamp)}
-                        </p>
-                      </div>
-                      {i > 0 && (
-                        <button
-                          onClick={() => handleRollback(commit.oid)}
-                          className="shrink-0 rounded px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-700 hover:text-blue-400"
-                          title="Rollback to this commit"
-                        >
-                          Restore
-                        </button>
-                      )}
+          {/* Commits */}
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            {history.length === 0 ? (
+              <p className="p-1 text-[13px] text-ash">No commits yet</p>
+            ) : (
+              <ol className="relative">
+                {/* The spine every commit hangs off. */}
+                <span
+                  aria-hidden="true"
+                  className="absolute bottom-3 left-[13px] top-3 w-px bg-line"
+                />
+                {history.map((commit, i) => (
+                  <li
+                    key={commit.oid}
+                    className="group relative flex items-start gap-2.5 rounded p-2 transition-colors hover:bg-raised/60"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ring-4 ring-panel ${
+                        i === 0 ? 'bg-patina' : 'bg-line'
+                      }`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12.5px] text-bone" title={commit.message}>
+                        {commit.message}
+                      </p>
+                      <p className="font-mono text-[11px] text-ash">
+                        {commit.oid.slice(0, 7)} · {formatTime(commit.timestamp)}
+                      </p>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
+                    {i > 0 && (
+                      <button
+                        onClick={() => handleRollback(commit.oid)}
+                        className="hidden shrink-0 rounded px-1.5 py-0.5 text-[11.5px] text-ash transition-colors hover:bg-line hover:text-patina group-hover:block"
+                        title={`Roll the app back to ${commit.oid.slice(0, 7)}`}
+                      >
+                        Restore
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            )}
           </div>
 
-          {/* Current HEAD */}
           {state && (
-            <div className="border-t border-neutral-800 p-3">
-              <p className="text-xs text-neutral-500">
-                HEAD: <span className="font-mono text-neutral-400">{state.head.slice(0, 7)}</span>
+            <div className="border-t border-line px-3 py-2">
+              <p className="eyebrow text-ash">
+                Head <span className="ml-1 font-mono normal-case tracking-normal text-bone">{state.head.slice(0, 7)}</span>
               </p>
             </div>
           )}

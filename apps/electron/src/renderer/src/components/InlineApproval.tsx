@@ -66,15 +66,15 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
   }
   
   return (
-    <div className="my-3 rounded-lg border-2 border-yellow-600 bg-yellow-900/20 p-4">
+    <div className="my-3 rounded-lg border-2 border-brass/40 bg-brass/10 p-4">
       {/* Header */}
       <div className="flex items-center gap-2 mb-2">
         <span className="text-lg">⚠️</span>
-        <span className="font-medium text-yellow-200">Approval Required</span>
+        <span className="font-medium text-bone">Approval Required</span>
       </div>
       
       {/* Tool summary */}
-      <p className="text-sm text-neutral-300 mb-3">
+      <p className="text-sm text-bone mb-3">
         {getSummary()}
       </p>
 
@@ -85,11 +85,11 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
         prompt-injected exfiltration attempt, and it has to be visible to catch.
       */}
       {mcp && summarizeMcpInput(input) && (
-        <div className="mb-3 rounded border border-yellow-700/60 bg-neutral-900/60 p-2">
-          <p className="mb-1 text-xs font-medium text-yellow-500">
+        <div className="mb-3 rounded border border-brass/40 bg-panel/60 p-2">
+          <p className="mb-1 text-xs font-medium text-brass">
             Sends to an external MCP server:
           </p>
-          <p className="font-mono text-xs break-all text-neutral-300">
+          <p className="font-mono text-xs break-all text-bone">
             {summarizeMcpInput(input)}
           </p>
         </div>
@@ -97,10 +97,10 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
 
       {/* Input details (collapsed by default for non-sensitive tools) */}
       <details className="mb-3">
-        <summary className="text-xs text-neutral-400 cursor-pointer hover:text-neutral-200">
+        <summary className="text-xs text-ash cursor-pointer hover:text-bone">
           View full input
         </summary>
-        <pre className="mt-2 rounded bg-neutral-900 p-2 text-xs text-neutral-300 overflow-auto max-h-40">
+        <pre className="mt-2 rounded bg-panel p-2 text-xs text-bone overflow-auto max-h-40">
           {JSON.stringify(request.input, null, 2)}
         </pre>
       </details>
@@ -109,13 +109,13 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
       <div className="flex gap-2">
         <button
           onClick={onDeny}
-          className="flex-1 rounded border border-neutral-600 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800 transition-colors"
+          className="flex-1 rounded border border-line px-3 py-2 text-sm text-bone hover:bg-raised transition-colors"
         >
           Deny
         </button>
         <button
           onClick={onApprove}
-          className="flex-1 rounded bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-500 transition-colors"
+          className="flex-1 rounded bg-brass px-3 py-2 text-sm font-medium text-ground transition-opacity hover:opacity-90"
         >
           Allow
         </button>

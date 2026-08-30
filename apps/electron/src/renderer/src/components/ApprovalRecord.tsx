@@ -48,17 +48,17 @@ export function ApprovalRecord({ tool, input, approved }: ApprovalRecordProps) {
     <div 
       className={`my-2 flex items-center gap-2 rounded px-3 py-2 text-sm ${
         approved 
-          ? 'bg-green-900/30 border border-green-800' 
-          : 'bg-red-900/30 border border-red-800'
+          ? 'bg-patina/10 border border-patina/40' 
+          : 'bg-rust/10 border border-rust/40'
       }`}
     >
-      <span className={approved ? 'text-green-400' : 'text-red-400'}>
+      <span className={approved ? 'text-patina' : 'text-rust'}>
         {approved ? '✓' : '✗'}
       </span>
-      <span className="text-neutral-400">
+      <span className="text-ash">
         {approved ? 'Approved' : 'Denied'}:
       </span>
-      <span className="font-mono text-neutral-200 truncate">
+      <span className="font-mono text-bone truncate">
         {summary}
       </span>
     </div>

@@ -18,21 +18,21 @@ export function DiffViewer({ oldContent, newContent, filename }: DiffViewerProps
   const newLines = newContent.split('\n')
 
   return (
-    <div className="overflow-hidden rounded border border-neutral-800 font-mono text-sm">
+    <div className="overflow-hidden rounded border border-line font-mono text-sm">
       {/* Header */}
-      <div className="flex border-b border-neutral-800 bg-neutral-900 px-3 py-2">
-        <span className="text-neutral-400">{filename}</span>
+      <div className="flex border-b border-line bg-panel px-3 py-2">
+        <span className="text-ash">{filename}</span>
       </div>
 
       <div className="flex">
         {/* Old (left) */}
-        <div className="flex-1 border-r border-neutral-800">
-          <div className="bg-red-900/30 px-2 py-1 text-xs text-red-400">Previous</div>
+        <div className="flex-1 border-r border-line">
+          <div className="bg-rust/10 px-2 py-1 text-xs text-rust">Previous</div>
           <pre className="max-h-80 overflow-auto p-2">
             {oldLines.map((line, i) => (
               <div key={i} className="flex">
-                <span className="w-8 select-none pr-2 text-right text-neutral-600">{i + 1}</span>
-                <span className="text-neutral-300">{line || ' '}</span>
+                <span className="w-8 select-none pr-2 text-right text-ash">{i + 1}</span>
+                <span className="text-bone">{line || ' '}</span>
               </div>
             ))}
           </pre>
@@ -40,12 +40,12 @@ export function DiffViewer({ oldContent, newContent, filename }: DiffViewerProps
 
         {/* New (right) */}
         <div className="flex-1">
-          <div className="bg-green-900/30 px-2 py-1 text-xs text-green-400">Current</div>
+          <div className="bg-patina/10 px-2 py-1 text-xs text-patina">Current</div>
           <pre className="max-h-80 overflow-auto p-2">
             {newLines.map((line, i) => (
               <div key={i} className="flex">
-                <span className="w-8 select-none pr-2 text-right text-neutral-600">{i + 1}</span>
-                <span className="text-neutral-300">{line || ' '}</span>
+                <span className="w-8 select-none pr-2 text-right text-ash">{i + 1}</span>
+                <span className="text-bone">{line || ' '}</span>
               </div>
             ))}
           </pre>
@@ -73,29 +73,29 @@ interface FileDiffListProps {
  */
 export function FileDiffList({ diffs }: FileDiffListProps) {
   if (diffs.length === 0) {
-    return <p className="text-sm text-neutral-500">No changes</p>
+    return <p className="text-sm text-ash">No changes</p>
   }
 
   return (
     <div className="space-y-2">
       {diffs.map((diff) => (
-        <div key={diff.path} className="rounded border border-neutral-800 bg-neutral-900">
+        <div key={diff.path} className="rounded border border-line bg-panel">
           <div className="flex items-center gap-2 px-3 py-2">
             <span
               className={`rounded px-1.5 py-0.5 text-xs font-medium ${
                 diff.type === 'add'
-                  ? 'bg-green-900/50 text-green-400'
+                  ? 'bg-patina/10 text-patina'
                   : diff.type === 'delete'
-                    ? 'bg-red-900/50 text-red-400'
-                    : 'bg-yellow-900/50 text-yellow-400'
+                    ? 'bg-rust/10 text-rust'
+                    : 'bg-brass/10 text-brass'
               }`}
             >
               {diff.type === 'add' ? 'A' : diff.type === 'delete' ? 'D' : 'M'}
             </span>
-            <span className="font-mono text-sm text-neutral-300">{diff.path}</span>
+            <span className="font-mono text-sm text-bone">{diff.path}</span>
           </div>
           {diff.oldContent !== undefined && diff.newContent !== undefined && (
-            <div className="border-t border-neutral-800">
+            <div className="border-t border-line">
               <DiffViewer
                 oldContent={diff.oldContent}
                 newContent={diff.newContent}

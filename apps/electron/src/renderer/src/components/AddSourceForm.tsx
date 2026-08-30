@@ -105,8 +105,8 @@ export function AddSourceForm({
   }, [name, command, args, env, onSave])
 
   return (
-    <div className="border-b border-neutral-800 bg-neutral-900/50 p-3">
-      <h3 className="mb-3 text-sm font-medium text-neutral-200">
+    <div className="border-b border-line bg-panel/50 p-3">
+      <h3 className="mb-3 text-sm font-medium text-bone">
         {initialData ? 'Edit MCP Source' : 'Add MCP Source'}
       </h3>
 
@@ -117,9 +117,9 @@ export function AddSourceForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Display name"
-          className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm
-                     text-neutral-200 placeholder-neutral-500
-                     focus:border-blue-500 focus:outline-none"
+          className="w-full rounded border border-line bg-raised px-3 py-1.5 text-sm
+                     text-bone placeholder-ash
+                     transition-colors hover:border-ash"
           autoFocus
         />
 
@@ -129,9 +129,9 @@ export function AddSourceForm({
           value={command}
           onChange={(e) => setCommand(e.target.value)}
           placeholder="Command (e.g., npx, node, docker)"
-          className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm
-                     text-neutral-200 placeholder-neutral-500
-                     focus:border-blue-500 focus:outline-none"
+          className="w-full rounded border border-line bg-raised px-3 py-1.5 text-sm
+                     text-bone placeholder-ash
+                     transition-colors hover:border-ash"
         />
 
         {/* Arguments */}
@@ -140,14 +140,14 @@ export function AddSourceForm({
           value={args}
           onChange={(e) => setArgs(e.target.value)}
           placeholder="Arguments (e.g., -y @modelcontextprotocol/server-filesystem /path)"
-          className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm
-                     text-neutral-200 placeholder-neutral-500
-                     focus:border-blue-500 focus:outline-none"
+          className="w-full rounded border border-line bg-raised px-3 py-1.5 text-sm
+                     text-bone placeholder-ash
+                     transition-colors hover:border-ash"
         />
 
         {/* Environment variables (optional, collapsible) */}
         <details className="text-sm">
-          <summary className="cursor-pointer text-neutral-400 hover:text-neutral-200">
+          <summary className="cursor-pointer text-ash hover:text-bone">
             Environment variables (optional)
           </summary>
           <textarea
@@ -155,30 +155,30 @@ export function AddSourceForm({
             onChange={(e) => setEnv(e.target.value)}
             placeholder={'KEY=value\nANOTHER_KEY=value'}
             rows={3}
-            className="mt-2 w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5
-                       font-mono text-xs text-neutral-200 placeholder-neutral-500
-                       focus:border-blue-500 focus:outline-none"
+            className="mt-2 w-full rounded border border-line bg-raised px-3 py-1.5
+                       font-mono text-xs text-bone placeholder-ash
+                       transition-colors hover:border-ash"
           />
         </details>
 
         {/* Error */}
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p className="text-xs text-rust">{error}</p>}
 
         {/* Actions */}
         <div className="flex gap-2 pt-1">
           <button
             onClick={handleSubmit}
             disabled={isSaving}
-            className="flex-1 rounded bg-blue-600 px-3 py-1.5 text-sm text-white
-                       hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex-1 rounded bg-brass px-3 py-1.5 text-sm text-ground
+                       hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving ? 'Saving...' : label}
           </button>
           <button
             onClick={onCancel}
             disabled={isSaving}
-            className="rounded border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300
-                       hover:bg-neutral-800 disabled:opacity-50"
+            className="rounded border border-line px-3 py-1.5 text-sm text-bone
+                       hover:bg-raised disabled:opacity-50"
           >
             Cancel
           </button>

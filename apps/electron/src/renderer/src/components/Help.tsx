@@ -1,3 +1,6 @@
+import { PERMISSION_MODES } from './PermissionModeControl'
+import type { PermissionModeDescriptor } from './PermissionModeControl'
+
 /**
  * Help component that explains how to use anyapp to enhance the UI.
  */
@@ -19,16 +22,16 @@ function HelpSection({
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
 
   return (
-    <div className="rounded-lg border border-neutral-700 bg-neutral-900">
+    <div className="rounded-lg border border-line bg-panel">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-neutral-800/50"
+        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-raised/50"
       >
-        <h2 className="text-lg font-semibold text-neutral-100">{title}</h2>
-        <span className="text-neutral-400">{isExpanded ? '−' : '+'}</span>
+        <h2 className="text-lg font-semibold text-bone">{title}</h2>
+        <span className="text-ash">{isExpanded ? '−' : '+'}</span>
       </button>
       {isExpanded && (
-        <div className="border-t border-neutral-700 p-4">
+        <div className="border-t border-line p-4">
           {children}
         </div>
       )}
@@ -50,15 +53,22 @@ function CodeExample({
 }) {
   return (
     <div className="mb-4">
-      <h4 className="mb-2 font-semibold text-neutral-200">{title}</h4>
+      <h4 className="mb-2 font-semibold text-bone">{title}</h4>
       {description && (
-        <p className="mb-2 text-sm text-neutral-400">{description}</p>
+        <p className="mb-2 text-sm text-ash">{description}</p>
       )}
-      <div className="rounded border border-neutral-600 bg-neutral-800 p-3">
-        <code className="text-sm text-neutral-100">{code}</code>
+      <div className="rounded border border-line bg-raised p-3">
+        <code className="text-sm text-bone">{code}</code>
       </div>
     </div>
   )
+}
+
+/** Mode swatches, matching the shell header's hairline. */
+const MODE_SWATCH: Record<PermissionModeDescriptor['accent'], string> = {
+  patina: 'h-1 bg-patina',
+  brass: 'h-1 bg-brass',
+  rust: 'h-1 bg-rust'
 }
 
 /**
@@ -68,31 +78,28 @@ export function Help() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <header className="border-b border-neutral-800 px-6 py-4">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">📚</span>
-          <div>
-            <h1 className="text-xl font-semibold text-neutral-100">Help & Documentation</h1>
-            <p className="text-sm text-neutral-400">Learn how to enhance anyapp's UI through chat</p>
-          </div>
-        </div>
+      <header className="border-b border-line px-6 py-3.5">
+        <h1 className="text-[15px] font-semibold text-bone">Help</h1>
+        <p className="text-[12px] text-ash">
+          How to work with the agent, and what it is allowed to do
+        </p>
       </header>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="mx-auto max-w-4xl space-y-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+        <div className="max-w-4xl space-y-6">
           
           {/* Quick Start */}
-          <HelpSection title="🚀 Quick Start: Enhancing the UI" defaultExpanded={true}>
+          <HelpSection title="Quick start" defaultExpanded={true}>
             <div className="space-y-4">
-              <p className="text-neutral-300">
+              <p className="text-bone">
                 anyapp is a self-modifying AI that can enhance its own user interface. 
                 Simply ask in the chat, and I'll read, modify, and improve the UI components in real-time.
               </p>
               
-              <div className="rounded-lg bg-blue-900/20 border border-blue-700/30 p-4">
-                <h3 className="font-semibold text-blue-300 mb-2">💡 Pro Tip</h3>
-                <p className="text-sm text-blue-200">
+              <div className="rounded-lg bg-brass/10 border border-brass/40 p-4">
+                <h3 className="font-semibold text-bone mb-2">Pro Tip</h3>
+                <p className="text-sm text-bone">
                   Use the <strong>@enhance-ui</strong> skill when requesting UI improvements. 
                   This activates specialized knowledge about the component library and design system.
                 </p>
@@ -107,49 +114,37 @@ export function Help() {
           </HelpSection>
 
           {/* Permission Modes */}
-          <HelpSection title="🔒 Permission Modes">
+          <HelpSection title="Permission modes">
             <div className="space-y-4">
-              <p className="text-neutral-300">
-                Choose the right permission mode based on how much automation you want:
+              <p className="text-bone">
+                Set the mode in the header, next to the run controls. The header&rsquo;s
+                bottom hairline takes the mode&rsquo;s color, so the top of the window always
+                shows how much the agent is allowed to do.
               </p>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="rounded border border-neutral-700 bg-neutral-800/50 p-3">
-                  <h4 className="font-semibold text-green-400">🔍 Explore (Read-only)</h4>
-                  <p className="text-sm text-neutral-300 mt-1">
-                    I can only read files and suggest changes. Perfect for understanding the codebase.
-                  </p>
-                </div>
-                
-                <div className="rounded border border-neutral-700 bg-neutral-800/50 p-3">
-                  <h4 className="font-semibold text-yellow-400">❓ Ask to Edit</h4>
-                  <p className="text-sm text-neutral-300 mt-1">
-                    I'll ask permission before making any changes. Recommended for most users.
-                  </p>
-                </div>
-                
-                <div className="rounded border border-neutral-700 bg-neutral-800/50 p-3">
-                  <h4 className="font-semibold text-orange-400">✏️ Auto Edit</h4>
-                  <p className="text-sm text-neutral-300 mt-1">
-                    I can automatically edit files but will ask for dangerous operations.
-                  </p>
-                </div>
-                
-                <div className="rounded border border-neutral-700 bg-neutral-800/50 p-3">
-                  <h4 className="font-semibold text-red-400">⚡ Auto (All)</h4>
-                  <p className="text-sm text-neutral-300 mt-1">
-                    Full automation. I can perform any operation without asking.
-                  </p>
-                </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {PERMISSION_MODES.map((mode) => (
+                  <div
+                    key={mode.id}
+                    className="overflow-hidden rounded border border-line bg-raised/50"
+                  >
+                    {/* The same swatch the shell header's hairline uses for this mode. */}
+                    <div className={MODE_SWATCH[mode.accent]} />
+                    <div className="p-3">
+                      <h4 className="font-semibold text-bone">{mode.label}</h4>
+                      <p className="mt-1 text-sm text-ash">{mode.hint}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </HelpSection>
 
           {/* UI Enhancement Examples */}
-          <HelpSection title="🎨 UI Enhancement Examples">
+          <HelpSection title="What to ask for">
             <div className="space-y-6">
               <div>
-                <h3 className="mb-3 font-semibold text-neutral-200">Creating New Components</h3>
+                <h3 className="mb-3 font-semibold text-bone">Creating New Components</h3>
                 <div className="space-y-3">
                   <CodeExample
                     title="Add a new page"
@@ -167,7 +162,7 @@ export function Help() {
               </div>
 
               <div>
-                <h3 className="mb-3 font-semibold text-neutral-200">Improving Existing UI</h3>
+                <h3 className="mb-3 font-semibold text-bone">Improving Existing UI</h3>
                 <div className="space-y-3">
                   <CodeExample
                     title="Enhance styling"
@@ -185,7 +180,7 @@ export function Help() {
               </div>
 
               <div>
-                <h3 className="mb-3 font-semibold text-neutral-200">Adding Features</h3>
+                <h3 className="mb-3 font-semibold text-bone">Adding Features</h3>
                 <div className="space-y-3">
                   <CodeExample
                     title="Search functionality"
@@ -204,72 +199,102 @@ export function Help() {
             </div>
           </HelpSection>
 
-          {/* Design System */}
-          <HelpSection title="🎯 Design System & Components">
+          {/* Design system */}
+          <HelpSection title="Design system">
             <div className="space-y-4">
-              <p className="text-neutral-300">
-                anyapp uses a consistent design system. When requesting UI changes, 
-                I'll automatically follow these patterns:
+              <p className="text-bone">
+                anyapp is built on a small set of design tokens. Ask for changes in these
+                terms and the agent will keep new UI consistent with the rest of the app.
               </p>
 
-              <div className="space-y-4">
-                <div>
-                  <h4 className="font-semibold text-neutral-200 mb-2">🎨 Color Palette</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                    <div className="bg-neutral-950 p-2 rounded border">neutral-950 (main bg)</div>
-                    <div className="bg-neutral-900 p-2 rounded border">neutral-900 (panels)</div>
-                    <div className="bg-neutral-800 p-2 rounded border">neutral-800 (inputs)</div>
-                    <div className="bg-neutral-700 p-2 rounded border">neutral-700 (borders)</div>
+              <div>
+                <h4 className="mb-2 font-semibold text-bone">Surfaces and text</h4>
+                <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-3">
+                  <div className="rounded border border-line bg-ground p-2 font-mono">ground</div>
+                  <div className="rounded border border-line bg-panel p-2 font-mono">panel</div>
+                  <div className="rounded border border-line bg-raised p-2 font-mono">raised</div>
+                  <div className="rounded border border-line p-2 font-mono text-bone">bone</div>
+                  <div className="rounded border border-line p-2 font-mono text-ash">ash</div>
+                  <div className="rounded border border-line bg-line p-2 font-mono">line</div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="mb-2 font-semibold text-bone">Accents</h4>
+                <p className="mb-2 text-sm text-ash">
+                  Only two hues are ever saturated, and each one means something.
+                </p>
+                <div className="grid grid-cols-1 gap-2 text-xs md:grid-cols-3">
+                  <div className="rounded border border-brass/40 bg-brass/10 p-2">
+                    <span className="font-mono text-brass">brass</span>
+                    <span className="mt-0.5 block text-ash">
+                      The agent acting: focus, primary action, permission.
+                    </span>
+                  </div>
+                  <div className="rounded border border-patina/40 bg-patina/10 p-2">
+                    <span className="font-mono text-patina">patina</span>
+                    <span className="mt-0.5 block text-ash">
+                      History and reversibility: commits, branches, running.
+                    </span>
+                  </div>
+                  <div className="rounded border border-rust/40 bg-rust/10 p-2">
+                    <span className="font-mono text-rust">rust</span>
+                    <span className="mt-0.5 block text-ash">
+                      Stopping and destroying, and the ungated permission mode.
+                    </span>
                   </div>
                 </div>
+              </div>
 
-                <div>
-                  <h4 className="font-semibold text-neutral-200 mb-2">📐 Layout Patterns</h4>
-                  <ul className="space-y-1 text-sm text-neutral-300">
-                    <li>• Sidebar navigation with main content area</li>
-                    <li>• Collapsible right panels for secondary content</li>
-                    <li>• Card-based layouts with consistent spacing</li>
-                    <li>• Responsive design with mobile-first approach</li>
-                  </ul>
-                </div>
+              <div>
+                <h4 className="mb-2 font-semibold text-bone">Type</h4>
+                <ul className="space-y-1 text-sm text-ash">
+                  <li>
+                    &bull; <span className="text-bone">Archivo</span> for everything except
+                    code
+                  </li>
+                  <li>
+                    &bull; <span className="font-mono text-bone">IBM Plex Mono</span> for
+                    paths, commit SHAs, tool arguments, and terminal output
+                  </li>
+                  <li>
+                    &bull; The <span className="eyebrow text-bone">eyebrow</span> utility for
+                    section labels
+                  </li>
+                </ul>
+              </div>
 
-                <div>
-                  <h4 className="font-semibold text-neutral-200 mb-2">🧩 Component Library</h4>
-                  <p className="text-sm text-neutral-300 mb-2">
-                    Based on shadcn/ui with custom styling. Common components include:
-                  </p>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
-                    <div className="bg-neutral-800/50 p-2 rounded">Button</div>
-                    <div className="bg-neutral-800/50 p-2 rounded">Card</div>
-                    <div className="bg-neutral-800/50 p-2 rounded">Dialog</div>
-                    <div className="bg-neutral-800/50 p-2 rounded">Input</div>
-                    <div className="bg-neutral-800/50 p-2 rounded">Select</div>
-                    <div className="bg-neutral-800/50 p-2 rounded">Badge</div>
-                  </div>
-                </div>
+              <div>
+                <h4 className="mb-2 font-semibold text-bone">Layout</h4>
+                <ul className="space-y-1 text-sm text-ash">
+                  <li>&bull; A draggable shell header carries the app&rsquo;s identity and the agent&rsquo;s permission mode</li>
+                  <li>&bull; The rail holds only what exists without an open app</li>
+                  <li>&bull; The column beside it holds everything scoped to the open app</li>
+                  <li>&bull; Destinations replace the view; panels dock beside or below it</li>
+                </ul>
               </div>
             </div>
           </HelpSection>
 
           {/* Skills System */}
-          <HelpSection title="⚡ Skills System">
+          <HelpSection title="Skills">
             <div className="space-y-4">
-              <p className="text-neutral-300">
+              <p className="text-bone">
                 Skills are specialized AI capabilities that can be activated with @mentions. 
                 Use them to get better results for specific tasks.
               </p>
 
               <div className="space-y-3">
-                <div className="rounded border border-neutral-700 bg-neutral-800/30 p-3">
-                  <h4 className="font-semibold text-blue-400">@enhance-ui</h4>
-                  <p className="text-sm text-neutral-300 mt-1">
+                <div className="rounded border border-line bg-raised/30 p-3">
+                  <h4 className="font-semibold text-brass">@enhance-ui</h4>
+                  <p className="text-sm text-bone mt-1">
                     Specialized UI enhancement with knowledge of the component library, 
                     design patterns, and styling guidelines.
                   </p>
                 </div>
                 
-                <p className="text-sm text-neutral-400">
-                  💡 <strong>Tip:</strong> Click the ⚡ Skills button in the sidebar to browse 
+                <p className="text-sm text-ash">
+                  💡 <strong>Tip:</strong> Open <strong>Skills</strong> in the rail to browse 
                   available skills and insert them into your chat.
                 </p>
               </div>
@@ -277,32 +302,32 @@ export function Help() {
           </HelpSection>
 
           {/* Version Control */}
-          <HelpSection title="📜 Version Control & Safety">
+          <HelpSection title="Version control and safety">
             <div className="space-y-4">
-              <p className="text-neutral-300">
+              <p className="text-bone">
                 All changes are automatically tracked with Git. You can safely experiment 
                 and roll back if needed.
               </p>
 
               <div className="space-y-3">
-                <div className="rounded border border-neutral-700 bg-neutral-800/30 p-3">
-                  <h4 className="font-semibold text-green-400">🔄 Automatic Commits</h4>
-                  <p className="text-sm text-neutral-300 mt-1">
+                <div className="rounded border border-line bg-raised/30 p-3">
+                  <h4 className="font-semibold text-patina">Automatic Commits</h4>
+                  <p className="text-sm text-bone mt-1">
                     Every file change is automatically committed with a descriptive message.
                   </p>
                 </div>
 
-                <div className="rounded border border-neutral-700 bg-neutral-800/30 p-3">
-                  <h4 className="font-semibold text-blue-400">🌿 Branch Management</h4>
-                  <p className="text-sm text-neutral-300 mt-1">
+                <div className="rounded border border-line bg-raised/30 p-3">
+                  <h4 className="font-semibold text-brass">Branch Management</h4>
+                  <p className="text-sm text-bone mt-1">
                     Create experimental branches for risky changes. Merge successful changes back to main.
                   </p>
                 </div>
 
-                <div className="rounded border border-neutral-700 bg-neutral-800/30 p-3">
-                  <h4 className="font-semibold text-orange-400">⏪ Easy Rollback</h4>
-                  <p className="text-sm text-neutral-300 mt-1">
-                    Use the 📜 Version Control panel to view history and roll back to any previous state.
+                <div className="rounded border border-line bg-raised/30 p-3">
+                  <h4 className="font-semibold text-brass">Easy Rollback</h4>
+                  <p className="text-sm text-bone mt-1">
+                    Open <strong>History</strong> in the app&rsquo;s column to see every commit and roll back to any of them.
                   </p>
                 </div>
               </div>
@@ -310,12 +335,12 @@ export function Help() {
           </HelpSection>
 
           {/* Best Practices */}
-          <HelpSection title="✨ Best Practices">
+          <HelpSection title="Working well with the agent">
             <div className="space-y-4">
               <div className="space-y-3">
-                <div className="rounded border border-green-700/30 bg-green-900/20 p-3">
-                  <h4 className="font-semibold text-green-300">✅ Do This</h4>
-                  <ul className="text-sm text-green-200 mt-2 space-y-1">
+                <div className="rounded border border-patina/40 bg-patina/10 p-3">
+                  <h4 className="font-semibold text-bone">Do This</h4>
+                  <ul className="text-sm text-bone mt-2 space-y-1">
                     <li>• Be specific about what you want to change</li>
                     <li>• Use @enhance-ui for UI-related requests</li>
                     <li>• Start with "Ask to Edit" mode if you're new</li>
@@ -324,9 +349,9 @@ export function Help() {
                   </ul>
                 </div>
 
-                <div className="rounded border border-red-700/30 bg-red-900/20 p-3">
-                  <h4 className="font-semibold text-red-300">❌ Avoid This</h4>
-                  <ul className="text-sm text-red-200 mt-2 space-y-1">
+                <div className="rounded border border-rust/40 bg-rust/10 p-3">
+                  <h4 className="font-semibold text-rust">Avoid This</h4>
+                  <ul className="text-sm text-rust mt-2 space-y-1">
                     <li>• Vague requests like "make it better"</li>
                     <li>• Too many changes in one request</li>
                     <li>• Ignoring TypeScript errors after changes</li>
@@ -339,36 +364,36 @@ export function Help() {
           </HelpSection>
 
           {/* Troubleshooting */}
-          <HelpSection title="🔧 Troubleshooting">
+          <HelpSection title="Troubleshooting">
             <div className="space-y-4">
               <div className="space-y-3">
                 <div>
-                  <h4 className="font-semibold text-neutral-200">The UI broke after a change</h4>
-                  <p className="text-sm text-neutral-400 mt-1">
-                    Use the 📜 Version Control panel to roll back to a previous commit. 
+                  <h4 className="font-semibold text-bone">The UI broke after a change</h4>
+                  <p className="text-sm text-ash mt-1">
+                    Open <strong>History</strong> in the app&rsquo;s column and restore an earlier commit. 
                     Check the console for TypeScript errors.
                   </p>
                 </div>
 
                 <div>
-                  <h4 className="font-semibold text-neutral-200">Changes aren't appearing</h4>
-                  <p className="text-sm text-neutral-400 mt-1">
+                  <h4 className="font-semibold text-bone">Changes aren't appearing</h4>
+                  <p className="text-sm text-ash mt-1">
                     The app hot-reloads automatically, but complex changes might require a restart. 
                     Check the terminal for build errors.
                   </p>
                 </div>
 
                 <div>
-                  <h4 className="font-semibold text-neutral-200">Permission denied errors</h4>
-                  <p className="text-sm text-neutral-400 mt-1">
+                  <h4 className="font-semibold text-bone">Permission denied errors</h4>
+                  <p className="text-sm text-ash mt-1">
                     Switch to a higher permission mode or approve the requested action 
                     when prompted.
                   </p>
                 </div>
 
                 <div>
-                  <h4 className="font-semibold text-neutral-200">Styling looks broken</h4>
-                  <p className="text-sm text-neutral-400 mt-1">
+                  <h4 className="font-semibold text-bone">Styling looks broken</h4>
+                  <p className="text-sm text-ash mt-1">
                     Make sure Tailwind classes are being applied correctly. 
                     Check for typos in class names or missing imports.
                   </p>
@@ -378,18 +403,13 @@ export function Help() {
           </HelpSection>
 
           {/* Footer */}
-          <div className="mt-8 rounded-lg border border-neutral-700 bg-gradient-to-r from-blue-900/20 to-purple-900/20 p-4">
-            <h3 className="font-semibold text-neutral-200 mb-2">🎯 Ready to Get Started?</h3>
-            <p className="text-sm text-neutral-300 mb-3">
-              Head over to the chat and try asking me to enhance the UI. I'm here to help 
-              make anyapp even better!
+          <div className="mt-8 rounded-lg border border-brass/40 bg-brass/10 p-4">
+            <h3 className="mb-2 font-semibold text-bone">Start with one small change</h3>
+            <p className="text-sm text-ash">
+              Open an app, describe the change you want in the chat, and check the result in
+              History. Every write the agent makes is its own commit, so nothing you try is
+              permanent.
             </p>
-            <div className="flex gap-2 text-xs">
-              <span className="rounded bg-blue-600/20 px-2 py-1 text-blue-300">@enhance-ui</span>
-              <span className="rounded bg-green-600/20 px-2 py-1 text-green-300">add</span>
-              <span className="rounded bg-purple-600/20 px-2 py-1 text-purple-300">improve</span>
-              <span className="rounded bg-orange-600/20 px-2 py-1 text-orange-300">create</span>
-            </div>
           </div>
         </div>
       </div>

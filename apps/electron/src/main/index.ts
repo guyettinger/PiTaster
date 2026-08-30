@@ -1,6 +1,8 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, nativeImage } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import sharp from 'sharp'
+import { dockIconSvg } from '@anyapp/shared'
 import { setupIpcHandlers, cleanupIpcHandlers, initializeConfig, initializeSources } from './ipc'
 
 /** Directory of this module, for resolving bundled assets under ESM. */
@@ -26,6 +28,10 @@ function createWindow(): void {
       webviewTag: true
     },
     titleBarStyle: 'hiddenInset',
+    // Centres the traffic lights in the renderer's 44px shell header, which is
+    // the only draggable chrome the window has.
+    trafficLightPosition: { x: 16, y: 14 },
+    backgroundColor: '#121316',
     show: false
   })
 
@@ -56,7 +62,33 @@ function createWindow(): void {
   }
 }
 
+/**
+ * Rasterises the anyapp mark and installs it as the macOS dock icon.
+ *
+ * There is no packaging config and no `resources/` directory in this repo, so
+ * the icon is rendered from the shared SVG at startup rather than read from
+ * disk. Failure is non-fatal: a missing dock icon must never stop the window
+ * from opening.
+ */
+async function setDockIcon(): Promise<void> {
+  if (process.platform !== 'darwin' || !app.dock) return
+
+  try {
+    const png = await sharp(Buffer.from(dockIconSvg({ size: 1024 })))
+      .png()
+      .toBuffer()
+    const image = nativeImage.createFromBuffer(png)
+    if (!image.isEmpty()) {
+      app.dock.setIcon(image)
+    }
+  } catch (error) {
+    console.error('Failed to render the dock icon:', error)
+  }
+}
+
 // Handle app lifecycle
+app.setName('anyapp')
+
 app.whenReady().then(async () => {
   // Load persisted settings before the first message. Earlier versions only reached
   // loadConfig() from the config:get handler, so a fresh launch never saw them.
@@ -66,6 +98,10 @@ app.whenReady().then(async () => {
   // (an `npx` fetch, say), and none of it needs to block the first paint — the
   // agent session is built on the first prompt, by which time these have settled.
   void initializeSources()
+
+  // The dock icon is cosmetic, so it renders alongside the first paint rather
+  // than delaying it.
+  void setDockIcon()
 
   createWindow()
 

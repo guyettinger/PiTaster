@@ -19,14 +19,14 @@ export function ElementContextBubble({ context }: ElementContextBubbleProps) {
   const { element, screenshot } = context
 
   return (
-    <div className="my-2 overflow-hidden rounded-lg border border-blue-500/30 bg-blue-950/20">
+    <div className="my-2 overflow-hidden rounded-lg border border-brass/40 bg-brass/10">
       {/* Screenshot */}
       {screenshot && (
-        <div className="border-b border-blue-500/30 bg-neutral-900/50 p-2">
+        <div className="border-b border-brass/40 bg-panel/50 p-2">
           <img
             src={screenshot}
             alt="Selected element"
-            className="max-h-48 rounded border border-neutral-700"
+            className="max-h-48 rounded border border-line"
           />
         </div>
       )}
@@ -34,53 +34,53 @@ export function ElementContextBubble({ context }: ElementContextBubbleProps) {
       {/* Element info */}
       <div className="space-y-1 p-3 text-xs">
         <div>
-          <span className="text-neutral-500">Tag:</span>{' '}
-          <code className="text-blue-400">{element.tag}</code>
+          <span className="text-ash">Tag:</span>{' '}
+          <code className="text-brass">{element.tag}</code>
         </div>
 
         {element.id && (
           <div>
-            <span className="text-neutral-500">ID:</span>{' '}
-            <code className="text-blue-400">#{element.id}</code>
+            <span className="text-ash">ID:</span>{' '}
+            <code className="text-brass">#{element.id}</code>
           </div>
         )}
 
         {element.classes.length > 0 && (
           <div>
-            <span className="text-neutral-500">Classes:</span>{' '}
-            <code className="text-neutral-400">{element.classes.join(' ')}</code>
+            <span className="text-ash">Classes:</span>{' '}
+            <code className="text-ash">{element.classes.join(' ')}</code>
           </div>
         )}
 
         {element.text && (
           <div>
-            <span className="text-neutral-500">Text:</span>{' '}
-            <span className="text-neutral-300">
+            <span className="text-ash">Text:</span>{' '}
+            <span className="text-bone">
               {element.text.length > 80 ? element.text.slice(0, 80) + '...' : element.text}
             </span>
           </div>
         )}
 
         <details className="mt-2">
-          <summary className="cursor-pointer text-neutral-500 hover:text-neutral-300">
+          <summary className="cursor-pointer text-ash hover:text-bone">
             Selectors
           </summary>
           <div className="mt-1 space-y-1 pl-2">
             <div>
-              <span className="text-neutral-600">CSS:</span>{' '}
-              <code className="break-all text-xs text-neutral-400">{element.selector}</code>
+              <span className="text-ash">CSS:</span>{' '}
+              <code className="break-all text-xs text-ash">{element.selector}</code>
             </div>
             <div>
-              <span className="text-neutral-600">XPath:</span>{' '}
-              <code className="break-all text-xs text-neutral-400">{element.xpath}</code>
+              <span className="text-ash">XPath:</span>{' '}
+              <code className="break-all text-xs text-ash">{element.xpath}</code>
             </div>
           </div>
         </details>
       </div>
 
       {/* Prompt hint */}
-      <div className="border-t border-blue-500/30 bg-neutral-900/50 px-3 py-2">
-        <p className="text-xs text-neutral-500">
+      <div className="border-t border-brass/40 bg-panel/50 px-3 py-2">
+        <p className="text-xs text-ash">
           💡 Type your request below to modify this element
         </p>
       </div>
