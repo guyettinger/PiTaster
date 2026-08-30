@@ -85,11 +85,15 @@ The scale is Tailwind's 4px grid, documented in full at the top of
 | Columns | `px-2` | Nav rail, app context column. Rows add their own `px-2` |
 | Pages | `px-6` | Apps, Skills, Help, Settings, the transcript and composer |
 
-Page headers are `py-4`, page bodies `py-5`. A page header's own row takes the
-body's `max-w-*`, so a right-aligned action ends where the content it acts on
-ends instead of floating out at the page gutter. A scrolling list inside a
-docked panel goes full-bleed and carries `px-3` on its rows, so they sit on the
-panel's line. `py-1.5` (6px) is the dense row
+Page headers are `py-4`, page bodies `py-5`. Pages go full-bleed — no `max-w-*`
+on the header row or the body — so a right-aligned action and the content it
+acts on share one right edge at the page gutter, with no dead column beside
+them on a wide window. Cap the measure on running prose instead of on the page
+(`[&_p]:max-w-prose` in Help, `max-w-xl` on a Settings `Field`), so lists and
+cards fill the pane while sentences and text inputs stay readable. The chat
+transcript is the exception: it keeps `mx-auto max-w-3xl`, because it is a
+column of text, not a list. A scrolling list inside a docked panel goes
+full-bleed and carries `px-3` on its rows, so they sit on the panel's line. `py-1.5` (6px) is the dense row
 and the only half-step in the system — `p-2.5`, `py-3.5` and friends are not
 steps, and reintroducing one is what makes the shell drift.
 

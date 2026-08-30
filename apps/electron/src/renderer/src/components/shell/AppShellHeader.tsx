@@ -1,7 +1,5 @@
 import { Logo } from '../Logo'
-import { AppControls } from '../AppControls'
-import { PermissionModeControl, describePermissionMode } from '../PermissionModeControl'
-import { useRunningApps } from '../../context/RunningAppsContext'
+import { describePermissionMode } from '../PermissionModeControl'
 import type { SubApp } from '@anyapp/core'
 import type { PermissionMode } from '../../types/electron'
 
@@ -16,14 +14,6 @@ const HAIRLINE_CLASS = {
   rust: 'h-[3px] bg-rust'
 } as const
 
-/** Status dot color per run state. */
-const STATUS_DOT: Record<string, string> = {
-  running: 'bg-patina',
-  starting: 'animate-pulse bg-brass',
-  error: 'bg-rust',
-  stopped: 'bg-ash'
-}
-
 /**
  * Props for the AppShellHeader component.
  */
@@ -32,8 +22,6 @@ interface AppShellHeaderProps {
   app: SubApp | null
   /** The agent's permission mode. */
   permissionMode: PermissionMode
-  /** Callback when the user changes the permission mode. */
-  onModeChange: (mode: PermissionMode) => void
 }
 
 /**
@@ -41,18 +29,16 @@ interface AppShellHeaderProps {
  *
  * This is the window's only draggable chrome — `titleBarStyle: 'hiddenInset'`
  * removes the native title bar, so without this the window could not be moved
- * at all. The bar drags; every control inside it opts back out with `no-drag`.
+ * at all. It carries no controls: the agent's permission mode is set in the
+ * composer that sends to it, and the app's dev server is run from the app's own
+ * column, so the whole bar is free to drag.
  *
- * Its bottom hairline is colored by the agent's permission mode, so the top of
- * the window always states how much rope the agent has, from any view.
+ * What it still does is state, at a glance, what is open and how much rope the
+ * agent has: the title names the focused app, and the bottom hairline is
+ * colored by the permission mode, readable from every view.
  */
-export function AppShellHeader({ app, permissionMode, onModeChange }: AppShellHeaderProps) {
-  const { getStatus, getUrl } = useRunningApps()
+export function AppShellHeader({ app, permissionMode }: AppShellHeaderProps) {
   const mode = describePermissionMode(permissionMode)
-
-  const status = app ? getStatus(app.id) : null
-  const url = app ? getUrl(app.id) : null
-  const port = status === 'running' && url ? new URL(url).port : null
 
   return (
     <div className="shrink-0">
@@ -66,34 +52,19 @@ export function AppShellHeader({ app, permissionMode, onModeChange }: AppShellHe
         {app && (
           <>
             <span aria-hidden="true" className="h-4 w-px bg-line" />
-            <div className="flex min-w-0 items-center gap-2">
-              <h1 className="truncate text-[14px] font-semibold tracking-[-0.01em] text-bone">
-                {app.name}
-              </h1>
-              {status && (
-                <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-raised px-2 py-0.5 text-[11px] text-ash">
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[status] ?? 'bg-ash'}`}
-                  />
-                  <span className="font-mono">{port ? `:${port}` : status}</span>
-                </span>
-              )}
-            </div>
+            <h1 className="min-w-0 truncate text-[14px] font-semibold tracking-[-0.01em] text-bone">
+              {app.name}
+            </h1>
           </>
-        )}
-
-        <div className="flex-1" />
-
-        <PermissionModeControl mode={permissionMode} onModeChange={onModeChange} />
-
-        {app && (
-          <div className="no-drag">
-            <AppControls appId={app.id} template={app.template} size="sm" showLabels />
-          </div>
         )}
       </header>
 
-      <div className={`transition-colors duration-150 ${HAIRLINE_CLASS[mode.accent]}`} />
+      <div
+        role="status"
+        aria-label={`Agent permission mode: ${mode.label}`}
+        title={`${mode.label} — ${mode.hint}`}
+        className={`transition-colors duration-150 ${HAIRLINE_CLASS[mode.accent]}`}
+      />
     </div>
   )
 }

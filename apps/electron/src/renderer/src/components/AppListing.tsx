@@ -89,7 +89,7 @@ export function AppListing({ onAppSelect, activeAppId }: AppListingProps) {
       <div className="border-b border-line px-6 py-4">
         {/* The header's row takes the body's cap, so its action ends where the
             cards below it end rather than out at the page gutter. */}
-        <div className="flex max-w-4xl items-center justify-between">
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-[15px] font-semibold text-bone">Apps</h1>
             <p className="text-[12px] text-ash">
@@ -109,7 +109,7 @@ export function AppListing({ onAppSelect, activeAppId }: AppListingProps) {
 
       {/* Error */}
       {error && (
-        <div className="mx-6 mt-4 flex max-w-4xl items-start gap-2 rounded-lg border border-rust/40 bg-rust/10 px-4 py-3">
+        <div className="mx-6 mt-4 flex items-start gap-2 rounded-lg border border-rust/40 bg-rust/10 px-4 py-3">
           <p className="flex-1 text-[13px] text-bone">{error}</p>
           <button
             onClick={() => setError(null)}
@@ -143,9 +143,7 @@ export function AppListing({ onAppSelect, activeAppId }: AppListingProps) {
           <EmptyState onCreateClick={() => setIsCreating(true)} />
         ) : (
           <div className="px-6 py-5">
-            {/* The cap sits on the list, not the padded box, or the cards come
-                out 48px narrower than the header row above them. */}
-            <ul className="max-w-4xl space-y-2">
+            <ul className="space-y-2">
               {apps.map(app => (
                 <AppCard
                   key={app.id}

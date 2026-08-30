@@ -79,14 +79,19 @@ interface PermissionModeControlProps {
 /**
  * Picks how much the agent is allowed to do.
  *
- * Lives in the shell header rather than inside chat, because the mode governs
- * the agent everywhere and should be readable from every view.
+ * Sits in the composer that sends to the agent, where the choice takes effect
+ * and where its approval prompts appear, and is mirrored in Settings so it is
+ * still reachable with no app open. The shell header's mode-colored hairline
+ * remains the always-visible readout.
  */
 export function PermissionModeControl({ mode, onModeChange }: PermissionModeControlProps) {
   const active = describePermissionMode(mode)
 
+  // `inline-flex`, not `flex`: the wrapper has to shrink to the select's own
+  // width, or the absolutely-positioned chevron detaches to the right edge of
+  // whatever block this is dropped into.
   return (
-    <div className="no-drag relative flex items-center">
+    <div className="relative inline-flex items-center">
       <span
         className={`pointer-events-none absolute left-2 h-1.5 w-1.5 rounded-full ${DOT_CLASS[active.accent]}`}
       />

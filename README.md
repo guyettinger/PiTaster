@@ -25,7 +25,7 @@ open app's directory; it cannot read or write outside it.
 
 ![The apps list](docs/images/apps.png)
 
-**You see it run.** Start the dev server from the header, and the app appears in
+**You see it run.** Start the dev server from the app's own column, and it appears in
 a preview panel below the chat. Click *Inspect*, then click any element on the
 page, and that element — its markup, styles, and a screenshot of it — is attached
 to your next message. "Make this button bigger" becomes a well-specified request.

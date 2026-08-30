@@ -67,7 +67,7 @@ export function SkillsPanel({ onSkillSelect, canInsertMention }: SkillsPanelProp
   return (
     <div className="flex h-full flex-col">
       <header className="border-b border-line px-6 py-4">
-        <div className="flex max-w-3xl items-center justify-between">
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-[15px] font-semibold text-bone">Skills</h1>
             <p className="text-[12px] text-ash">
@@ -87,7 +87,7 @@ export function SkillsPanel({ onSkillSelect, canInsertMention }: SkillsPanelProp
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-        <div className="max-w-3xl">
+        <div>
           <div className="relative">
             <SearchIcon
               size={15}
