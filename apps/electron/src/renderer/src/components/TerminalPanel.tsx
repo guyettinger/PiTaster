@@ -120,7 +120,7 @@ export function TerminalPanel({ appId, isVisible }: TerminalPanelProps) {
       {/* Toolbar */}
       <div className="flex items-center justify-between border-b border-line px-3 py-2">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-medium">Terminal</span>
+          <h2 className="eyebrow text-ash">Terminal</h2>
           {status && (
             <span className={`text-xs ${
               status === 'running' ? 'text-patina' : 

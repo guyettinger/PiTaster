@@ -33,13 +33,17 @@
    * which gutter belongs to which environment, because the shell has three
    * densities and they were drifting into each other:
    *
-   *   chrome   px-3  bars that frame content and never scroll — the title bar,
-   *                  docked panel headers, the terminal and preview toolbars
+   *   chrome   px-3  the title bar, and docked panels throughout — header and
+   *                  body alike. A scrolling list inside one goes full-bleed
+   *                  and carries px-3 on its own rows, so they sit on the
+   *                  panel's line rather than an inset of their own
    *   column   px-2  the nav rail and the app context column. Rows inside add
    *                  their own px-2, which lands every label 16px from the
    *                  column's edge — the line the column head is set to as well
    *   page     px-6  full views — Apps, Skills, Help, Settings, the transcript
-   *                  and its composer. Headers py-4, bodies py-5
+   *                  and its composer. Headers py-4, bodies py-5. A header's
+   *                  own row takes the body's max-width, so a right-aligned
+   *                  action ends where the content it acts on ends
    *
    * Vertically, 6px (py-1.5) is the dense row and the only half-step in the
    * system; 10px and 14px are not steps at all.

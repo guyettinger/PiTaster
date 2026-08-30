@@ -66,21 +66,24 @@ export function SkillsPanel({ onSkillSelect, canInsertMention }: SkillsPanelProp
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-line px-6 py-4">
-        <div>
-          <h1 className="text-[15px] font-semibold text-bone">Skills</h1>
-          <p className="text-[12px] text-ash">
-            Reusable instructions the agent can be handed, from{' '}
-            <code className="font-mono">~/.anyapp/skills</code>
-          </p>
+      <header className="border-b border-line px-6 py-4">
+        <div className="flex max-w-3xl items-center justify-between">
+          <div>
+            <h1 className="text-[15px] font-semibold text-bone">Skills</h1>
+            <p className="text-[12px] text-ash">
+              Reusable instructions the agent can be handed, from{' '}
+              <code className="font-mono">~/.anyapp/skills</code>
+            </p>
+          </div>
+          <button
+            onClick={loadSkills}
+            aria-label="Reload skills"
+            className="rounded p-1.5 text-ash transition-colors hover:bg-raised hover:text-bone"
+            title="Reload skills"
+          >
+            <RefreshIcon size={16} />
+          </button>
         </div>
-        <button
-          onClick={loadSkills}
-          className="rounded p-1.5 text-ash transition-colors hover:bg-raised hover:text-bone"
-          title="Reload skills"
-        >
-          <RefreshIcon size={16} />
-        </button>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
