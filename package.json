@@ -8,6 +8,7 @@
     "typecheck:all": "bun run --workspaces typecheck"
   },
   "devDependencies": {
+    "playwright-core": "^1.62.1",
     "typescript": "^5.5.0"
   }
 }

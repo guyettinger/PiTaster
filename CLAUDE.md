@@ -12,5 +12,8 @@
 - Load the `pi-agent` skill before changing anything under
   `apps/electron/src/main/agent/` — it carries Pi's real event shapes and the
   integration gotchas.
+- Use the `run-app` skill to launch, drive, or screenshot the app. It wraps a
+  Playwright REPL over the *built* app — `bun run dev` is the human path and the
+  driver attaches to neither its Vite server nor its Electron.
 - `docs/skills/` is anyapp's *runtime* skill content, not Claude Code skills.
   When asked to change Claude Code's behavior, edit `.claude/` instead.
