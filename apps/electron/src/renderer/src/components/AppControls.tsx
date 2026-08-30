@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { PlayIcon, StopIcon, GlobeIcon, WarningIcon } from './icons'
 import { useRunningApps } from '../context/RunningAppsContext'
 import type { AppTemplate } from '@anyapp/core'
 
@@ -13,14 +14,17 @@ interface AppControlsProps {
   appId: string
   /** App template. */
   template: AppTemplate
-  /** Whether to show labels. */
+  /** Whether to show text labels beside the icons. */
   showLabels?: boolean
   /** Size variant. */
   size?: 'sm' | 'md'
 }
 
 /**
- * App controls toolbar for run/stop/browser actions.
+ * Run, stop, install, and open-in-browser for one app.
+ *
+ * Actions only — run state is reported by the shell header's status pill and by
+ * the app cards, so this does not draw a status dot of its own.
  */
 export function AppControls({ appId, template, showLabels = false, size = 'md' }: AppControlsProps) {
   const { 
@@ -83,77 +87,61 @@ export function AppControls({ appId, template, showLabels = false, size = 'md' }
     }
   }, [appId, installDeps])
 
-  const buttonClass = size === 'sm' 
-    ? 'rounded px-2 py-1 text-xs'
-    : 'rounded px-3 py-1.5 text-sm'
+  const buttonClass =
+    size === 'sm'
+      ? 'flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px]'
+      : 'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px]'
+  const iconSize = size === 'sm' ? 13 : 15
 
   return (
-    <div className="flex items-center gap-2">
-      {/* Status indicator */}
-      {status && (
-        <div className="flex items-center gap-1.5">
-          <span className={`h-2 w-2 rounded-full ${
-            status === 'running' ? 'bg-green-500' :
-            status === 'starting' ? 'animate-pulse bg-yellow-500' :
-            status === 'error' ? 'bg-red-500' : 'bg-neutral-500'
-          }`} />
-          {showLabels && (
-            <span className="text-xs text-neutral-400">
-              {status === 'running' && url ? `localhost:${new URL(url).port}` : status}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Run/Stop button */}
-      {isRunnable && (
-        running ? (
+    <div className="flex items-center gap-1.5">
+      {isRunnable &&
+        (running ? (
           <button
             onClick={handleStop}
             disabled={status === 'starting'}
-            className={`${buttonClass} bg-red-600 text-white hover:bg-red-700 disabled:opacity-50`}
-            title="Stop"
+            className={`${buttonClass} bg-rust font-medium text-ground transition-opacity hover:opacity-90 disabled:opacity-50`}
+            title="Stop the dev server"
           >
-            ⏹ {showLabels && 'Stop'}
+            <StopIcon size={iconSize} />
+            {showLabels && 'Stop'}
           </button>
         ) : (
           <button
             onClick={handleRun}
-            className={`${buttonClass} bg-green-600 text-white hover:bg-green-700`}
-            title="Run"
+            className={`${buttonClass} bg-brass font-medium text-ground transition-opacity hover:opacity-90`}
+            title="Start the dev server"
           >
-            ▶ {showLabels && 'Run'}
+            <PlayIcon size={iconSize} />
+            {showLabels && 'Run'}
           </button>
-        )
-      )}
+        ))}
 
-      {/* Open in browser */}
       {running && url && (
         <button
           onClick={handleOpenBrowser}
-          className={`${buttonClass} bg-neutral-700 hover:bg-neutral-600`}
-          title="Open in browser"
+          className={`${buttonClass} border border-line text-bone transition-colors hover:border-ash`}
+          title="Open in your browser"
         >
-          🌐 {showLabels && 'Browser'}
+          <GlobeIcon size={iconSize} />
+          {showLabels && 'Browser'}
         </button>
       )}
 
-      {/* Install dependencies */}
       {isRunnable && !running && (
         <button
           onClick={handleInstall}
           disabled={isInstalling}
-          className={`${buttonClass} bg-neutral-700 hover:bg-neutral-600 disabled:opacity-50`}
-          title="Install dependencies"
+          className={`${buttonClass} border border-line text-ash transition-colors hover:border-ash hover:text-bone disabled:opacity-50`}
+          title="Install this app's dependencies"
         >
-          {isInstalling ? '⏳' : '📦'} {showLabels && (isInstalling ? 'Installing...' : 'Install')}
+          {isInstalling ? 'Installing…' : 'Install'}
         </button>
       )}
 
-      {/* Error display */}
       {error && (
-        <span className="text-xs text-red-400" title={error}>
-          ⚠️
+        <span className="flex items-center text-rust" title={error}>
+          <WarningIcon size={iconSize} />
         </span>
       )}
     </div>

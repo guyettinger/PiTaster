@@ -34,12 +34,12 @@ function renderContent(content: string): React.ReactNode {
       return (
         <pre 
           key={i} 
-          className="my-2 rounded bg-neutral-900 p-3 text-sm overflow-x-auto"
+          className="my-2 rounded bg-panel p-3 text-sm overflow-x-auto"
         >
           {language && (
-            <div className="text-xs text-neutral-500 mb-1">{language}</div>
+            <div className="text-xs text-ash mb-1">{language}</div>
           )}
-          <code className="text-neutral-100">{code.trim()}</code>
+          <code className="text-bone">{code.trim()}</code>
         </pre>
       )
     }
@@ -64,10 +64,8 @@ export function TextBubble({ content, isUser, isStreaming = false }: TextBubbleP
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[85%] rounded-lg px-4 py-3 ${
-          isUser
-            ? 'bg-blue-600 text-white'
-            : 'bg-neutral-800 text-neutral-100'
+        className={`max-w-[85%] rounded-lg px-4 py-3 text-bone ${
+          isUser ? 'border border-line bg-raised' : 'bg-panel'
         }`}
       >
         <div className="text-sm leading-relaxed">

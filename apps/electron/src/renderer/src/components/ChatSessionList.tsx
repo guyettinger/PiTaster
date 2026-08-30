@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { PlusIcon, PencilIcon, TrashIcon } from './icons'
 import type { ChatSession } from '@anyapp/core'
 
 /**
@@ -14,8 +15,10 @@ interface ChatSessionListProps {
 }
 
 /**
- * Sidebar list showing all chat sessions for the active app.
- * Supports create, rename, and delete actions.
+ * The focused app's chats, rendered inside `AppContextColumn`.
+ *
+ * The column owns the frame — width, background, and borders — so this
+ * component contributes only its own content and scroll area.
  */
 export function ChatSessionList({
   activeSessionId,
@@ -68,34 +71,33 @@ export function ChatSessionList({
   )
 
   return (
-    <div className="flex h-full flex-col border-r border-neutral-800 w-56">
-      {/* Header with New Chat button */}
-      <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
-        <span className="text-xs font-medium uppercase tracking-wider text-neutral-500">
-          Sessions
-        </span>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex items-center justify-between px-3 pb-1 pt-3">
+        <span className="eyebrow text-ash">Chats</span>
         <button
           onClick={onSessionCreate}
-          className="rounded px-2 py-1 text-xs text-blue-400 hover:bg-neutral-800 hover:text-blue-300"
-          title="New Chat Session"
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-ash transition-colors hover:bg-raised hover:text-bone"
+          title="Start a new chat"
         >
-          + New
+          <PlusIcon size={12} />
+          New
         </button>
       </div>
 
-      {/* Sessions list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
         {sortedSessions.length === 0 ? (
-          <div className="px-3 py-4 text-center text-xs text-neutral-600">No sessions yet</div>
+          <p className="px-1.5 py-2 text-[12px] leading-snug text-ash">
+            No chats yet. Start one to keep this app&rsquo;s history separate.
+          </p>
         ) : (
           sortedSessions.map((session) => (
             <div
               key={session.id}
               onClick={() => onSessionSelect(session.id)}
-              className={`group flex cursor-pointer items-center gap-2 px-3 py-2 text-sm ${
+              className={`group flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] transition-colors ${
                 session.id === activeSessionId
-                  ? 'bg-neutral-800 text-neutral-100'
-                  : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200'
+                  ? 'bg-raised text-bone'
+                  : 'text-ash hover:bg-raised/60 hover:text-bone'
               }`}
             >
               {editingId === session.id ? (
@@ -108,32 +110,37 @@ export function ChatSessionList({
                     if (e.key === 'Escape') setEditingId(null)
                   }}
                   autoFocus
-                  className="flex-1 rounded bg-neutral-700 px-1 py-0.5 text-sm text-neutral-100 outline-none"
+                  className="min-w-0 flex-1 rounded bg-line px-1 py-0.5 text-[13px] text-bone"
                 />
               ) : (
                 <>
-                  <div className="flex-1 truncate">
+                  <span
+                    aria-hidden="true"
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                      session.id === activeSessionId ? 'bg-brass' : 'bg-transparent'
+                    }`}
+                  />
+                  <div className="min-w-0 flex-1">
                     <div className="truncate">{session.title}</div>
-                    <div className="text-[10px] text-neutral-600">
+                    <div className="text-[10px] text-ash">
                       {session.messageCount} message{session.messageCount !== 1 ? 's' : ''}
                     </div>
                   </div>
 
-                  {/* Actions — visible on hover */}
-                  <div className="hidden shrink-0 gap-1 group-hover:flex">
+                  <div className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
                     <button
                       onClick={(e) => handleRenameStart(e, session)}
-                      className="rounded p-0.5 text-xs text-neutral-500 hover:text-neutral-300"
-                      title="Rename"
+                      className="rounded p-0.5 text-ash transition-colors hover:text-bone"
+                      title="Rename chat"
                     >
-                      &#9998;
+                      <PencilIcon size={13} />
                     </button>
                     <button
                       onClick={(e) => handleDelete(e, session.id)}
-                      className="rounded p-0.5 text-xs text-neutral-500 hover:text-red-400"
-                      title="Delete"
+                      className="rounded p-0.5 text-ash transition-colors hover:text-rust"
+                      title="Delete chat"
                     >
-                      &#10005;
+                      <TrashIcon size={13} />
                     </button>
                   </div>
                 </>

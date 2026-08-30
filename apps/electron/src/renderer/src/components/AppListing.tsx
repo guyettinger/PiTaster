@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { PlayIcon, StopIcon, TrashIcon, BranchIcon, PlusIcon, AppsIcon, CloseIcon } from './icons'
 import type { SubApp, AppTemplate } from '@anyapp/core'
 import { useRunningApps } from '../context/RunningAppsContext'
 
@@ -82,25 +83,33 @@ export function AppListing({ onAppSelect, activeAppId }: AppListingProps) {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-neutral-800 p-4">
-        <h2 className="text-lg font-semibold">Your Apps</h2>
+      <div className="flex items-center justify-between border-b border-line px-6 py-3.5">
+        <div>
+          <h1 className="text-[15px] font-semibold text-bone">Apps</h1>
+          <p className="text-[12px] text-ash">
+            Sandboxed projects the agent builds and modifies, in{' '}
+            <code className="font-mono">~/.anyapp/apps</code>
+          </p>
+        </div>
         <button
           onClick={() => setIsCreating(true)}
-          className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white transition-colors hover:bg-blue-700"
+          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brass px-3 py-1.5 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
         >
-          + New App
+          <PlusIcon size={14} />
+          New app
         </button>
       </div>
 
       {/* Error */}
       {error && (
-        <div className="mx-4 mt-4 rounded border border-red-700 bg-red-900/50 p-3 text-sm text-red-200">
-          {error}
-          <button 
+        <div className="mx-6 mt-4 flex max-w-4xl items-start gap-2 rounded-lg border border-rust/40 bg-rust/10 px-4 py-3">
+          <p className="flex-1 text-[13px] text-bone">{error}</p>
+          <button
             onClick={() => setError(null)}
-            className="ml-2 text-red-400 hover:text-red-300"
+            className="shrink-0 rounded p-0.5 text-ash transition-colors hover:text-bone"
+            title="Dismiss"
           >
-            ✕
+            <CloseIcon size={14} />
           </button>
         </div>
       )}
@@ -122,11 +131,11 @@ export function AppListing({ onAppSelect, activeAppId }: AppListingProps) {
       {/* App List */}
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
-          <div className="p-4 text-center text-neutral-500">Loading...</div>
+          <p className="px-6 py-5 text-[13px] text-ash">Loading apps…</p>
         ) : apps.length === 0 ? (
           <EmptyState onCreateClick={() => setIsCreating(true)} />
         ) : (
-          <div className="p-2">
+          <div className="max-w-4xl space-y-2 px-6 py-5">
             {apps.map(app => (
               <AppCard
                 key={app.id}
@@ -171,7 +180,7 @@ function CreateAppForm({
   onCancel
 }: CreateAppFormProps) {
   return (
-    <div className="border-b border-neutral-800 bg-neutral-900/50 p-4">
+    <div className="border-b border-line bg-panel/50 p-4">
       <h3 className="mb-3 font-medium">Create New App</h3>
       
       <div className="space-y-3">
@@ -180,7 +189,7 @@ function CreateAppForm({
           value={name}
           onChange={(e) => onNameChange(e.target.value)}
           placeholder="App name"
-          className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          className="w-full rounded border border-line bg-raised px-3 py-2 text-sm transition-colors hover:border-ash"
           autoFocus
         />
         
@@ -189,11 +198,11 @@ function CreateAppForm({
           value={description}
           onChange={(e) => onDescriptionChange(e.target.value)}
           placeholder="Description (optional)"
-          className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          className="w-full rounded border border-line bg-raised px-3 py-2 text-sm transition-colors hover:border-ash"
         />
         
         <div>
-          <label className="mb-2 block text-sm text-neutral-400">Template</label>
+          <label className="mb-2 block text-sm text-ash">Template</label>
           <div className="grid grid-cols-2 gap-2">
             {TEMPLATES.map(t => (
               <button
@@ -201,8 +210,8 @@ function CreateAppForm({
                 onClick={() => onTemplateChange(t.id)}
                 className={`rounded border p-2 text-left text-sm transition-colors ${
                   template === t.id
-                    ? 'border-blue-500 bg-blue-500/10'
-                    : 'border-neutral-700 hover:border-neutral-600'
+                    ? 'border-brass/40 bg-brass/10'
+                    : 'border-line hover:border-line'
                 }`}
               >
                 <span className="mr-2">{t.icon}</span>
@@ -216,13 +225,13 @@ function CreateAppForm({
           <button
             onClick={onCreate}
             disabled={!name.trim()}
-            className="flex-1 rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex-1 rounded bg-brass px-3 py-2 text-sm text-ground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Create App
           </button>
           <button
             onClick={onCancel}
-            className="rounded border border-neutral-700 px-3 py-2 text-sm hover:bg-neutral-800"
+            className="rounded border border-line px-3 py-2 text-sm hover:bg-raised"
           >
             Cancel
           </button>
@@ -274,10 +283,10 @@ function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
 
   return (
     <div
-      className={`mb-2 cursor-pointer rounded-lg p-3 transition-colors ${
+      className={`cursor-pointer rounded-lg border p-3.5 transition-colors ${
         isActive
-          ? 'border border-blue-500 bg-blue-600/20'
-          : 'border border-transparent bg-neutral-800/50 hover:bg-neutral-800'
+          ? 'border-brass/50 bg-brass/10'
+          : 'border-line bg-panel hover:border-ash/50'
       }`}
       onClick={onSelect}
     >
@@ -290,14 +299,14 @@ function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
               {/* Running indicator */}
               {status && (
                 <span className={`h-2 w-2 rounded-full ${
-                  status === 'running' ? 'bg-green-500' :
-                  status === 'starting' ? 'animate-pulse bg-yellow-500' :
-                  status === 'error' ? 'bg-red-500' : ''
+                  status === 'running' ? 'bg-patina' :
+                  status === 'starting' ? 'animate-pulse bg-brass' :
+                  status === 'error' ? 'bg-rust' : ''
                 }`} />
               )}
             </div>
             {app.description && (
-              <p className="line-clamp-1 text-sm text-neutral-400">
+              <p className="line-clamp-1 text-sm text-ash">
                 {app.description}
               </p>
             )}
@@ -311,18 +320,18 @@ function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
               <button
                 onClick={handleStop}
                 disabled={status === 'starting'}
-                className="rounded p-1.5 text-neutral-400 transition-colors hover:bg-red-900/50 hover:text-red-400 disabled:opacity-50"
-                title="Stop"
+                className="rounded p-1.5 text-ash transition-colors hover:bg-raised hover:text-rust disabled:opacity-50"
+                title="Stop the dev server"
               >
-                ⏹
+                <StopIcon size={15} />
               </button>
             ) : (
               <button
                 onClick={handleRun}
-                className="rounded p-1.5 text-neutral-400 transition-colors hover:bg-green-900/50 hover:text-green-400"
-                title="Run"
+                className="rounded p-1.5 text-ash transition-colors hover:bg-raised hover:text-patina"
+                title="Start the dev server"
               >
-                ▶
+                <PlayIcon size={15} />
               </button>
             )
           )}
@@ -334,26 +343,30 @@ function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
               if (!running) onDelete()
             }}
             disabled={running}
-            className="rounded p-1 text-neutral-500 transition-colors hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
-            title={running ? 'Stop app before deleting' : 'Delete app'}
+            className="rounded p-1 text-ash transition-colors hover:text-rust disabled:cursor-not-allowed disabled:opacity-50"
+            title={running ? 'Stop this app before deleting it' : 'Delete this app'}
           >
-            🗑️
+            <TrashIcon size={15} />
           </button>
         </div>
       </div>
       
-      <div className="mt-2 flex items-center gap-3 text-xs text-neutral-500">
+      <div className="mt-2.5 flex flex-wrap items-center gap-3 text-[11.5px] text-ash">
         {app.currentBranch && (
-          <span className="flex items-center gap-1">
-            🌿 {app.currentBranch}
+          <span className="flex items-center gap-1 font-mono">
+            <BranchIcon size={12} />
+            {app.currentBranch}
           </span>
         )}
         {app.hasChanges && (
-          <span className="text-yellow-500">● Uncommitted</span>
+          <span className="flex items-center gap-1 text-brass">
+            <span className="h-1.5 w-1.5 rounded-full bg-brass" />
+            Uncommitted
+          </span>
         )}
         {/* Show port when running */}
         {running && url && (
-          <span className="text-green-400">
+          <span className="text-patina">
             :{new URL(url).port}
           </span>
         )}
@@ -368,17 +381,20 @@ function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
  */
 function EmptyState({ onCreateClick }: { onCreateClick: () => void }) {
   return (
-    <div className="p-8 text-center">
-      <div className="mb-3 text-4xl">📱</div>
-      <h3 className="mb-1 font-medium">No apps yet</h3>
-      <p className="mb-4 text-sm text-neutral-500">
-        Create your first app to get started
+    <div className="flex flex-col items-center px-8 py-14 text-center">
+      <span className="text-ash">
+        <AppsIcon size={28} />
+      </span>
+      <h2 className="mt-3 text-[15px] font-semibold text-bone">No apps yet</h2>
+      <p className="mt-1 max-w-xs text-[13px] text-ash">
+        Create one and the agent will scaffold it, then change it on request. Every write
+        is committed, so nothing you try is permanent.
       </p>
       <button
         onClick={onCreateClick}
-        className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+        className="mt-4 rounded-lg bg-brass px-4 py-2 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
       >
-        Create App
+        New app
       </button>
     </div>
   )

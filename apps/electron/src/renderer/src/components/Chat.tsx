@@ -7,6 +7,7 @@ import { nanoid } from 'nanoid'
 import { MessageBubble } from './MessageBubble'
 import { InlineApproval } from './InlineApproval'
 import { ElementContextBubble } from './ElementContextBubble'
+import { describePermissionMode } from './PermissionModeControl'
 import type { Message, ContentBlock } from './MessageBubble'
 import type {
   PermissionMode,
@@ -14,7 +15,7 @@ import type {
   ToolApprovalRequest,
   PersistedMessage
 } from '../types/electron'
-import type { SerializedContentBlock, ElementContext } from '@anyapp/core'
+import type { SubApp, SerializedContentBlock, ElementContext } from '@anyapp/core'
 
 /**
  * Skill definition for @mention insertion.
@@ -30,10 +31,10 @@ interface Skill {
  * Props for the Chat component.
  */
 interface ChatProps {
-  /** Current permission mode. */
+  /** The focused app this conversation is about. */
+  app: SubApp
+  /** Current permission mode. Set from the shell header; shown here as context. */
   permissionMode: PermissionMode
-  /** Callback to change permission mode. */
-  onModeChange: (mode: PermissionMode) => void
   /** Callback when a skill is selected from the skills panel. */
   onSkillSelect?: (skill: Skill) => void
   /** Input ref for external control (e.g., inserting @mentions). */
@@ -120,9 +121,9 @@ function convertToSerializedBlocks(blocks: ContentBlock[]): SerializedContentBlo
 /**
  * Main chat interface with streaming messages and tool approval.
  */
-export function Chat({ 
-  permissionMode, 
-  onModeChange,
+export function Chat({
+  app,
+  permissionMode,
   inputRef: externalInputRef,
   externalInput,
   onExternalInputChange,
@@ -429,48 +430,39 @@ export function Chat({
     setMessages([])
   }, [])
 
+  const mode = describePermissionMode(permissionMode)
+
   return (
     <div className="flex h-full flex-col">
-      {/* Chat Header */}
-      <header className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold">Chat</h1>
-          <button
-            onClick={clearHistory}
-            className="rounded px-2 py-1 text-sm text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
-          >
-            Clear
-          </button>
-        </div>
-        <select
-          value={permissionMode}
-          onChange={(e) => onModeChange(e.target.value as PermissionMode)}
-          className="rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm"
-        >
-          <option value="plan">Explore (Read-only)</option>
-          <option value="default">Ask to Edit</option>
-          <option value="acceptEdits">Auto Edit</option>
-          <option value="bypassPermissions">Auto (All)</option>
-        </select>
-      </header>
-
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center text-neutral-500">
-            <p className="text-lg">Welcome to anyapp</p>
-            <p className="mt-2 text-sm">Ask the agent to read, modify, or explore your code.</p>
+          <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center text-center">
+            <p className="text-[15px] text-bone">
+              Ask the agent to read or change{' '}
+              <span className="font-semibold">{app.name}</span>.
+            </p>
+            <p className="mt-2 max-w-sm text-[13px] text-ash">
+              It&rsquo;s set to <span className="text-bone">{mode.label}</span> — {mode.hint}
+            </p>
+            <p className="mt-4 text-[12px] text-ash">
+              Type <span className="font-mono text-bone">@</span> and a skill name to include a skill.
+            </p>
           </div>
         ) : (
           <div className="mx-auto max-w-3xl space-y-4">
-            {messages.map(msg => (
-              <MessageBubble 
-                key={msg.id} 
-                message={msg} 
-                isStreaming={isStreaming && msg.role === 'assistant' && msg === messages[messages.length - 1]}
+            {messages.map((msg) => (
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                isStreaming={
+                  isStreaming &&
+                  msg.role === 'assistant' &&
+                  msg === messages[messages.length - 1]
+                }
               />
             ))}
-            
+
             {/* Inline approval - appears in the message flow */}
             {pendingApproval && (
               <InlineApproval
@@ -479,40 +471,53 @@ export function Chat({
                 onDeny={() => handleApproval(false)}
               />
             )}
-            
+
             <div ref={messagesEndRef} />
           </div>
         )}
       </div>
 
-      {/* Input */}
-      <div className="border-t border-neutral-800 p-4">
-        <div className="mx-auto flex max-w-3xl gap-3">
-          <input
-            ref={inputRefToUse}
-            type="text"
-            value={currentInput}
-            onChange={(e) => setCurrentInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-            placeholder="Ask the agent... (use @skill-name to include skills)"
-            disabled={isStreaming || !activeSessionId}
-            className="flex-1 rounded-lg border border-neutral-700 bg-neutral-800 px-4 py-3 text-neutral-100 placeholder-neutral-500 focus:border-blue-500 focus:outline-none disabled:opacity-50"
-          />
-          {isStreaming ? (
-            <button
-              onClick={stopStreaming}
-              className="rounded-lg bg-red-600 px-6 py-3 font-medium text-white transition-colors hover:bg-red-500"
-            >
-              Stop
-            </button>
-          ) : (
-            <button
-              onClick={sendMessage}
-              disabled={!currentInput.trim() || !activeSessionId}
-              className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Send
-            </button>
+      {/* Composer */}
+      <div className="border-t border-line px-4 py-3">
+        <div className="mx-auto max-w-3xl">
+          <div className="flex gap-2">
+            <input
+              ref={inputRefToUse}
+              type="text"
+              value={currentInput}
+              onChange={(e) => setCurrentInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+              placeholder={`Ask the agent about ${app.name}…`}
+              disabled={isStreaming || !activeSessionId}
+              className="min-w-0 flex-1 rounded-lg border border-line bg-raised px-3.5 py-2.5 text-bone placeholder-ash transition-colors hover:border-ash disabled:opacity-50"
+            />
+            {isStreaming ? (
+              <button
+                onClick={stopStreaming}
+                className="shrink-0 rounded-lg bg-rust px-5 py-2.5 font-medium text-ground transition-opacity hover:opacity-90"
+              >
+                Stop
+              </button>
+            ) : (
+              <button
+                onClick={sendMessage}
+                disabled={!currentInput.trim() || !activeSessionId}
+                className="shrink-0 rounded-lg bg-brass px-5 py-2.5 font-medium text-ground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Send
+              </button>
+            )}
+          </div>
+
+          {messages.length > 0 && (
+            <div className="mt-2 flex justify-end">
+              <button
+                onClick={clearHistory}
+                className="rounded px-1.5 py-0.5 text-[11px] text-ash transition-colors hover:bg-raised hover:text-bone"
+              >
+                Clear this chat
+              </button>
+            </div>
           )}
         </div>
       </div>

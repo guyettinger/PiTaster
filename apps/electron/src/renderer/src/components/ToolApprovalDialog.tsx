@@ -22,28 +22,28 @@ interface ToolApprovalDialogProps {
 export function ToolApprovalDialog({ request, onApprove, onDeny }: ToolApprovalDialogProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="mx-4 max-w-lg rounded-lg bg-neutral-900 p-6 shadow-xl">
-        <h2 className="text-lg font-semibold text-neutral-50">Tool Approval Required</h2>
+      <div className="mx-4 max-w-lg rounded-lg bg-panel p-6 shadow-xl">
+        <h2 className="text-lg font-semibold text-bone">Tool Approval Required</h2>
         
-        <p className="mt-2 text-neutral-400">
+        <p className="mt-2 text-ash">
           The agent wants to use:{' '}
-          <span className="font-mono text-blue-400">{request.tool}</span>
+          <span className="font-mono text-brass">{request.tool}</span>
         </p>
         
-        <pre className="mt-3 max-h-48 overflow-auto rounded bg-neutral-800 p-3 text-sm text-neutral-100">
+        <pre className="mt-3 max-h-48 overflow-auto rounded bg-raised p-3 text-sm text-bone">
           {JSON.stringify(request.input, null, 2)}
         </pre>
         
         <div className="mt-4 flex justify-end gap-3">
           <button
             onClick={onDeny}
-            className="rounded px-4 py-2 text-neutral-400 hover:bg-neutral-800"
+            className="rounded px-4 py-2 text-ash hover:bg-raised"
           >
             Deny
           </button>
           <button
             onClick={onApprove}
-            className="rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-500"
+            className="rounded bg-brass px-4 py-2 font-medium text-ground hover:opacity-90"
           >
             Allow
           </button>
