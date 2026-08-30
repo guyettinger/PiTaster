@@ -46,7 +46,7 @@ export function ApprovalRecord({ tool, input, approved }: ApprovalRecordProps) {
   
   return (
     <div 
-      className={`my-2 flex items-center gap-2 rounded px-3 py-2 text-sm ${
+      className={`flex items-center gap-2 rounded px-4 py-2 text-sm ${
         approved 
           ? 'bg-patina/10 border border-patina/40' 
           : 'bg-rust/10 border border-rust/40'

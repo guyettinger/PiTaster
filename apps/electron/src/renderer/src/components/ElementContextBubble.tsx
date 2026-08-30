@@ -19,7 +19,7 @@ export function ElementContextBubble({ context }: ElementContextBubbleProps) {
   const { element, screenshot } = context
 
   return (
-    <div className="my-2 overflow-hidden rounded-lg border border-brass/40 bg-brass/10">
+    <div className="overflow-hidden rounded-lg border border-brass/40 bg-brass/10">
       {/* Screenshot */}
       {screenshot && (
         <div className="border-b border-brass/40 bg-panel/50 p-2">
@@ -32,7 +32,7 @@ export function ElementContextBubble({ context }: ElementContextBubbleProps) {
       )}
 
       {/* Element info */}
-      <div className="space-y-1 p-3 text-xs">
+      <div className="space-y-1 px-4 py-3 text-xs">
         <div>
           <span className="text-ash">Tag:</span>{' '}
           <code className="text-brass">{element.tag}</code>

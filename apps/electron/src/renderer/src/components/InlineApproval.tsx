@@ -2,6 +2,7 @@
  * Inline tool approval request within chat.
  */
 
+import { WarningIcon } from './icons'
 import type { ToolApprovalRequest } from '../types/electron'
 import { isMcpToolName, parseMcpToolName, summarizeMcpInput } from '../lib/mcpToolDisplay'
 
@@ -66,10 +67,10 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
   }
   
   return (
-    <div className="my-3 rounded-lg border-2 border-brass/40 bg-brass/10 p-4">
+    <div className="rounded-lg border-2 border-brass/40 bg-brass/10 p-4">
       {/* Header */}
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-lg">⚠️</span>
+        <WarningIcon size={16} className="shrink-0 text-brass" />
         <span className="font-medium text-bone">Approval Required</span>
       </div>
       
@@ -109,13 +110,13 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
       <div className="flex gap-2">
         <button
           onClick={onDeny}
-          className="flex-1 rounded border border-line px-3 py-2 text-sm text-bone hover:bg-raised transition-colors"
+          className="flex-1 rounded-lg border border-line px-4 py-2 text-sm text-bone transition-colors hover:bg-raised"
         >
           Deny
         </button>
         <button
           onClick={onApprove}
-          className="flex-1 rounded bg-brass px-3 py-2 text-sm font-medium text-ground transition-opacity hover:opacity-90"
+          className="flex-1 rounded-lg bg-brass px-4 py-2 text-sm font-medium text-ground transition-opacity hover:opacity-90"
         >
           Allow
         </button>
