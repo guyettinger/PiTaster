@@ -435,7 +435,7 @@ export function Chat({
   return (
     <div className="flex h-full flex-col">
       {/* Messages */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         {messages.length === 0 ? (
           <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center text-center">
             <p className="text-[15px] text-bone">
@@ -478,7 +478,7 @@ export function Chat({
       </div>
 
       {/* Composer */}
-      <div className="border-t border-line px-4 py-3">
+      <div className="border-t border-line px-6 py-4">
         <div className="mx-auto max-w-3xl">
           <div className="flex gap-2">
             <input
@@ -489,12 +489,12 @@ export function Chat({
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
               placeholder={`Ask the agent about ${app.name}…`}
               disabled={isStreaming || !activeSessionId}
-              className="min-w-0 flex-1 rounded-lg border border-line bg-raised px-3.5 py-2.5 text-bone placeholder-ash transition-colors hover:border-ash disabled:opacity-50"
+              className="h-11 min-w-0 flex-1 rounded-lg border border-line bg-raised px-4 text-bone placeholder-ash transition-colors hover:border-ash disabled:opacity-50"
             />
             {isStreaming ? (
               <button
                 onClick={stopStreaming}
-                className="shrink-0 rounded-lg bg-rust px-5 py-2.5 font-medium text-ground transition-opacity hover:opacity-90"
+                className="h-11 shrink-0 rounded-lg bg-rust px-5 font-medium text-ground transition-opacity hover:opacity-90"
               >
                 Stop
               </button>
@@ -502,7 +502,7 @@ export function Chat({
               <button
                 onClick={sendMessage}
                 disabled={!currentInput.trim() || !activeSessionId}
-                className="shrink-0 rounded-lg bg-brass px-5 py-2.5 font-medium text-ground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-11 shrink-0 rounded-lg bg-brass px-5 font-medium text-ground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Send
               </button>
@@ -513,7 +513,7 @@ export function Chat({
             <div className="mt-2 flex justify-end">
               <button
                 onClick={clearHistory}
-                className="rounded px-1.5 py-0.5 text-[11px] text-ash transition-colors hover:bg-raised hover:text-bone"
+                className="rounded px-2 py-0.5 text-[11px] text-ash transition-colors hover:bg-raised hover:text-bone"
               >
                 Clear this chat
               </button>

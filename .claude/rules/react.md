@@ -74,6 +74,29 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
   (`bg-${color}-500` does not survive Tailwind's scan)
 - Reserve inline `style` for genuinely dynamic values (computed positions, sizes)
 
+### Spacing
+
+The scale is Tailwind's 4px grid, documented in full at the top of
+`styles/globals.css`. Which gutter to reach for depends on the environment:
+
+| Environment | Gutter | Where |
+|-------------|--------|-------|
+| Chrome bars | `px-3` | Title bar, docked panel headers, terminal/preview toolbars |
+| Columns | `px-2` | Nav rail, app context column. Rows add their own `px-2` |
+| Pages | `px-6` | Apps, Skills, Help, Settings, the transcript and composer |
+
+Page headers are `py-4`, page bodies `py-5`. `py-1.5` (6px) is the dense row
+and the only half-step in the system — `p-2.5`, `py-3.5` and friends are not
+steps, and reintroducing one is what makes the shell drift.
+
+Buttons come in two sizes: `px-3 py-1.5` inside a bar, `px-4 py-2` for a page
+action. Icon-only buttons are `p-1.5`, or `p-1` when they sit inside a 13px
+row. Adjacent buttons always share a size.
+
+The title bar's left padding is `pl-titlebar`, a measured token that clears the
+macOS traffic lights. Don't hardcode it — the arithmetic depends on
+`trafficLightPosition` in `main/index.ts`.
+
 ## Naming
 
 - **Components**: PascalCase (`MessageBubble`)

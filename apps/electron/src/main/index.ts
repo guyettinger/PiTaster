@@ -105,7 +105,7 @@ function createWindow(): void {
     titleBarStyle: 'hiddenInset',
     // Centres the traffic lights in the renderer's 44px shell header, which is
     // the only draggable chrome the window has.
-    trafficLightPosition: { x: 16, y: 14 },
+    trafficLightPosition: { x: 16, y: 16 },
     backgroundColor: '#121316',
     show: false
   })

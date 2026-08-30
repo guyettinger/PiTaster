@@ -57,7 +57,7 @@ export function AppContextColumn({
     <div className="flex w-52 shrink-0 flex-col border-r border-line bg-panel">
       {/* The column's heading is the app's own name. */}
       <div
-        className={`group/head flex items-start gap-1 border-b border-line px-3 py-2.5 transition-colors ${
+        className={`group/head flex items-start gap-1 border-b border-line px-4 py-3 transition-colors ${
           inWorkspace ? 'bg-raised/40' : ''
         }`}
       >
@@ -83,7 +83,7 @@ export function AppContextColumn({
         <button
           onClick={onCloseApp}
           title={`Close ${app.name}`}
-          className="shrink-0 rounded p-0.5 text-ash opacity-0 transition-opacity hover:text-bone group-hover/head:opacity-100"
+          className="shrink-0 rounded p-1 text-ash opacity-0 transition-opacity hover:text-bone group-hover/head:opacity-100"
         >
           <CloseIcon size={14} />
         </button>
@@ -97,8 +97,8 @@ export function AppContextColumn({
       />
 
       {/* Inspectors on the workspace */}
-      <div className="border-t border-line px-1.5 py-2">
-        <p className="eyebrow px-2 pb-1.5 text-ash">Panels</p>
+      <div className="border-t border-line px-2 py-3">
+        <p className="eyebrow px-2 pb-2 text-ash">Panels</p>
         <PanelToggle
           icon={<HistoryIcon size={16} />}
           label="History"

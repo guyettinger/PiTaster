@@ -105,7 +105,7 @@ export function AddSourceForm({
   }, [name, command, args, env, onSave])
 
   return (
-    <div className="border-b border-line bg-panel/50 p-3">
+    <div className="border-b border-line bg-panel/50 p-4">
       <h3 className="mb-3 text-sm font-medium text-bone">
         {initialData ? 'Edit MCP Source' : 'Add MCP Source'}
       </h3>

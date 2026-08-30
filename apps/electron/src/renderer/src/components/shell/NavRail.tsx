@@ -26,7 +26,7 @@ export function NavRail({ panel, onNavigate }: NavRailProps) {
   return (
     <nav
       aria-label="Workspace"
-      className="flex w-16 shrink-0 flex-col border-r border-line bg-panel px-1.5 py-2"
+      className="flex w-16 shrink-0 flex-col border-r border-line bg-panel p-2"
     >
       <div className="flex flex-col gap-0.5">
         <NavItem

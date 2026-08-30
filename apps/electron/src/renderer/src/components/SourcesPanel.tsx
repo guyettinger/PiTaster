@@ -293,7 +293,7 @@ export function SourcesPanel({ isVisible = true }: SourcesPanelProps) {
               setIsAdding(!isAdding)
               setEditingSource(null)
             }}
-            className="flex items-center gap-1 rounded-lg bg-brass px-2.5 py-1.5 text-[12.5px] font-medium text-ground transition-opacity hover:opacity-90"
+            className="flex items-center gap-1 rounded-lg bg-brass px-3 py-1.5 text-[12.5px] font-medium text-ground transition-opacity hover:opacity-90"
           >
             <PlusIcon size={14} />
             Add source
@@ -324,7 +324,7 @@ export function SourcesPanel({ isVisible = true }: SourcesPanelProps) {
           </button>
         </div>
       ) : sources.length === 0 && !isAdding ? (
-        <div className="mt-3 flex flex-col items-center rounded-lg border border-dashed border-line px-6 py-10 text-center">
+        <div className="mt-3 flex flex-col items-center rounded-lg border border-dashed border-line px-6 py-12 text-center">
           <span className="text-ash">
             <SourceIcon size={26} />
           </span>
@@ -334,7 +334,7 @@ export function SourcesPanel({ isVisible = true }: SourcesPanelProps) {
           </p>
           <button
             onClick={() => setIsAdding(true)}
-            className="mt-4 rounded-lg bg-brass px-3.5 py-2 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
+            className="mt-4 rounded-lg bg-brass px-4 py-2 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
           >
             Add source
           </button>
@@ -359,7 +359,7 @@ export function SourcesPanel({ isVisible = true }: SourcesPanelProps) {
                   }}
                 />
               ) : (
-                <div className="p-3.5">
+                <div className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
@@ -436,7 +436,7 @@ export function SourcesPanel({ isVisible = true }: SourcesPanelProps) {
                   )}
 
                   {source.connected && source.tools && source.tools.length > 0 && (
-                    <div className="mt-2.5">
+                    <div className="mt-3">
                       <p className="eyebrow text-ash">
                         {source.tools.length} tool{source.tools.length !== 1 ? 's' : ''}
                       </p>

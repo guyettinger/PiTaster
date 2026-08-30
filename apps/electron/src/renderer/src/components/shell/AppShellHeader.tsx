@@ -56,8 +56,8 @@ export function AppShellHeader({ app, permissionMode, onModeChange }: AppShellHe
 
   return (
     <div className="shrink-0">
-      {/* The left padding clears the macOS traffic lights. */}
-      <header className="drag flex h-11 items-center gap-3 bg-panel pl-[78px] pr-3">
+      {/* `pl-titlebar` clears the macOS traffic lights — see globals.css. */}
+      <header className="drag flex h-11 items-center gap-3 bg-panel pl-titlebar pr-3">
         <div className="flex items-center gap-2">
           <Logo size={19} />
           <span className="text-[14px] font-semibold tracking-[-0.01em] text-bone">anyapp</span>
