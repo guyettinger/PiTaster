@@ -3,6 +3,7 @@
  */
 
 import type { ToolApprovalRequest } from '../types/electron'
+import { isMcpToolName, parseMcpToolName, summarizeMcpInput } from '../lib/mcpToolDisplay'
 
 /**
  * Props for the InlineApproval component.
@@ -20,10 +21,18 @@ interface InlineApprovalProps {
  * Inline approval bubble that appears in the chat flow.
  */
 export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalProps) {
+  const { tool, input } = request
+  const mcp = parseMcpToolName(tool)
+
   // Get a user-friendly summary of what the tool wants to do
   const getSummary = (): string => {
-    const { tool, input } = request
-    
+    // MCP tools run inside a server anyapp does not control and are never
+    // auto-approved, so this prompt is the only boundary. Name the server and the
+    // tool rather than falling through to a bare `Use mcp__x__y`.
+    if (mcp) {
+      return `${mcp.sourceId} → ${mcp.toolName}`
+    }
+
     switch (tool) {
       case 'bash':
         return `Run: ${(input.command as string) ?? 'command'}`
@@ -68,7 +77,24 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
       <p className="text-sm text-neutral-300 mb-3">
         {getSummary()}
       </p>
-      
+
+      {/*
+        For an MCP tool the arguments are the payload leaving the machine, so they
+        are shown inline rather than behind the disclosure below. A tool being
+        handed something it has no business receiving is the tell for a
+        prompt-injected exfiltration attempt, and it has to be visible to catch.
+      */}
+      {mcp && summarizeMcpInput(input) && (
+        <div className="mb-3 rounded border border-yellow-700/60 bg-neutral-900/60 p-2">
+          <p className="mb-1 text-xs font-medium text-yellow-500">
+            Sends to an external MCP server:
+          </p>
+          <p className="font-mono text-xs break-all text-neutral-300">
+            {summarizeMcpInput(input)}
+          </p>
+        </div>
+      )}
+
       {/* Input details (collapsed by default for non-sensitive tools) */}
       <details className="mb-3">
         <summary className="text-xs text-neutral-400 cursor-pointer hover:text-neutral-200">

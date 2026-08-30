@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { promises as fs } from 'node:fs'
 import { createAgentHost, type AgentHost } from './agent/session'
 import { VersionManager, SourceManager, SkillsLoader, AppManager, AppRunner, ChatHistoryManager } from '@anyapp/shared'
-import type { PermissionMode, StreamChunk, Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, CreateChatSessionParams, SerializedContentBlock, ElementContext } from '@anyapp/core'
+import type { PermissionMode, StreamChunk, Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
 import {
   DEFAULT_OLLAMA_BASE_URL,
   isOllamaReachable,
@@ -193,6 +193,119 @@ export async function initializeConfig(): Promise<void> {
 }
 
 /**
+ * Connect every enabled source so its tools are available to the agent.
+ *
+ * Without this a source only ever went live when the user pressed Connect, and the
+ * `enabled` flag on a saved config was read by nothing. Failures are per-source and
+ * non-fatal: `SourceManager.connect` records the error on the returned
+ * `ConnectedSource` rather than throwing, and the panel surfaces it.
+ */
+export async function initializeSources(): Promise<void> {
+  let configs: AnySourceConfig[] = []
+  try {
+    configs = await sourceManager.loadSources()
+  } catch {
+    // A missing or malformed sources directory must not block startup.
+    return
+  }
+
+  await Promise.all(
+    configs
+      .filter((config) => config.enabled !== false)
+      .map((config) => sourceManager.connect(config).catch(() => undefined))
+  )
+}
+
+/** Maximum length accepted for a source id, name, command, or single argument. */
+const MAX_SOURCE_FIELD_CHARS = 500
+
+/** Maximum number of command arguments accepted for a source. */
+const MAX_SOURCE_ARGS = 64
+
+/** Maximum number of environment variables accepted for a source. */
+const MAX_SOURCE_ENV_VARS = 64
+
+/**
+ * Require a non-empty, length-capped string.
+ * @param value - The value the renderer sent
+ * @param field - Field name, for the error message
+ * @returns The trimmed string
+ * @throws {Error} If the value is not a usable string
+ */
+function requireSourceString(value: unknown, field: string): string {
+  if (typeof value !== 'string') {
+    throw new Error(`Source ${field} must be a string`)
+  }
+  const trimmed = value.trim()
+  if (trimmed.length === 0 || trimmed.length > MAX_SOURCE_FIELD_CHARS) {
+    throw new Error(`Source ${field} must be 1-${MAX_SOURCE_FIELD_CHARS} characters`)
+  }
+  return trimmed
+}
+
+/**
+ * Validate an MCP source configuration arriving from the renderer.
+ *
+ * The renderer is untrusted, and this payload is unusually load-bearing: it names a
+ * command anyapp will spawn and, once connected, becomes part of the agent's tool
+ * surface. Everything is checked here rather than in `SourceManager`.
+ *
+ * @param config - The raw value from the renderer
+ * @returns A validated MCP source configuration
+ * @throws {Error} If any field is missing, mistyped, or out of bounds
+ */
+function validateMcpSourceConfig(config: unknown): McpSourceConfig {
+  if (typeof config !== 'object' || config === null) {
+    throw new Error('Invalid source configuration')
+  }
+
+  const raw = config as Record<string, unknown>
+
+  if (raw.type !== 'mcp') {
+    throw new Error('Only MCP sources can be saved')
+  }
+
+  const id = requireSourceString(raw.id, 'id')
+  if (!/^[a-z0-9-]+$/.test(id)) {
+    throw new Error('Source id must contain only lowercase letters, digits, and hyphens')
+  }
+
+  if (!Array.isArray(raw.args) || raw.args.length > MAX_SOURCE_ARGS) {
+    throw new Error(`Source args must be an array of at most ${MAX_SOURCE_ARGS} strings`)
+  }
+  const args = raw.args.map((arg, index) => requireSourceString(arg, `argument ${index + 1}`))
+
+  let env: Record<string, string> | undefined
+  if (raw.env !== undefined) {
+    if (typeof raw.env !== 'object' || raw.env === null || Array.isArray(raw.env)) {
+      throw new Error('Source env must be an object')
+    }
+    const entries = Object.entries(raw.env as Record<string, unknown>)
+    if (entries.length > MAX_SOURCE_ENV_VARS) {
+      throw new Error(`Source env may hold at most ${MAX_SOURCE_ENV_VARS} variables`)
+    }
+    env = {}
+    for (const [key, value] of entries) {
+      env[requireSourceString(key, 'env key')] = requireSourceString(value, `env value for ${key}`)
+    }
+  }
+
+  return {
+    id,
+    name: requireSourceString(raw.name, 'name'),
+    type: 'mcp',
+    enabled: raw.enabled !== false,
+    createdAt:
+      raw.createdAt === undefined
+        ? new Date().toISOString()
+        : requireSourceString(raw.createdAt, 'createdAt'),
+    command: requireSourceString(raw.command, 'command'),
+    args,
+    ...(env ? { env } : {})
+  }
+}
+
+/**
  * Get the currently active app ID.
  */
 export function getActiveAppId(): string | null {
@@ -293,9 +406,13 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
     agentDir: piAgentDir,
     modelId: config.ollamaModel,
     sessionFile: sessionFile ?? undefined,
+    mcpSources: sourceManager.getConnectedSources().filter((source) => source.connected),
     callbacks: {
       getPermissionMode: () => currentPermissionMode,
       getAutoCommit: () => getConfig().autoCommit,
+
+      callMcpTool: (sourceId, toolName, args) =>
+        sourceManager.callTool(sourceId, toolName, args),
 
       requestApproval: (tool: string, input: unknown): Promise<boolean> => {
         const id = nanoid()
@@ -585,11 +702,12 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     return sourceManager.loadSources()
   })
 
-  ipcMain.handle('sources:save', async (_, config) => {
-    if (!config || typeof config.id !== 'string') {
-      throw new Error('Invalid source configuration')
-    }
-    return sourceManager.saveSource(config)
+  ipcMain.handle('sources:save', async (_, config: unknown) => {
+    const validated = validateMcpSourceConfig(config)
+    await sourceManager.saveSource(validated)
+    // The saved command and args become both a spawned process and an agent tool
+    // surface, so drop the session and let the next prompt rebuild it.
+    await disposeAgentHost()
   })
 
   ipcMain.handle('sources:connect', async (_, id: string) => {
@@ -601,21 +719,26 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (!config) {
       throw new Error(`Source ${id} not found`)
     }
-    return sourceManager.connect(config)
+    const connected = await sourceManager.connect(config)
+    // Pi's tool list is fixed at session creation, so rebuild to pick up the tools.
+    await disposeAgentHost()
+    return connected
   })
 
   ipcMain.handle('sources:disconnect', async (_, id: string) => {
     if (typeof id !== 'string' || id.length === 0) {
       throw new Error('Invalid source ID')
     }
-    return sourceManager.disconnect(id)
+    await sourceManager.disconnect(id)
+    await disposeAgentHost()
   })
 
   ipcMain.handle('sources:delete', async (_, id: string) => {
     if (typeof id !== 'string' || id.length === 0) {
       throw new Error('Invalid source ID')
     }
-    return sourceManager.deleteSource(id)
+    await sourceManager.deleteSource(id)
+    await disposeAgentHost()
   })
 
   // Skills IPC handlers

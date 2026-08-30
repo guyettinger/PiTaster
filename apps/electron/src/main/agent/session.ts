@@ -23,6 +23,7 @@ import {
   type Skill as PiSkill
 } from '@earendil-works/pi-coding-agent'
 import type {
+  ConnectedSource,
   ElementContext,
   PermissionMode,
   StreamChunk,
@@ -31,6 +32,7 @@ import type {
 import { SkillsLoader } from '@anyapp/shared'
 import { autoCommitToolResult } from './auto-commit'
 import { toStreamChunk } from './events'
+import { createMcpTools, getMcpToolBindings, type CallMcpTool } from './mcp-tools'
 import {
   checkConfinement,
   checkPermission,
@@ -41,12 +43,15 @@ import { createVersionTools, VERSION_TOOL_NAMES } from './version-tools'
 import { elementContextToPrompt } from '../agent-utils'
 
 /**
- * The complete set of tools the agent may use.
+ * The tools every session starts with: Pi's built-ins plus anyapp's version tools.
  *
  * Pi's `tools` option is an allowlist that applies to custom tools too, so every
  * version tool has to be named here or it is filtered out. Keep this in step with
  * the tool list in {@link getSystemPrompt} and the classifications in
  * {@link checkPermission}.
+ *
+ * Tools from connected MCP sources are *not* listed here — their names depend on
+ * what is connected, so {@link createAgentHost} appends them per session.
  */
 export const AGENT_TOOL_NAMES = [
   'read',
@@ -69,6 +74,8 @@ export interface AgentHostCallbacks {
   getAutoCommit: () => boolean
   /** Ask the user to approve one tool call. Resolves false on denial or timeout. */
   requestApproval: (tool: string, input: unknown) => Promise<boolean>
+  /** Invoke a tool on a connected MCP source. */
+  callMcpTool: CallMcpTool
   /** Forward a chunk to the renderer. */
   onStream: (chunk: StreamChunk) => void
 }
@@ -85,6 +92,8 @@ export interface CreateAgentHostParams {
   modelId: string
   /** Existing Pi session file to resume, or undefined to start a new one. */
   sessionFile?: string
+  /** Currently connected MCP sources, whose tools join this session. */
+  mcpSources?: ConnectedSource[]
   /** Application callbacks. */
   callbacks: AgentHostCallbacks
 }
@@ -240,7 +249,7 @@ function createAnyappExtension(params: {
  * @throws {Error} If the configured model is not available from Ollama
  */
 export async function createAgentHost(params: CreateAgentHostParams): Promise<AgentHost> {
-  const { app, agentDir, modelId, sessionFile, callbacks } = params
+  const { app, agentDir, modelId, sessionFile, mcpSources = [], callbacks } = params
 
   const modelRuntime = await ModelRuntime.create({
     authPath: join(agentDir, 'auth.json'),
@@ -258,11 +267,14 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
 
   const anyappSkills = await loadPiSkills(join(homedir(), '.anyapp', 'skills'))
 
+  const mcpBindings = getMcpToolBindings(mcpSources)
+  const mcpTools = createMcpTools({ bindings: mcpBindings, callTool: callbacks.callMcpTool })
+
   const loader = new DefaultResourceLoader({
     cwd: app.path,
     agentDir,
     settingsManager,
-    systemPromptOverride: () => getSystemPrompt(app),
+    systemPromptOverride: () => getSystemPrompt({ app, mcpTools: mcpBindings }),
     skillsOverride: (current) => ({
       skills: [...current.skills, ...anyappSkills],
       diagnostics: current.diagnostics
@@ -284,8 +296,8 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     modelRuntime,
     thinkingLevel: 'off',
     noTools: 'all',
-    tools: AGENT_TOOL_NAMES,
-    customTools: createVersionTools(app.path),
+    tools: [...AGENT_TOOL_NAMES, ...mcpBindings.map((binding) => binding.qualifiedName)],
+    customTools: [...createVersionTools(app.path), ...mcpTools],
     resourceLoader: loader,
     sessionManager,
     settingsManager

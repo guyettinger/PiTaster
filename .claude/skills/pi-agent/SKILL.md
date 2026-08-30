@@ -21,6 +21,7 @@ which differ in places.
 | `permission-gate.ts` | `tool_call` handler: permission modes + path confinement |
 | `auto-commit.ts` | `tool_result` handler: git commit after `write`/`edit` |
 | `version-tools.ts` | The six git tools, via `defineTool()` |
+| `mcp-tools.ts` | Bridges connected MCP sources' tools into Pi custom tools |
 | `system-prompt.ts` | `getSystemPrompt(app)` and the per-template hints |
 | `ollama.ts` | Model discovery and `~/.anyapp/pi/models.json` generation |
 
@@ -73,7 +74,16 @@ single lookup.
 ## Gotchas
 
 - **`tools` is an allowlist that covers custom tools too.** A `defineTool()` tool
-  missing from `AGENT_TOOL_NAMES` is silently dropped.
+  missing from the session's `tools` array is silently dropped. `AGENT_TOOL_NAMES`
+  is only the static base; MCP tool names are appended per session.
+- **Pi has no MCP support.** Nothing in `@earendil-works/pi-coding-agent@0.84`
+  mentions it — `mcp-tools.ts` is the whole bridge.
+- **A raw JSON Schema is a valid `parameters` value.** `validateToolArguments`
+  (`pi-ai/dist/utils/validation.js`) checks for TypeBox's kind symbol and falls
+  back to JSON Schema coercion when it is absent, so an MCP `inputSchema` passes
+  through with `as unknown as TSchema`. Required properties, enums, nested objects
+  and string→number coercion all work. Do **not** wrap it in `Type.Unsafe` — that
+  adds the brand and forces the TypeBox path instead.
 - **Sessions default to `~/.pi/agent/`.** Pass an explicit `sessionDir` to
   `SessionManager.create/open/list` or transcripts land outside `~/.anyapp/`.
 - **Pi defers writing a transcript until the first assistant reply.** An empty
