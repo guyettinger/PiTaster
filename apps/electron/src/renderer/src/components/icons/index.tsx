@@ -259,6 +259,16 @@ export function CheckIcon(props: IconProps) {
   )
 }
 
+/** Two offset sheets: take a copy of this. */
+export function CopyIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="9" y="9" width="11.5" height="11.5" rx="2" />
+      <path d="M15 6.2V5.5a2 2 0 0 0-2-2H5.5a2 2 0 0 0-2 2V13a2 2 0 0 0 2 2h.7" />
+    </Icon>
+  )
+}
+
 /** Something needs attention before it will work. */
 export function WarningIcon(props: IconProps) {
   return (

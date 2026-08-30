@@ -333,6 +333,8 @@ interface ElectronAPI {
   getRunningAppInfo: (id: string) => Promise<RunningApp | null>
   /** Open a running app in browser. */
   openInBrowser: (id: string) => Promise<void>
+  /** Open an external `http:`/`https:` link in the user's default browser. */
+  openExternalUrl: (url: string) => Promise<void>
   /** Install dependencies for an app. */
   installDeps: (id: string) => Promise<void>
   /** Listen for app log events. */
