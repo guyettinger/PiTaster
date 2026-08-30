@@ -295,7 +295,10 @@ function validateMcpSourceConfig(config: unknown): McpSourceConfig {
     name: requireSourceString(raw.name, 'name'),
     type: 'mcp',
     enabled: raw.enabled !== false,
-    createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString(),
+    createdAt:
+      raw.createdAt === undefined
+        ? new Date().toISOString()
+        : requireSourceString(raw.createdAt, 'createdAt'),
     command: requireSourceString(raw.command, 'command'),
     args,
     ...(env ? { env } : {})

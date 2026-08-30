@@ -3,6 +3,7 @@
  */
 
 import { useState } from 'react'
+import { isMcpToolName, parseMcpToolName, summarizeMcpInput } from '../lib/mcpToolDisplay'
 
 /**
  * Props for the ToolBubble component.
@@ -24,6 +25,13 @@ interface ToolBubbleProps {
  * Returns a user-friendly label for a tool name.
  */
 function getToolLabel(tool: string): { icon: string; label: string } {
+  // MCP tools are named per connected source, so they cannot be enumerated in the
+  // map below. Label them by server and tool rather than by the raw qualified name.
+  const mcp = parseMcpToolName(tool)
+  if (mcp) {
+    return { icon: '🔌', label: `${mcp.sourceId} → ${mcp.toolName}` }
+  }
+
   const toolMap: Record<string, { icon: string; label: string }> = {
     bash: { icon: '⌘', label: 'Command' },
     read: { icon: '📄', label: 'Read File' },
@@ -70,7 +78,13 @@ function getStatusStyle(status: ToolBubbleProps['status']): string {
  */
 function getInputSummary(tool: string, input?: Record<string, unknown>): string | null {
   if (!input) return null
-  
+
+  // An MCP tool's arguments are the payload leaving the machine; show them rather
+  // than returning null and rendering the call as an opaque row.
+  if (isMcpToolName(tool)) {
+    return summarizeMcpInput(input)
+  }
+
   switch (tool) {
     case 'bash':
       return (input.command as string) ?? null

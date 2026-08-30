@@ -268,7 +268,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
   const anyappSkills = await loadPiSkills(join(homedir(), '.anyapp', 'skills'))
 
   const mcpBindings = getMcpToolBindings(mcpSources)
-  const mcpTools = createMcpTools({ sources: mcpSources, callTool: callbacks.callMcpTool })
+  const mcpTools = createMcpTools({ bindings: mcpBindings, callTool: callbacks.callMcpTool })
 
   const loader = new DefaultResourceLoader({
     cwd: app.path,
