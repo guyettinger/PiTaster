@@ -32,6 +32,8 @@ interface ToolApprovalRequest {
   id: string
   tool: string
   input: Record<string, unknown>
+  /** Advisory note about what the call does, e.g. that it reaches the network. */
+  notice?: string
 }
 
 /** Tool approval response from renderer. */

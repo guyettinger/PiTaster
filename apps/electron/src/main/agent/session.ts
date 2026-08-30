@@ -40,13 +40,15 @@ import {
 } from './permission-gate'
 import { getSystemPrompt } from './system-prompt'
 import { createVersionTools, VERSION_TOOL_NAMES } from './version-tools'
+import { createWebTools, WEB_TOOL_NAMES } from './web-tools'
 import { elementContextToPrompt } from '../agent-utils'
 
 /**
- * The tools every session starts with: Pi's built-ins plus anyapp's version tools.
+ * The tools every session starts with: Pi's built-ins plus anyapp's version and
+ * network tools.
  *
  * Pi's `tools` option is an allowlist that applies to custom tools too, so every
- * version tool has to be named here or it is filtered out. Keep this in step with
+ * custom tool has to be named here or it is filtered out. Keep this in step with
  * the tool list in {@link getSystemPrompt} and the classifications in
  * {@link checkPermission}.
  *
@@ -61,7 +63,8 @@ export const AGENT_TOOL_NAMES = [
   'grep',
   'find',
   'ls',
-  ...VERSION_TOOL_NAMES
+  ...VERSION_TOOL_NAMES,
+  ...WEB_TOOL_NAMES
 ]
 
 /**
@@ -297,7 +300,11 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     thinkingLevel: 'off',
     noTools: 'all',
     tools: [...AGENT_TOOL_NAMES, ...mcpBindings.map((binding) => binding.qualifiedName)],
-    customTools: [...createVersionTools(app.path), ...mcpTools],
+    customTools: [
+      ...createVersionTools(app.path),
+      ...createWebTools({ rootPath: app.path, getAutoCommit: callbacks.getAutoCommit }),
+      ...mcpTools
+    ],
     resourceLoader: loader,
     sessionManager,
     settingsManager

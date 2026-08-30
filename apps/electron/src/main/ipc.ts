@@ -9,7 +9,16 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promises as fs } from 'node:fs'
 import { createAgentHost, type AgentHost } from './agent/session'
-import { VersionManager, SourceManager, SkillsLoader, AppManager, AppRunner, ChatHistoryManager } from '@anyapp/shared'
+import { describeNetworkUse } from './agent/permission-gate'
+import {
+  VersionManager,
+  SourceManager,
+  SkillsLoader,
+  AppManager,
+  AppRunner,
+  ChatHistoryManager,
+  installDependencies
+} from '@anyapp/shared'
 import type { PermissionMode, StreamChunk, Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
 import {
   DEFAULT_OLLAMA_BASE_URL,
@@ -417,10 +426,22 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
 
       requestApproval: (tool: string, input: unknown): Promise<boolean> => {
         const id = nanoid()
+        const args = input as Record<string, unknown>
+
+        // Surface network use in the prompt. This annotates, it does not gate:
+        // `bash` reaches the user for approval either way, and the note only
+        // tells them why this particular command is worth reading closely.
+        const command = args.command
+        const notice =
+          (tool === 'bash' || tool === 'powershell') && typeof command === 'string'
+            ? describeNetworkUse(command)
+            : null
+
         const request: ToolApprovalRequest = {
           id,
           tool,
-          input: input as Record<string, unknown>
+          input: args,
+          ...(notice ? { notice } : {})
         }
 
         if (mainWindow.isDestroyed()) return Promise.resolve(false)
@@ -987,45 +1008,24 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       throw new Error(`App "${id}" not found`)
     }
 
-    // Run bun install in the app directory
-    const { spawn } = await import('node:child_process')
-
-    return new Promise<void>((resolve, reject) => {
-      const proc = spawn('bun', ['install'], {
-        cwd: app.path,
-        stdio: ['ignore', 'pipe', 'pipe']
-      })
-
-      proc.stdout?.on('data', (data: Buffer) => {
+    // `installDependencies` spawns with a filtered environment, so the user's
+    // API keys never reach the install process.
+    const result = await installDependencies({
+      appPath: app.path,
+      onLog: ({ type, message }) => {
         const entry: AppLogEntry = {
           appId: id,
           timestamp: new Date().toISOString(),
-          type: 'stdout',
-          message: data.toString()
+          type,
+          message
         }
         mainWindow.webContents.send('apps:log', entry)
-      })
-
-      proc.stderr?.on('data', (data: Buffer) => {
-        const entry: AppLogEntry = {
-          appId: id,
-          timestamp: new Date().toISOString(),
-          type: 'stderr',
-          message: data.toString()
-        }
-        mainWindow.webContents.send('apps:log', entry)
-      })
-
-      proc.on('exit', (code) => {
-        if (code === 0) {
-          resolve()
-        } else {
-          reject(new Error(`bun install exited with code ${code}`))
-        }
-      })
-
-      proc.on('error', reject)
+      }
     })
+
+    if (result.exitCode !== 0) {
+      throw new Error(`bun install exited with code ${result.exitCode}`)
+    }
   })
 
   /**

@@ -5,21 +5,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import type { McpSourceConfig, McpTool } from '@anyapp/core'
-
-/**
- * Environment variables to filter out when spawning MCP servers.
- * These should never be passed to external processes.
- */
-const BLOCKED_ENV_VARS = [
-  'ANTHROPIC_API_KEY',
-  'OPENAI_API_KEY',
-  'AWS_SECRET_ACCESS_KEY',
-  'AWS_ACCESS_KEY_ID',
-  'GITHUB_TOKEN',
-  'GH_TOKEN',
-  'OPENAI_ORG_ID',
-  'CLAUDE_API_KEY'
-]
+import { buildSubprocessEnv } from '../process/env.js'
 
 /**
  * Client for connecting to MCP (Model Context Protocol) servers via stdio.
@@ -39,15 +25,8 @@ export class McpClient {
    * @returns The available tools from the server
    */
   async connect(): Promise<McpTool[]> {
-    // Filter environment variables to remove sensitive keys
-    const filteredEnv = Object.fromEntries(
-      Object.entries(process.env).filter(
-        ([key]) => !BLOCKED_ENV_VARS.includes(key)
-      )
-    ) as Record<string, string>
-
-    // Merge with source-specific env
-    const env = { ...filteredEnv, ...this.config.env }
+    // Strip the user's credentials before the server process sees them.
+    const env = buildSubprocessEnv(this.config.env)
 
     // Create client
     this.client = new Client({
