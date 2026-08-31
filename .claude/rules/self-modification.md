@@ -30,6 +30,38 @@ and the filesystem. A bug in it is a full escape.
   literal out-of-root paths, absolute, `~`-rooted, and relative (`../..`).
   This is best-effort, not confinement: variable expansion (`ls $HOME`) and
   command substitution defeat it. Do not describe it as a sandbox.
+- **Quoted paths need their own pass.** `tokenizeCommand` excludes quote characters
+  from a token and requires one to begin at an unquoted word boundary, so nothing
+  inside `"..."` or `'...'` reaches the scan — `cat "/etc/passwd"` was allowed for as
+  long as that was the only pass. `quotedRootedPaths` covers the absolute and
+  `~`-rooted case; a quoted *traversal* is deliberately still ignored, because a
+  quoted `../` is usually a grep pattern and refusing it would be a false refusal of
+  exactly the kind `2>/dev/null` was. Any new scan added here has to ask the same
+  question: does the tokenizer even see the thing being checked?
+- **Some paths outside the root are exempt from that scan, in three classes.**
+  Matching is always on a path boundary, never a bare `startsWith` — `/usr/binaries`
+  and `/tmpfoo` must stay refused.
+  - `SHELL_READONLY_PREFIXES` — root-owned and SIP-sealed. Naming them grants
+    nothing `bash` could not do by bare command name, because writing to them needs
+    privileges the process does not have and `sudo` is blocked.
+  - `SHELL_TOOLCHAIN_PREFIXES` (`/usr/local`, `/opt/homebrew`) — **named but never
+    written to**, and `inspectToolchainWrites` enforces that. These break the
+    justification above: Apple excludes `/usr/local` from SIP and `/opt/homebrew` is
+    the Apple Silicon Homebrew prefix, so both are user-writable *and* on the PATH
+    every other program on the machine uses. A bare command name can run `git`; it
+    can never overwrite the `git` on the user's PATH. Only an absolute path can, and
+    that is a persistent backdoor outside the sub-app.
+  - `SHELL_SCRATCH_PREFIXES` — the temp directories, writable, because a model that
+    can already write and run a script in the app root gains nothing from `/tmp`.
+  - `SHELL_SAFE_DEVICES` — matched exactly. `inspectDeviceRedirects` refuses a write
+    into `/dev/` for anything else; it replaced a `'> /dev'` substring entry which
+    also refused `> /dev/null`.
+
+  **Adding an entry needs both tests, not one.** "Does naming it grant anything
+  `bash` could not already do by bare command name" licenses the read-only list — and
+  it silently fails for *writes* into a writable directory, which is how
+  `/opt/homebrew` first landed in the wrong class. Ask separately: is it writable,
+  and is anything on it on the user's `PATH`?
 
 If you change how Pi resolves paths, or upgrade Pi across a version that changes
 it, `resolveLikePi` must be revisited.
@@ -51,8 +83,14 @@ Every new tool needs all four, or it is a hole:
 3. Covered by `checkConfinement` if it takes a path, a command, or a URL.
 4. Covered by `auto-commit.ts` if it writes to the filesystem.
 
-Also update the label maps in `ToolBubble.tsx` and the summary switch in
-`InlineApproval.tsx`.
+Also update the label maps in `ToolBubble.tsx` and the summary switches in
+`InlineApproval.tsx` and `ApprovalRecord.tsx`.
+
+`replace_lines` is the worked example: `FILE_TOOL_NAMES` into `AGENT_TOOL_NAMES`,
+`PATH_TOOLS` and `FILE_TOOLS` in the gate, `COMMITTING_TOOLS` in `auto-commit.ts`,
+and three label maps. A tool that resolves its own paths — as it does, with
+`resolve(rootPath, path)` — must resolve them the way `resolveLikePi` does, or the
+gate is checking a different path from the one the tool writes.
 
 The system prompt deliberately does **not** list the tools. Pi already puts every
 tool's name, description and JSON schema in the function-calling payload, so a
@@ -128,11 +166,49 @@ like every other shell scan here. Do not describe it as a control.
 ## Context Shaping Is Not Confinement
 
 `agent/context-trim.ts` runs on Pi's `context` hook and rewrites the message list
-before each provider request — truncating long tool results, collapsing repeated
-reads, dropping stale screenshots. It is a token-budget optimization and nothing
-more. It does not gate, filter, or redact anything for safety, and the untrimmed
-conversation is still on disk in Pi's transcript. Never rely on it to keep
-anything away from the model.
+before each provider request — truncating long tool results, collapsing reads a
+later read has fully covered, dropping stale screenshots. It is a token-budget
+optimization and nothing more. It does not gate, filter, or redact anything for
+safety, and the untrimmed conversation is still on disk in Pi's transcript. Never
+rely on it to keep anything away from the model.
+
+It is also not a bound on a tool's output. The hook shapes what is *sent*; the
+full result is still written to the transcript, and any tool left out of
+`TRUNCATABLE_TOOLS` is untouched. A tool that can produce unbounded output has to
+bound it itself — `git_status` caps its path listing and `get_history` clamps the
+count the model asks for, because relying on the trimmer would leave the defect
+in place everywhere the trimmer does not reach.
+
+Two rules the trimmer must keep, both of which have been broken before:
+
+- **Superseding compares regions, not paths.** Pi's `read` pages a large file with
+  `offset`, so two reads of one path are usually two different parts of it.
+  Collapsing on the path alone deletes content the model believes it still has.
+- **Never silently drop a resume pointer.** Pi's read output has no line numbers;
+  its `[Showing lines X-Y of Z. Use offset=N to continue.]` footer is the only
+  thing telling the agent where it got to, and it is the last line — exactly what
+  a head-slice removes. Recompute it for the shortened body, never just cut it.
+
+## The Edit-Repair Hook Only Explains
+
+`agent/edit-repair.ts` runs on the same `tool_result` hook as auto-commit and rewrites
+a failed `edit`'s message into one the model can act on — the file's real text for the
+region it was aiming at, with line numbers.
+
+Three rules it must keep:
+
+- **Never flip `isError` to false.** Pi's `ToolResultEventResult` allows it, and doing
+  so would tell the model a change landed when the file is untouched.
+- **Stay bounded.** It quotes file contents into a tool result on a window as small as
+  32k. The budget comes from `ContextBudget.maxToolResultTokens`; an unbounded quote
+  would cost more than the failure it explains.
+- **It runs before auto-commit and must stay ordered that way** — harmlessly, because a
+  failed edit never commits. Do not let it swallow the auto-commit note on a *successful*
+  result.
+
+Its per-path failure counter is not a gate. It escalates by telling the model to change
+tools; it never blocks an edit, because a model with no way to change the file is worse
+than one editing badly.
 
 ## Writes Auto-Commit
 

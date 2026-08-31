@@ -146,6 +146,8 @@ interface AppConfig {
   toolProfile: 'auto' | 'lean' | 'full'
   /** Whether to shape the context sent to the model. */
   trimContext: boolean
+  /** Sampling temperature for the model, or null for the model's own default. */
+  samplingTemperature: number | null
 }
 
 /** A model pulled into the local Ollama instance. */
@@ -253,6 +255,9 @@ interface ElectronAPI {
 
   /** Cancel the in-flight agent run. */
   abortAgent: () => Promise<void>
+
+  /** Read how full the context window is, without waiting for a turn to finish. */
+  getContextUsage: () => Promise<ContextUsage | null>
   
   // Version control methods
   /** Get current version control state. */

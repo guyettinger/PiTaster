@@ -45,6 +45,9 @@ const READ_TOOL = 'read'
  * The hook runs before every provider request, so a result is seen many times. The
  * marker makes the transform idempotent — without it each pass truncates the previous
  * pass's output and reports a smaller, wrong number of dropped lines.
+ *
+ * Matched against the *last line* only. A substring test over the whole result would
+ * exempt any file that happens to contain this sentence.
  */
 const TRUNCATION_MARKER = '…[anyapp truncated'
 
@@ -52,19 +55,73 @@ const TRUNCATION_MARKER = '…[anyapp truncated'
 const SUPERSEDED_MARKER = '[anyapp: superseded by a later read of'
 
 /**
+ * Pi's own continuation notice, appended when its `read` tool truncates.
+ *
+ * `[Showing lines 12-2011 of 5400. Use offset=2012 to continue.]` — the one thing in
+ * a read result that says where the agent got to. It is the last line, which is
+ * exactly what a head-slice removes, so {@link truncateResult} parses it and rewrites
+ * it for the shorter body rather than letting it be cut away.
+ */
+const PI_RESUME_FOOTER = /\[Showing lines (\d+)-\d+ of (\d+)[^\]]*\]\s*$/
+
+/**
  * Tools whose results the trimmer will shorten.
  *
  * Deliberately not `edit` or `write`: their results are short already, and they are
  * the record of what the agent changed.
+ *
+ * `git_status` is here because it is unbounded in the one direction that matters.
+ * `statusMatrix` reports untracked files as modified, so in an app without a
+ * `.gitignore` it answers with every path under `node_modules/` — the case that
+ * produced a 422 KB result against a 65k window. New sub-apps are seeded with a
+ * `.gitignore`, but that is create-time only and does not reach existing apps.
+ * `install_deps` is here for the same reason: it is what creates that `node_modules`,
+ * and `bun install` output has no bound of its own either.
+ *
+ * This list is an allowlist, so anything not named here is exempt by default —
+ * including the other version tools and every MCP tool.
  */
-const TRUNCATABLE_TOOLS = new Set(['read', 'bash', 'grep', 'find', 'ls', 'web_fetch'])
+const TRUNCATABLE_TOOLS = new Set([
+  'read',
+  'bash',
+  'grep',
+  'find',
+  'ls',
+  'web_fetch',
+  'git_status',
+  'install_deps'
+])
 
 /**
  * Options for {@link trimContext}.
  */
 export interface TrimContextOptions {
-  /** Tokens above which one tool result is truncated. */
+  /** Tokens above which one tool result is truncated, in history. */
   maxToolResultTokens: number
+  /**
+   * Tokens above which one tool result is truncated even in the current turn.
+   *
+   * Much larger than {@link maxToolResultTokens}, and a different kind of judgement —
+   * see the note in {@link trimContext}.
+   */
+  hardToolResultTokens: number
+}
+
+/**
+ * The region of a file one `read` call asked for.
+ *
+ * Pi's `read` takes `offset` and `limit`, and its description tells the model to
+ * "continue with offset until complete" on a large file. Two reads of one path are
+ * therefore usually two *different* parts of it, which is why superseding compares
+ * regions rather than paths.
+ */
+interface ReadRegion {
+  /** The `path` argument, as the model gave it. */
+  path: string
+  /** First line read, 1-indexed. */
+  start: number
+  /** Last line read, 1-indexed; `Infinity` when the call set no `limit`. */
+  end: number
 }
 
 /**
@@ -85,19 +142,7 @@ function hasRole(message: AgentMessage): message is AgentMessage & RoledMessage 
 }
 
 /**
- * Estimate a string's token cost.
- * @param text - The text to measure
- * @returns Approximate tokens
- */
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / CHARS_PER_TOKEN)
-}
-
-/**
  * Index of the last user message, which is where the current turn begins.
- *
- * Everything from there on is the agent's most recent action and is never trimmed:
- * the model has to see what it just did in full, or it repeats it.
  *
  * @param messages - The conversation
  * @returns The index the current turn starts at, or the length when there is none
@@ -111,17 +156,28 @@ function findCurrentTurnStart(messages: AgentMessage[]): number {
 }
 
 /**
- * Map every tool call id to the `path` argument it was given.
+ * Read a positive integer argument, treating anything else as absent.
+ * @param value - The raw argument
+ * @returns The integer, or undefined
+ */
+function positiveInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : undefined
+}
+
+/**
+ * Map every tool call id to the file region it asked for.
  *
  * A tool result carries its tool name but not its arguments — those live on the
- * assistant message that requested it — so recognising two reads of the same file
+ * assistant message that requested it — so recognising two reads of the same region
  * means walking the calls first.
  *
  * @param messages - The conversation
- * @returns Tool call id to path, for the calls that took one
+ * @returns Tool call id to region, for the calls that took a path
  */
-function collectCallPaths(messages: AgentMessage[]): Map<string, string> {
-  const paths = new Map<string, string>()
+function collectCallRegions(messages: AgentMessage[]): Map<string, ReadRegion> {
+  const regions = new Map<string, ReadRegion>()
 
   for (const message of messages) {
     if (!hasRole(message) || message.role !== 'assistant') continue
@@ -131,25 +187,53 @@ function collectCallPaths(messages: AgentMessage[]): Map<string, string> {
     for (const block of content) {
       const call = block as { type?: unknown; id?: unknown; arguments?: unknown }
       if (call.type !== 'toolCall' || typeof call.id !== 'string') continue
-      const path = (call.arguments as { path?: unknown } | undefined)?.path
-      if (typeof path === 'string') paths.set(call.id, path)
+
+      const args = call.arguments as
+        | { path?: unknown; offset?: unknown; limit?: unknown }
+        | undefined
+      if (typeof args?.path !== 'string') continue
+
+      // Pi's `read` defaults to line 1 and to the end of the file.
+      const start = positiveInteger(args.offset) ?? 1
+      const limit = positiveInteger(args.limit)
+      regions.set(call.id, {
+        path: args.path,
+        start,
+        end: limit === undefined ? Number.POSITIVE_INFINITY : start + limit - 1
+      })
     }
   }
 
-  return paths
+  return regions
 }
 
 /**
- * Find the last tool result id for each path a `read` was issued against.
- * @param messages - The conversation
- * @param callPaths - Tool call id to path
- * @returns The surviving tool call id per path
+ * Whether one read's region contains another's.
+ * @param outer - The candidate containing region
+ * @param inner - The candidate contained region
+ * @returns True when `outer` covers every line `inner` did
  */
-function collectLatestReads(
+function covers(outer: ReadRegion, inner: ReadRegion): boolean {
+  return outer.path === inner.path && outer.start <= inner.start && outer.end >= inner.end
+}
+
+/**
+ * Find the reads that a later read has made redundant.
+ *
+ * A read is redundant only when a *later* successful read of the same path covers
+ * every line it returned. Two reads of disjoint regions — the pagination Pi's own
+ * tool description asks for on a large file — are both kept, because between them
+ * they are the only copy of that file the model has.
+ *
+ * @param messages - The conversation
+ * @param regions - Tool call id to region
+ * @returns The tool call ids whose results can be collapsed
+ */
+function collectSupersededReads(
   messages: AgentMessage[],
-  callPaths: Map<string, string>
-): Map<string, string> {
-  const latest = new Map<string, string>()
+  regions: Map<string, ReadRegion>
+): Set<string> {
+  const reads: { callId: string; region: ReadRegion }[] = []
 
   for (const message of messages) {
     if (!hasRole(message) || message.role !== 'toolResult') continue
@@ -157,11 +241,32 @@ function collectLatestReads(
     if (result.toolName !== READ_TOOL || result.isError === true) continue
     if (typeof result.toolCallId !== 'string') continue
 
-    const path = callPaths.get(result.toolCallId)
-    if (path) latest.set(path, result.toolCallId)
+    const region = regions.get(result.toolCallId)
+    if (region) reads.push({ callId: result.toolCallId, region })
   }
 
-  return latest
+  const superseded = new Set<string>()
+  for (let index = 0; index < reads.length; index += 1) {
+    for (let later = index + 1; later < reads.length; later += 1) {
+      if (covers(reads[later].region, reads[index].region)) {
+        superseded.add(reads[index].callId)
+        break
+      }
+    }
+  }
+
+  return superseded
+}
+
+/**
+ * Name a region the way the marker should report it.
+ * @param region - The region to describe
+ * @returns A trailing phrase, empty for a whole-file read
+ */
+function describeRegion(region: ReadRegion): string {
+  if (region.start === 1 && region.end === Number.POSITIVE_INFINITY) return ''
+  const end = region.end === Number.POSITIVE_INFINITY ? 'end' : String(region.end)
+  return ` lines ${region.start}-${end}`
 }
 
 /**
@@ -175,25 +280,100 @@ function withText(message: AgentMessage, text: string): AgentMessage {
 }
 
 /**
+ * Whether this module has already shortened a result.
+ *
+ * Only the last line is examined. The old test looked for the marker anywhere, which
+ * exempted any file whose contents happened to quote it.
+ *
+ * @param text - The result text
+ * @returns True when the text ends with a truncation marker
+ */
+function isAlreadyTruncated(text: string): boolean {
+  return text.slice(text.lastIndexOf('\n') + 1).startsWith(TRUNCATION_MARKER)
+}
+
+/**
+ * Count the lines in a string.
+ * @param text - The text to measure
+ * @returns The number of lines, zero for an empty string
+ */
+function countLines(text: string): number {
+  return text.length === 0 ? 0 : text.split('\n').length
+}
+
+/**
+ * Cut a string to a character budget without splitting a line.
+ *
+ * Pi is careful never to return a partial line, and a truncated result that ends in
+ * half a statement reads as a syntax error rather than as a cut.
+ *
+ * @param text - The text to cut
+ * @param limit - The maximum length in characters
+ * @returns The text, cut at the last line boundary within the limit
+ */
+function sliceWholeLines(text: string, limit: number): string {
+  if (text.length <= limit) return text
+  const boundary = text.lastIndexOf('\n', limit)
+  // A single line longer than the whole budget has no boundary to cut on. Take the
+  // raw slice rather than returning nothing at all.
+  return boundary <= 0 ? text.slice(0, limit) : text.slice(0, boundary)
+}
+
+/**
+ * Inputs to {@link truncateResult}.
+ */
+interface TruncateResultParams {
+  /** The full result text. */
+  text: string
+  /** The budget in tokens. */
+  maxTokens: number
+  /** 1-indexed file line the result starts at, when it came from a `read`. */
+  startLine?: number
+}
+
+/**
  * Truncate one tool result's text to fit the budget.
  *
- * The marker names how much was dropped and how to get it back, so the model can
- * re-read deliberately rather than guessing that the file ended early.
+ * The marker says how to recover the rest. Where the line numbers are known — from a
+ * `read`'s own `offset`, or from Pi's continuation footer — it names the exact offset
+ * to resume from, because Pi's read output carries no line numbers and a model that
+ * is only told "some lines were dropped" has no way to work out where it got to.
  *
- * @param text - The full result text
- * @param maxTokens - The budget in tokens
+ * @param params - The text, the budget, and the starting line if known
  * @returns The text, truncated with a marker when it was too long
  */
-function truncateResult(text: string, maxTokens: number): string {
-  if (text.includes(TRUNCATION_MARKER)) return text
+function truncateResult(params: TruncateResultParams): string {
+  const { text, maxTokens } = params
+  if (isAlreadyTruncated(text)) return text
 
   const limit = maxTokens * CHARS_PER_TOKEN
-  if (text.length <= limit) return text
 
-  const kept = text.slice(0, limit)
-  const droppedLines = text.slice(limit).split('\n').length
+  // Pi's footer is the last line, so lift it off before measuring and cutting. Its
+  // numbers describe the untruncated body and are rewritten below.
+  const footer = PI_RESUME_FOOTER.exec(text)
+  const body = footer ? text.slice(0, footer.index).trimEnd() : text
+  const startLine = footer ? Number(footer[1]) : params.startLine
+  const totalLines = footer ? Number(footer[2]) : undefined
 
-  return `${kept}\n\n${TRUNCATION_MARKER} ${droppedLines} more lines to fit the context window. Re-read with offset and limit if you need them.]`
+  if (body.length <= limit) return text
+
+  const kept = sliceWholeLines(body, limit)
+  const keptLines = countLines(kept)
+
+  if (startLine !== undefined && keptLines > 0) {
+    const lastKept = startLine + keptLines - 1
+    const of = totalLines === undefined ? '' : ` of ${totalLines}`
+    return (
+      `${kept}\n\n${TRUNCATION_MARKER} to fit the context window. ` +
+      `Showing lines ${startLine}-${lastKept}${of}. Use offset=${lastKept + 1} to continue.]`
+    )
+  }
+
+  const droppedLines = countLines(body) - keptLines
+  return (
+    `${kept}\n\n${TRUNCATION_MARKER} ${droppedLines} more lines to fit the context ` +
+    'window. Re-read with offset and limit if you need them.]'
+  )
 }
 
 /**
@@ -224,9 +404,7 @@ function renderContent(content: unknown): string {
 function stripImages(message: AgentMessage): AgentMessage {
   const content = (message as { content?: unknown }).content
   if (!Array.isArray(content)) return message
-  if (!content.some((block) => (block as { type?: unknown }).type === 'image')) {
-    return message
-  }
+  if (!content.some((block) => (block as { type?: unknown }).type === 'image')) return message
 
   const stripped = content.map((block) =>
     (block as { type?: unknown }).type === 'image'
@@ -240,26 +418,35 @@ function stripImages(message: AgentMessage): AgentMessage {
 /**
  * Reduce a conversation to what is worth sending to a small-context model.
  *
- * Applied in order, and never to the system prompt, a user message, or anything in
- * the current turn:
+ * Applied in order, and never to the system prompt or a user message:
  *
- * 1. Earlier `read` results for a path the agent has since re-read are replaced by a
+ * 1. A `read` whose every line a later read has since returned is replaced by a
  *    pointer to the newer one. Small models re-read constantly, and this is usually
- *    the largest single saving.
- * 2. Long tool results are truncated with a marker saying how to recover the rest.
+ *    the largest single saving. Skipped inside the current turn.
+ * 2. Long tool results are truncated with a marker saying how to resume.
  * 3. Screenshots older than {@link IMAGE_RETENTION_TURNS} turns become placeholders.
  *
+ * The current turn is what the agent just did. Dropping it as *irrelevant* makes the
+ * model repeat work, which is the failure this module exists to avoid — so the
+ * supersede and screenshot rules stop at the turn boundary, and so does the ordinary
+ * size cap. What does not stop there is `hardToolResultTokens`: past that a single
+ * result cannot coexist with the rest of the prompt even after a compaction, so the
+ * request fails whatever we do, and it fails as an unexplained timeout rather than as
+ * an oversized tool result. Truncating is strictly better than that. The two
+ * thresholds are an order of magnitude apart and answer different questions — one is
+ * "is this still worth its space", the other "can this request succeed at all".
+ *
  * @param messages - The conversation Pi is about to send
- * @param options - The tool-result budget
- * @returns The messages to send instead
+ * @param options - The size budgets
+ * @returns A new message list; the input is not modified
  */
 export function trimContext(
   messages: AgentMessage[],
   options: TrimContextOptions
 ): AgentMessage[] {
   const currentTurnStart = findCurrentTurnStart(messages)
-  const callPaths = collectCallPaths(messages)
-  const latestReads = collectLatestReads(messages, callPaths)
+  const regions = collectCallRegions(messages)
+  const superseded = collectSupersededReads(messages, regions)
 
   // Count user messages from the end, so "the last two turns" is well defined.
   const userIndices: number[] = []
@@ -272,11 +459,10 @@ export function trimContext(
   return messages.map((message, index) => {
     if (!hasRole(message)) return message
 
-    // The current turn is what the agent just did. Trimming it makes the model
-    // repeat work, which is the failure this whole module exists to avoid.
-    if (index >= currentTurnStart) return message
+    const inCurrentTurn = index >= currentTurnStart
 
     if (message.role === 'user') {
+      if (inCurrentTurn) return message
       return index <= imageCutoff ? stripImages(message) : message
     }
 
@@ -290,39 +476,30 @@ export function trimContext(
     }
     if (typeof result.toolName !== 'string') return message
 
-    const path =
-      typeof result.toolCallId === 'string' ? callPaths.get(result.toolCallId) : undefined
+    const region =
+      typeof result.toolCallId === 'string' ? regions.get(result.toolCallId) : undefined
 
-    // A failed read is never "superseded": `collectLatestReads` skips errors, so
-    // without this check the newest read — the one that just failed — would be
-    // replaced by a pointer to the older successful one, and the model would treat
+    // A failed read is never "superseded": `collectSupersededReads` skips errors, so
+    // without that filter the newest read — the one that just failed — could be
+    // replaced by a pointer to an older successful one, and the model would treat
     // stale contents as current.
     if (
-      result.toolName === READ_TOOL &&
-      result.isError !== true &&
-      path !== undefined &&
+      !inCurrentTurn &&
       typeof result.toolCallId === 'string' &&
-      latestReads.get(path) !== result.toolCallId
+      superseded.has(result.toolCallId) &&
+      region !== undefined
     ) {
-      return withText(message, `${SUPERSEDED_MARKER} ${path}]`)
+      return withText(message, `${SUPERSEDED_MARKER} ${region.path}${describeRegion(region)}]`)
     }
 
     if (!TRUNCATABLE_TOOLS.has(result.toolName)) return message
 
     const text = renderContent(result.content)
-    const truncated = truncateResult(text, options.maxToolResultTokens)
+    const truncated = truncateResult({
+      text,
+      maxTokens: inCurrentTurn ? options.hardToolResultTokens : options.maxToolResultTokens,
+      startLine: result.toolName === READ_TOOL ? region?.start : undefined
+    })
     return truncated === text ? message : withText(message, truncated)
   })
-}
-
-/**
- * Estimate the tokens a conversation occupies, for logging and tests.
- * @param messages - The conversation
- * @returns Approximate tokens
- */
-export function estimateContextTokens(messages: AgentMessage[]): number {
-  return messages.reduce((total, message) => {
-    const content = (message as { content?: unknown }).content
-    return total + estimateTokens(renderContent(content))
-  }, 0)
 }

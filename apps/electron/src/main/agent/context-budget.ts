@@ -24,11 +24,17 @@
  */
 export const FALLBACK_CONTEXT_WINDOW = 32768
 
-/** Smallest window the derivation below stays coherent for. */
-const MIN_CONTEXT_WINDOW = 2048
+/**
+ * Smallest window the derivation below stays coherent for.
+ *
+ * Exported because the IPC layer and the Settings field both bound the user's
+ * override, and a bound that disagrees with this one accepts a number it will then
+ * silently clamp.
+ */
+export const MIN_CONTEXT_WINDOW = 2048
 
 /** Largest window anyapp will configure, whatever the daemon claims. */
-const MAX_CONTEXT_WINDOW = 262144
+export const MAX_CONTEXT_WINDOW = 262144
 
 /** Share of the window one assistant turn may spend on output. */
 const OUTPUT_FRACTION = 0.15
@@ -62,7 +68,30 @@ const MIN_KEEP_RECENT_TOKENS = 512
 const SETTINGS_CEILING_SHARE = 0.9
 
 /** Share of the window a single tool result may occupy before it is truncated. */
-const TOOL_RESULT_SHARE = 0.06
+const TOOL_RESULT_SHARE = 0.2
+
+/**
+ * Ceiling on that share, in tokens.
+ *
+ * Pi's `read` already caps its own output at 50 KB or 2000 lines, whichever comes
+ * first, and its description tells the model to page through a large file with
+ * `offset`. A trimmer cap below that ceiling fights the read tool: every full read
+ * arrives legal and is then cut, and because Pi's output carries no line numbers the
+ * agent cannot tell how much it lost. So one result is allowed Pi's whole 50 KB —
+ * roughly 12.8k tokens — wherever the window can afford it. On a window too small for
+ * that, {@link TOOL_RESULT_SHARE} governs and truncation is unavoidable.
+ */
+const PI_READ_MAX_TOKENS = Math.floor((50 * 1024) / 4)
+
+/**
+ * Share of the window one tool result may occupy even inside the current turn.
+ *
+ * The other half is the system prompt, the tool schemas, and the history that makes
+ * the result mean anything. A result past this cannot coexist with them, so the
+ * request fails whatever we do — and it fails as an unexplained timeout rather than
+ * as an oversized tool result.
+ */
+const HARD_TOOL_RESULT_SHARE = 0.5
 
 /** Where the effective context window came from. */
 export type ContextWindowSource = 'user' | 'daemon' | 'fallback'
@@ -97,6 +126,17 @@ export interface ContextBudget {
   compaction: CompactionThresholds
   /** Size above which the context trimmer truncates a single tool result. */
   maxToolResultTokens: number
+  /**
+   * Size above which a tool result is truncated even inside the current turn.
+   *
+   * Half the window: past that a single result cannot coexist with the system prompt,
+   * the tool schemas and the history that gives it meaning, so the request is doomed
+   * either way. That is a different judgement from {@link maxToolResultTokens}, which
+   * only asks whether a result still earns its space — and the current turn is
+   * deliberately exempt from that one, because an agent that cannot see what it just
+   * did repeats it.
+   */
+  hardToolResultTokens: number
 }
 
 /**
@@ -193,28 +233,19 @@ export function deriveContextBudget(params: DeriveContextBudgetParams = {}): Con
     ceiling - reserveTokens
   )
 
+  const maxToolResultTokens = Math.min(
+    PI_READ_MAX_TOKENS,
+    Math.max(256, Math.round(window * TOOL_RESULT_SHARE))
+  )
+
   return {
     window,
     source,
     maxTokens,
     compaction: { enabled: true, reserveTokens, keepRecentTokens },
-    maxToolResultTokens: Math.max(256, Math.round(window * TOOL_RESULT_SHARE))
-  }
-}
-
-/**
- * Describe where a budget's window came from, for the Settings hint.
- * @param budget - The budget to describe
- * @returns One sentence naming the source and the number
- */
-export function describeContextWindow(budget: ContextBudget): string {
-  const tokens = budget.window.toLocaleString('en-US')
-  switch (budget.source) {
-    case 'user':
-      return `${tokens} tokens, set by you.`
-    case 'daemon':
-      return `${tokens} tokens, reported by the daemon for the loaded model.`
-    case 'fallback':
-      return `${tokens} tokens, a conservative default — the daemon did not report one.`
+    maxToolResultTokens,
+    // Never below the ordinary cap: the current turn is exempt from that one, so a
+    // hard cap under it would trim the turn more aggressively than the history.
+    hardToolResultTokens: Math.max(maxToolResultTokens, Math.floor(window * HARD_TOOL_RESULT_SHARE))
   }
 }

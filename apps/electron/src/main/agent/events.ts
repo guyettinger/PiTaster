@@ -84,6 +84,10 @@ export function toStreamChunk(event: AgentSessionEvent): StreamChunk | null {
         return { type: 'text', text: inner.delta }
       }
       if (inner.type === 'error') {
+        // `reason` separates a failure from the user pressing stop. Reporting an
+        // abort as an error puts a red message in the transcript for something the
+        // user deliberately did, and makes a cancelled run look broken.
+        if (inner.reason === 'aborted') return toStatus({ kind: 'settled' })
         return {
           type: 'error',
           error: inner.error.errorMessage ?? 'The model returned an error'
@@ -158,7 +162,12 @@ export function toStreamChunk(event: AgentSessionEvent): StreamChunk | null {
       return toStatus({ kind: 'settled' })
 
     case 'agent_end':
-      return { type: 'complete' }
+      // Pi emits `agent_end` before it retries, and again when the retry finishes.
+      // Reporting the first as `complete` ends the turn in the UI — clearing the
+      // spinner and the status strip — and then text keeps arriving for a turn the
+      // renderer believes is over. `auto_retry_start` says what is happening; this
+      // just declines to contradict it.
+      return event.willRetry ? null : { type: 'complete' }
 
     default:
       return null

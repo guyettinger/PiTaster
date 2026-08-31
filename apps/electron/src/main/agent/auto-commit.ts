@@ -15,8 +15,14 @@ import { stat } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 import { VersionManager } from '@anyapp/shared'
 
-/** Pi built-in tools whose successful execution should produce a commit. */
-const COMMITTING_TOOLS = new Set(['write', 'edit'])
+/**
+ * Tools whose successful execution should produce a commit.
+ *
+ * `replace_lines` is anyapp's own, but it modifies a file through the same `path`
+ * argument the built-ins use, so it commits by the same route. A file-modifying tool
+ * left out of this set writes changes that `rollback` cannot undo.
+ */
+const COMMITTING_TOOLS = new Set(['write', 'edit', 'replace_lines'])
 
 /**
  * Files `install_deps` may change that belong in version control.

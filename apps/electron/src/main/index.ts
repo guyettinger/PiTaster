@@ -3,8 +3,20 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import sharp from 'sharp'
 import { dockIconSvg } from '@anyapp/shared'
-import { setupIpcHandlers, cleanupIpcHandlers, initializeConfig, initializeSources } from './ipc'
+import {
+  setupIpcHandlers,
+  cleanupIpcHandlers,
+  initializeConfig,
+  initializeSkills,
+  initializeSources
+} from './ipc'
+import { configureHttpDispatcher } from './agent/http-dispatcher'
 import { isSafeExternalUrl, openExternalUrl } from './external-links'
+
+// Before anything can issue a request. This replaces the global `fetch`, so it has to
+// happen while nothing has captured the old one — a session created first would keep
+// Node's internal undici and its 300s ceiling, which is the whole point of the swap.
+configureHttpDispatcher()
 
 /** Directory of this module, for resolving bundled assets under ESM. */
 const moduleDir = dirname(fileURLToPath(import.meta.url))
@@ -170,6 +182,15 @@ app.whenReady().then(async () => {
   // Load persisted settings before the first message. Earlier versions only reached
   // loadConfig() from the config:get handler, so a fresh launch never saw them.
   await initializeConfig()
+
+  // Install the seed skills before the first prompt can build a session, which is when
+  // they are read. In the background: a missing skill degrades the agent, it does not
+  // stop it, so this must not delay the first paint.
+  void initializeSkills().catch(() => {
+    // `seedSkills` already swallows per-skill failures, so this only fires if that
+    // changes. Main has no unhandled-rejection guard, and an unhandled one here would
+    // take down the process over a missing skill file.
+  })
 
   // Connect enabled MCP sources in the background. Spawning a server can be slow
   // (an `npx` fetch, say), and none of it needs to block the first paint — the

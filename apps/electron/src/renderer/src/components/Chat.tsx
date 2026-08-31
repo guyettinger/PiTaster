@@ -238,6 +238,33 @@ export function Chat({
     setMessages([])
     setIsStreaming(false)
     setPendingApproval(null)
+    // Cleared with the rest, or the meter shows the previous session's numbers until
+    // a turn in this one happens to finish.
+    setContextUsage(null)
+  }, [activeSessionId])
+
+  // Seed the context meter from the live session.
+  //
+  // Usage otherwise only ever arrives on a `complete` chunk, and this component is
+  // unmounted whenever the user looks at Apps, Skills or Settings — so without this
+  // the meter is empty at launch and after every trip away from the chat panel, and
+  // only reappears if a turn happens to finish while the panel is open.
+  useEffect(() => {
+    let cancelled = false
+
+    window.electronAPI
+      .getContextUsage()
+      .then((usage) => {
+        // A turn that completed while this was in flight has fresher numbers.
+        if (!cancelled && usage) setContextUsage((current) => current ?? usage)
+      })
+      .catch(() => {
+        // No session yet is the normal case, not an error worth surfacing.
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [activeSessionId])
 
   // Listen for chat history loaded on app switch

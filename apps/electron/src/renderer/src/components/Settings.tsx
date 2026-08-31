@@ -26,6 +26,8 @@ export interface AppConfig {
   toolProfile: 'auto' | 'lean' | 'full'
   /** Whether to shape the context sent to the model. */
   trimContext: boolean
+  /** Sampling temperature for the model, or null for the model's own default. */
+  samplingTemperature: number | null
 }
 
 /**
@@ -64,7 +66,8 @@ const DEFAULT_CONFIG: AppConfig = {
   autoCommit: true,
   contextWindow: null,
   toolProfile: 'auto',
-  trimContext: true
+  trimContext: true,
+  samplingTemperature: 0
 }
 
 /** Shared input styling, so every field in Settings matches. */
@@ -103,6 +106,9 @@ function Field({ label, hint, children }: FieldProps) {
  * 262144 against a served 65536 is normal — and believing the advertised number means
  * the prompt is silently truncated instead of compacted. This hint says which number
  * is in force and why.
+ *
+ * Deliberately not shared with the main process: this needs `OllamaModel` and the
+ * "it advertises N" clause, and the renderer cannot import from `src/main` anyway.
  *
  * @param model - The selected model, or undefined when none is chosen
  * @returns One sentence for the field's hint
@@ -359,7 +365,13 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
                 >
                   <input
                     type="number"
+                    // MIN_CONTEXT_WINDOW and MAX_CONTEXT_WINDOW in
+                    // main/agent/context-budget.ts are the source of truth; the
+                    // renderer cannot import from main, so these are mirrored the way
+                    // electron.d.ts mirrors the preload bridge. A value outside them
+                    // is rejected by `config:save`.
                     min={2048}
+                    max={262144}
                     step={1024}
                     value={config.contextWindow ?? ''}
                     onChange={(e) =>
@@ -397,6 +409,36 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
                     <option value="lean">Lean</option>
                     <option value="full">Full</option>
                   </select>
+                </Field>
+
+                <Field
+                  label="Temperature"
+                  hint={
+                    config.samplingTemperature === null
+                      ? "Using the model's own default, which Ollama takes from its Modelfile — usually 0.7 or higher."
+                      : 'Most of a coding turn is reproducing text that already exists exactly, which is what a low temperature is for. Leave empty to use the model\u2019s own default.'
+                  }
+                >
+                  <input
+                    type="number"
+                    // MIN_SAMPLING_TEMPERATURE and MAX_SAMPLING_TEMPERATURE in
+                    // main/agent/session.ts are the source of truth; the renderer
+                    // cannot import from main, so these are mirrored the way the
+                    // context window bounds above are. `config:save` rejects anything
+                    // outside them.
+                    min={0}
+                    max={2}
+                    step={0.1}
+                    value={config.samplingTemperature ?? ''}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        samplingTemperature: e.target.value === '' ? null : Number(e.target.value)
+                      })
+                    }
+                    placeholder="Model default"
+                    className={FIELD_CLASS}
+                  />
                 </Field>
 
                 <div className="mt-5">

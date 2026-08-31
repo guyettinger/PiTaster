@@ -12,7 +12,9 @@ export default defineConfig({
       rollupOptions: {
         input: { index: resolve(rootDir, 'src/main/index.ts') },
         // Pi loads extensions through jiti and ships WASM; it cannot be rolled up.
-        external: ['sharp', /^@earendil-works\//, 'typebox'],
+        // undici stays external for the same reason — it carries llhttp as WASM — and
+        // because it must stay the single instance Pi's requests also go through.
+        external: ['sharp', /^@earendil-works\//, 'typebox', 'undici'],
         output: { format: 'es', entryFileNames: '[name].mjs' }
       }
     }

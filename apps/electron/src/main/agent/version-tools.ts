@@ -15,6 +15,23 @@ import { VersionManager } from '@anyapp/shared'
 /** Default number of commits returned by `get_history`. */
 const DEFAULT_HISTORY_DEPTH = 10
 
+/** Most commits `get_history` will return, whatever the model asks for. */
+const MAX_HISTORY_DEPTH = 200
+
+/**
+ * Most paths `git_status` will name before it summarizes the rest.
+ *
+ * `statusMatrix` reports untracked files as modified, so an app whose `.gitignore` is
+ * missing or incomplete answers with every path under `node_modules/` — the case that
+ * produced a 422 KB result against a 65k window. The context trimmer catches that
+ * too, but only on the way to the model: the untruncated result is still written to
+ * Pi's transcript, and a tool that cannot bound its own output is the actual defect.
+ *
+ * Two hundred paths is far more than a person or a model reads, and an app with more
+ * modified files than that has a `.gitignore` problem the count itself points at.
+ */
+const MAX_STATUS_PATHS = 200
+
 /**
  * Wrap a handler so failures reach the model as text instead of throwing.
  * @param run - The operation to execute
@@ -97,7 +114,9 @@ export function createVersionTools(rootPath: string): ToolDefinition[] {
       }),
       execute: async (_toolCallId, { count }) =>
         asToolResult(async () => {
-          const commits = await vm.getHistory({ depth: count ?? DEFAULT_HISTORY_DEPTH })
+          // The model picks this number, so it is clamped rather than trusted.
+          const depth = Math.min(MAX_HISTORY_DEPTH, Math.max(1, Math.floor(count ?? DEFAULT_HISTORY_DEPTH)))
+          const commits = await vm.getHistory({ depth })
           if (commits.length === 0) return 'No commits yet.'
           return commits
             .map((commit) => `${commit.oid.slice(0, 7)}  ${commit.timestamp}  ${commit.message}`)
@@ -128,12 +147,22 @@ export function createVersionTools(rootPath: string): ToolDefinition[] {
       execute: async () =>
         asToolResult(async () => {
           const state = await vm.getState()
+          const shown = state.modifiedFiles.slice(0, MAX_STATUS_PATHS)
+          const hidden = state.modifiedFiles.length - shown.length
+          const listing = [
+            ...shown.map((f) => `  ${f}`),
+            ...(hidden > 0
+              ? [
+                  `  … and ${hidden} more. This many modified files usually means ` +
+                    '.gitignore is missing or incomplete — check it before reading further.'
+                ]
+              : [])
+          ].join('\n')
+
           const lines = [
             `Branch: ${state.currentBranch}`,
             `HEAD: ${state.head.slice(0, 7)}`,
-            state.hasChanges
-              ? `Modified files:\n${state.modifiedFiles.map((f) => `  ${f}`).join('\n')}`
-              : 'Working tree clean'
+            state.hasChanges ? `Modified files:\n${listing}` : 'Working tree clean'
           ]
           return lines.join('\n')
         })

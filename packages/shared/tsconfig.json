@@ -12,7 +12,8 @@
     "outDir": "dist",
     "rootDir": "src",
     "types": [
-      "node"
+      "node",
+      "bun"
     ]
   },
   "include": [

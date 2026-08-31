@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import * as git from 'isomorphic-git'
 import fs from 'node:fs'
 import type { SubApp, AppMetadata, CreateAppParams } from '@anyapp/core'
-import { getTemplate } from './templates.js'
+import { DEFAULT_GITIGNORE, getTemplate } from './templates.js'
 
 const APPS_DIR = join(homedir(), '.anyapp', 'apps')
 const AUTHOR = { name: 'anyapp Agent', email: 'agent@anyapp.local' }
@@ -116,6 +116,12 @@ export class AppManager {
 
     // Get template config
     const template = getTemplate(params.template)
+
+    // Seed .gitignore before the template's own files, so a template that ships one
+    // overwrites this default rather than being overwritten by it.
+    if (!template.files.some((file) => file.path === '.gitignore')) {
+      await writeFile(join(appPath, '.gitignore'), DEFAULT_GITIGNORE)
+    }
 
     // Create files from template
     for (const file of template.files) {

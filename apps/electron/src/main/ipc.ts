@@ -8,18 +8,25 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promises as fs } from 'node:fs'
-import { createAgentHost, type AgentHost } from './agent/session'
+import {
+  createAgentHost,
+  DEFAULT_SAMPLING_TEMPERATURE,
+  MAX_SAMPLING_TEMPERATURE,
+  MIN_SAMPLING_TEMPERATURE,
+  type AgentHost
+} from './agent/session'
 import { describeNetworkUse } from './agent/permission-gate'
 import {
   VersionManager,
   SourceManager,
+  seedSkills,
   SkillsLoader,
   AppManager,
   AppRunner,
   ChatHistoryManager,
   installDependencies
 } from '@anyapp/shared'
-import type { AgentStatus, PermissionMode, StreamChunk, Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
+import type { AgentStatus, ContextUsage, PermissionMode, StreamChunk, Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
 import {
   DEFAULT_OLLAMA_BASE_URL,
   isOllamaReachable,
@@ -28,7 +35,11 @@ import {
   syncOllamaModels,
   type OllamaModel
 } from './agent/ollama'
-import type { ContextBudget } from './agent/context-budget'
+import {
+  MAX_CONTEXT_WINDOW,
+  MIN_CONTEXT_WINDOW,
+  type ContextBudget
+} from './agent/context-budget'
 import { captureElement, type ElementInfo } from './screenshot'
 import { openExternalUrl } from './external-links'
 
@@ -138,6 +149,15 @@ interface AppConfig {
   toolProfile: 'auto' | 'lean' | 'full'
   /** Whether to shape the context sent to the model. */
   trimContext: boolean
+  /**
+   * Sampling temperature for the model, or null to use the model's own default.
+   *
+   * Pi exposes no temperature and Ollama takes its default from the model's
+   * Modelfile — 0.7 to 1.0 on the qwen builds anyapp targets. Most of a coding turn
+   * is reproducing text that already exists, so anyapp pins 0; null restores the
+   * model's default for anyone who wants it.
+   */
+  samplingTemperature: number | null
 }
 
 /** Default configuration. */
@@ -148,7 +168,8 @@ const defaultConfig: AppConfig = {
   autoCommit: true,
   contextWindow: null,
   toolProfile: 'auto',
-  trimContext: true
+  trimContext: true,
+  samplingTemperature: DEFAULT_SAMPLING_TEMPERATURE
 }
 
 /** Cached configuration, populated by {@link loadConfig}. */
@@ -230,6 +251,21 @@ export async function initializeConfig(): Promise<void> {
     selectedModel: config.ollamaModel,
     contextWindowOverride: config.contextWindow
   })
+}
+
+/**
+ * Install the seed skills, so a fresh machine's agent is not skill-less.
+ *
+ * `~/.anyapp/skills` was read by the agent and by the Skills panel and written by
+ * neither, so on any install where the `docs/skills/` copies had not been placed by hand
+ * the agent ran with none. `working-notes` is the one that matters: the post-compaction
+ * nudge in `agent/session.ts` tells the model to read `NOTES.md`, and that skill is
+ * where the convention for keeping one is defined.
+ *
+ * Existing skills are never overwritten — see {@link seedSkills}.
+ */
+export async function initializeSkills(): Promise<void> {
+  await seedSkills(join(configDir, 'skills'))
 }
 
 /**
@@ -502,10 +538,12 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
     budget,
     toolProfile: config.toolProfile,
     trimContext: config.trimContext,
+    samplingTemperature: config.samplingTemperature,
     sessionFile: sessionFile ?? undefined,
     mcpSources: sourceManager.getConnectedSources().filter((source) => source.connected),
     callbacks: {
       getPermissionMode: () => currentPermissionMode,
+      denyPendingApprovals,
       getAutoCommit: () => getConfig().autoCommit,
 
       callMcpTool: (sourceId, toolName, args) =>
@@ -635,6 +673,14 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     // it — see denyPendingApprovals.
     denyPendingApprovals()
     await agentHost?.abort()
+  })
+
+  // Report how full the context window is, for a chat panel that has just mounted
+  ipcMain.handle('agent:get-context-usage', async (): Promise<ContextUsage | null> => {
+    // Null covers three cases the renderer treats alike: no session yet, a model
+    // whose window Pi does not know, and the gap right after a compaction where Pi
+    // reports null tokens. There is nothing honest to show in any of them.
+    return agentHost?.getContextUsage() ?? null
   })
 
   // Handle tool approval response from renderer
@@ -901,12 +947,15 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (typeof config.autoCommit !== 'boolean') {
       throw new Error('Invalid autoCommit')
     }
+    // Bounded by the same numbers the derivation clamps to. A wider bound here is
+    // not more permissive, only less honest: the value is accepted, persisted, shown
+    // back in Settings, and then silently clamped on the way to the model.
     if (
       config.contextWindow !== null &&
       (typeof config.contextWindow !== 'number' ||
         !Number.isFinite(config.contextWindow) ||
-        config.contextWindow < 0 ||
-        config.contextWindow > 10_000_000)
+        config.contextWindow < MIN_CONTEXT_WINDOW ||
+        config.contextWindow > MAX_CONTEXT_WINDOW)
     ) {
       throw new Error('Invalid context window')
     }
@@ -915,6 +964,17 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     }
     if (typeof config.trimContext !== 'boolean') {
       throw new Error('Invalid trimContext')
+    }
+    // Bounded by what the OpenAI-compatible endpoint accepts. Null is the deliberate
+    // "leave the model alone" value and is not the same as 0.
+    if (
+      config.samplingTemperature !== null &&
+      (typeof config.samplingTemperature !== 'number' ||
+        !Number.isFinite(config.samplingTemperature) ||
+        config.samplingTemperature < MIN_SAMPLING_TEMPERATURE ||
+        config.samplingTemperature > MAX_SAMPLING_TEMPERATURE)
+    ) {
+      throw new Error('Invalid sampling temperature')
     }
     return saveConfig(config)
   })
@@ -1191,6 +1251,7 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('agent:clear-history')
   ipcMain.removeHandler('agent:message')
   ipcMain.removeHandler('agent:abort')
+  ipcMain.removeHandler('agent:get-context-usage')
   ipcMain.removeHandler('models:list')
   ipcMain.removeHandler('models:check-connection')
   ipcMain.removeAllListeners('agent:tool-response')

@@ -24,6 +24,11 @@ which differ in places.
 | `mcp-tools.ts` | Bridges connected MCP sources' tools into Pi custom tools |
 | `system-prompt.ts` | `getSystemPrompt(app)` and the per-template hints |
 | `ollama.ts` | Model discovery and `~/.anyapp/pi/models.json` generation |
+| `tool-guidance.ts` | Recovers Pi's per-tool `promptGuidelines`, which `systemPromptOverride` drops |
+| `edit-repair.ts` | `tool_result` handler: turns a failed `edit` into the file's real text |
+| `file-tools.ts` | `replace_lines`, the line-addressed edit that cannot fail on whitespace |
+| `file-lines.ts` | Line splitting, joining and numbering shared by those two |
+| `context-files.ts` | `agentsFilesOverride`: drops the `AGENTS.md` ancestry above the sub-app |
 
 ## Event shapes
 
@@ -62,7 +67,7 @@ the agent continue, which is how `plan` mode and denials behave.
 |------|-----------|----------|
 | `read` | `path`, `offset`, `limit` | `path` |
 | `write` | `path`, `content` | `path`, `content` |
-| `edit` | `path`, `edits` | `path`, `edits` |
+| `edit` | `path`, `edits[{oldText,newText}]` | `path`, `edits` |
 | `bash` | `command`, `timeout` | `command` |
 | `grep` | `pattern`, `path`, `glob`, `ignoreCase`, `literal`, `context`, `limit` | `pattern` |
 | `find` | `pattern`, `path`, `limit` | `pattern` |
@@ -72,6 +77,30 @@ Every path-bearing tool uses the key `path`, which is what makes confinement a
 single lookup.
 
 ## Gotchas
+
+- **`systemPromptOverride` silently discards every tool's prompt guidance.** Pi's
+  `buildSystemPrompt` takes a `customPrompt` early return
+  (`dist/core/system-prompt.js:13-34`) that appends the append-prompt, context files,
+  skills and cwd — and drops `toolSnippets` and `promptGuidelines`. The four `edit`
+  bullets in `editToolSystemPromptContribution` never reached the model until
+  `agent/tool-guidance.ts` put them back. Anything Pi contributes through a tool
+  definition has to be re-emitted by hand while the override is in place.
+- **Pi's edit error misnames its own cause.** `fuzzyFindText`
+  (`dist/core/tools/edit-diff.js:141-176`) already tolerates trailing whitespace, CRLF,
+  BOM, NFKC, smart quotes, Unicode dashes and exotic spaces. `The old text must match
+  exactly including all whitespace and newlines` fires on **leading indentation**,
+  internal whitespace runs, or blank-line counts. There is no `replace_all` and
+  uniqueness is a hard error.
+- **`before_provider_request` is the only route to sampling.** Pi exposes no temperature
+  anywhere. The handler's *return value replaces* the payload
+  (`dist/core/extensions/runner.js:834-836` → `sdk.js` `onPayload`); mutating `event.payload`
+  in place is not how that hook works, unlike `tool_call`'s `input`.
+- **`tool_call` cannot rewrite arguments by return value** — `ToolCallEventResult` carries
+  only `block`/`reason`/`terminate`. Arguments are patched by mutating `event.input` in
+  place, with **no re-validation afterwards**. `tool_result` *can* return replacements for
+  `content`, `details`, `isError` and `usage`, chained across extensions.
+- **Pi discovers `AGENTS.md` by walking up from `cwd`**, and also reads `agentDir`. Pass
+  `agentsFilesOverride` or a sub-app inherits whatever is above `~/.anyapp/apps/`.
 
 - **`tools` is an allowlist that covers custom tools too.** A `defineTool()` tool
   missing from the session's `tools` array is silently dropped. `AGENT_TOOL_NAMES`

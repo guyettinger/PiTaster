@@ -387,6 +387,13 @@ const electronAPI = {
     return ipcRenderer.invoke('agent:abort')
   },
 
+  /**
+   * Read how full the context window is, without waiting for a turn to finish.
+   */
+  getContextUsage: (): Promise<ContextUsage | null> => {
+    return ipcRenderer.invoke('agent:get-context-usage')
+  },
+
   // Version control methods
 
   /**

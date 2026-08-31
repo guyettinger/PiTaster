@@ -7,11 +7,7 @@
  */
 
 import { describe, expect, test } from 'bun:test'
-import {
-  deriveContextBudget,
-  describeContextWindow,
-  FALLBACK_CONTEXT_WINDOW
-} from './context-budget'
+import { deriveContextBudget, FALLBACK_CONTEXT_WINDOW } from './context-budget'
 
 /** Windows spanning everything from a tiny local model to a frontier one. */
 const WINDOWS = [2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144]
@@ -25,6 +21,35 @@ describe('deriveContextBudget', () => {
       expect(reserveTokens + keepRecentTokens).toBeLessThan(window * 0.9)
       expect(keepRecentTokens).toBeGreaterThan(0)
       expect(reserveTokens).toBeGreaterThan(budget.maxTokens)
+    }
+  })
+
+  test('never truncates a read Pi was entitled to return, where the window allows', () => {
+    // Pi's own read tool caps at 50 KB. A trimmer cap below that fights it: the read
+    // arrives legal and is then cut, and Pi's output has no line numbers for the
+    // agent to work out what it lost.
+    const piReadTokens = Math.floor((50 * 1024) / 4)
+
+    for (const window of WINDOWS) {
+      const budget = deriveContextBudget({ userOverride: window })
+
+      expect(budget.maxToolResultTokens).toBeLessThanOrEqual(piReadTokens)
+      if (window >= 65536) {
+        expect(budget.maxToolResultTokens).toBe(piReadTokens)
+      }
+    }
+  })
+
+  test('the hard cap is above the ordinary one and below the window', () => {
+    for (const window of WINDOWS) {
+      const budget = deriveContextBudget({ userOverride: window })
+
+      // The current turn is exempt from the ordinary cap, so a hard cap beneath it
+      // would trim the turn harder than the history it is meant to protect.
+      expect(budget.hardToolResultTokens).toBeGreaterThanOrEqual(budget.maxToolResultTokens)
+      // And one result may never claim the whole window: the system prompt, the tool
+      // schemas and the surrounding history have to fit beside it.
+      expect(budget.hardToolResultTokens).toBeLessThanOrEqual(window * 0.5)
     }
   })
 
@@ -89,18 +114,5 @@ describe('deriveContextBudget', () => {
       const threshold = window - budget.compaction.reserveTokens
       expect(threshold).toBeGreaterThan(budget.compaction.keepRecentTokens)
     }
-  })
-})
-
-describe('describeContextWindow', () => {
-  test('names the daemon when the daemon reported it', () => {
-    const text = describeContextWindow(deriveContextBudget({ daemonWindow: 65536 }))
-    expect(text).toContain('65,536')
-    expect(text).toContain('daemon')
-  })
-
-  test('names the user when the user set it', () => {
-    const text = describeContextWindow(deriveContextBudget({ userOverride: 32768 }))
-    expect(text).toContain('set by you')
   })
 })

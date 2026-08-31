@@ -52,6 +52,7 @@ const TOOL_DISPLAY: Record<string, ToolDisplay> = {
   read: { Icon: FileIcon, label: 'Read file' },
   write: { Icon: FileEditIcon, label: 'Write file' },
   edit: { Icon: FileEditIcon, label: 'Edit file' },
+  replace_lines: { Icon: FileEditIcon, label: 'Replace lines' },
   ls: { Icon: FolderIcon, label: 'List files' },
   find: { Icon: SearchIcon, label: 'Find files' },
   grep: { Icon: SearchIcon, label: 'Search' },
@@ -121,6 +122,10 @@ function getInputSummary(tool: string, input?: Record<string, unknown>): string 
     case 'edit':
     case 'ls':
       return (input.path as string) ?? null
+    case 'replace_lines':
+      return input.path
+        ? `${input.path as string}:${input.startLine as number}-${input.endLine as number}`
+        : null
     case 'grep':
     case 'find':
       return (input.pattern as string) ?? null

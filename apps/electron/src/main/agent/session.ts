@@ -32,9 +32,18 @@ import type {
 } from '@anyapp/core'
 import { SkillsLoader } from '@anyapp/shared'
 import { autoCommitToolResult } from './auto-commit'
-import { deriveContextBudget, type ContextBudget } from './context-budget'
+import {
+  deriveContextBudget,
+  FALLBACK_CONTEXT_WINDOW,
+  type ContextBudget
+} from './context-budget'
+import { confineContextFiles } from './context-files'
 import { trimContext } from './context-trim'
+import { createEditRepair } from './edit-repair'
+import { createFileTools, FILE_TOOL_NAMES } from './file-tools'
+import { HTTP_IDLE_TIMEOUT_MS } from './http-dispatcher'
 import { createLoopGuard } from './loop-guard'
+import { createRetryBudget } from './retry-budget'
 import { createStallNotifier } from './stall-notifier'
 import { toStreamChunk } from './events'
 import { createMcpTools, getMcpToolBindings, type CallMcpTool } from './mcp-tools'
@@ -68,9 +77,19 @@ export const AGENT_TOOL_NAMES = [
   'grep',
   'find',
   'ls',
+  ...FILE_TOOL_NAMES,
   ...VERSION_TOOL_NAMES,
   ...WEB_TOOL_NAMES
 ]
+
+/**
+ * Pi's own built-in tool names, for selecting the guidance Pi writes for them.
+ *
+ * Kept separate from {@link AGENT_TOOL_NAMES} because only these seven have a
+ * `promptGuidelines` contribution to recover — anyapp's custom tools carry their
+ * guidance in their own descriptions.
+ */
+const PI_BUILTIN_TOOL_NAMES = ['read', 'write', 'edit', 'bash', 'grep', 'find', 'ls']
 
 /**
  * Version tools dropped from the lean profile.
@@ -86,8 +105,16 @@ export const AGENT_TOOL_NAMES = [
  */
 const LEAN_PROFILE_OMITS = ['create_branch', 'switch_branch', 'list_branches', 'get_history']
 
-/** Window at or below which the lean tool profile is chosen automatically. */
-const LEAN_PROFILE_WINDOW = 32768
+/**
+ * Window at or below which the lean tool profile is chosen automatically.
+ *
+ * Deliberately equal to {@link FALLBACK_CONTEXT_WINDOW}, and named through it so the
+ * two cannot drift apart unnoticed. The comparison is `<=`, so every session that
+ * falls back — the daemon unreachable, `/api/ps` silent, or only an advertised
+ * maximum to go on — runs lean. That is the intent: a window anyapp had to guess at
+ * is the last place to spend tokens on tool schemas the agent rarely reaches for.
+ */
+const LEAN_PROFILE_WINDOW = FALLBACK_CONTEXT_WINDOW
 
 /** Which tools a session exposes. */
 export type ToolProfile = 'auto' | 'lean' | 'full'
@@ -126,6 +153,15 @@ export interface AgentHostCallbacks {
   callMcpTool: CallMcpTool
   /** Forward a chunk to the renderer. */
   onStream: (chunk: StreamChunk) => void
+  /**
+   * Settle any approval the user has not answered.
+   *
+   * Pi passes the run's `AbortSignal` as `beforeToolCall`'s second argument and
+   * `AgentSession` drops it, so a `tool_call` handler awaiting approval never learns
+   * the run was aborted. Every path that ends a run has to deny pending approvals
+   * itself, which means anything in here that aborts needs this too.
+   */
+  denyPendingApprovals: () => void
 }
 
 /**
@@ -149,6 +185,13 @@ export interface CreateAgentHostParams {
   toolProfile?: ToolProfile
   /** Whether to shape the context sent to the model. Defaults to on. */
   trimContext?: boolean
+  /**
+   * Sampling temperature to pin, or null to leave the model's own default alone.
+   *
+   * Defaults to {@link DEFAULT_SAMPLING_TEMPERATURE}. See
+   * {@link createSamplingExtension} for why anyapp sets this at all.
+   */
+  samplingTemperature?: number | null
   /** Existing Pi session file to resume, or undefined to start a new one. */
   sessionFile?: string
   /** Currently connected MCP sources, whose tools join this session. */
@@ -171,6 +214,15 @@ export interface AgentHost {
   sessionId: string
   /** The sub-app this host is bound to. */
   appId: string
+  /**
+   * How full the context window is right now, or null when it is not yet known.
+   *
+   * Usage also rides the `complete` chunk, which is the only moment it changes. This
+   * is the pull for everything else: the renderer unmounts the chat panel whenever
+   * the user looks at anything else, and without a way to ask, the meter stays empty
+   * until the next turn happens to finish while the panel is open.
+   */
+  getContextUsage: () => ContextUsage | null
   /** Release the session and its listeners. */
   dispose: () => void
 }
@@ -246,20 +298,23 @@ type PiSettingsOverrides = Parameters<SettingsManager['applyOverrides']>[0]
  * refused while it restarts, a 500 when it runs out of memory, and long stalls while
  * it swaps another model out. Those recover in seconds, so a handful of attempts with
  * a couple of seconds between them is the right shape.
+ *
+ * Pi issues one initial attempt plus this many retries, and it cannot tell those fast
+ * failures from a request that hung for the whole of `HTTP_IDLE_TIMEOUT_MS` — so the
+ * count alone would allow a two-and-a-half-hour turn. `agent/retry-budget.ts` bounds
+ * the wall clock instead, which is what keeps this number free to serve the case it
+ * was chosen for.
  */
 const LOCAL_RETRY_ATTEMPTS = 4
 
 /** Backoff base. Pi doubles this per attempt. */
 const LOCAL_RETRY_BASE_DELAY_MS = 2000
 
-/**
- * How long a request may go without producing bytes before Pi gives up.
- *
- * Prefill on a large context is exactly that: minutes of silence with nothing on the
- * wire. The stall heartbeat, not this timeout, is what tells the user something is
- * happening.
- */
-const HTTP_IDLE_TIMEOUT_MS = 600_000
+// `HTTP_IDLE_TIMEOUT_MS` lives in `./http-dispatcher`, next to the dispatcher that
+// enforces it. Setting it in `buildPiSettings` alone does nothing: Pi only applies
+// this setting from entry points anyapp does not use, so what reaches the OpenAI SDK
+// there is only that SDK's own per-request `timeout`, and the dispatcher is what
+// stops undici cutting the request short of it.
 
 /**
  * What the agent is told after its history has been summarized away.
@@ -300,6 +355,57 @@ export function buildPiSettings(budget: ContextBudget): PiSettingsOverrides {
 }
 
 /**
+ * Temperature anyapp asks for unless the user says otherwise.
+ *
+ * Zero, because the task that dominates a coding session is reproducing text that
+ * already exists — an `oldText` that has to match a file byte for byte, an import path,
+ * a type name. Ollama takes its default from the model's Modelfile, which is 0.7 to 1.0
+ * on the qwen builds anyapp targets, and at that setting a model that knows the right
+ * indentation will still sometimes not emit it.
+ */
+export const DEFAULT_SAMPLING_TEMPERATURE = 0
+
+/**
+ * Bounds on that temperature, as the OpenAI-compatible endpoint defines them.
+ *
+ * Exported because the IPC validator and the Settings field both bound the user's
+ * value, and a bound that disagrees with this one is accepted, persisted, shown back,
+ * and then rejected by the daemon — the same reasoning as `MIN_CONTEXT_WINDOW`.
+ */
+export const MIN_SAMPLING_TEMPERATURE = 0
+export const MAX_SAMPLING_TEMPERATURE = 2
+
+/**
+ * Build the inline extension that pins sampling on every provider request.
+ *
+ * Pi exposes no temperature: it is not in `models.json`, not in `SettingsManager`, and
+ * not on `createAgentSession`. The `before_provider_request` hook is the only route —
+ * its handler's return value *replaces* the request payload
+ * (`dist/core/extensions/runner.js:834-836`, consumed by `sdk.js` `onPayload`), so
+ * spreading a field onto it is how a host sets one.
+ *
+ * The payload is the provider's own request body, typed `unknown` by Pi because its
+ * shape is provider-specific. anyapp only ever talks to Ollama's OpenAI-compatible
+ * endpoint, where `temperature` is a documented top-level field, and the spread leaves
+ * everything else untouched — so a payload shape Pi changes later still passes through
+ * intact.
+ *
+ * @param temperature - The temperature to request
+ * @returns A named inline extension
+ */
+function createSamplingExtension(temperature: number): InlineExtension {
+  return {
+    name: 'anyapp-sampling',
+    factory: (pi: ExtensionAPI) => {
+      pi.on('before_provider_request', async (event) => {
+        if (typeof event.payload !== 'object' || event.payload === null) return undefined
+        return { ...(event.payload as Record<string, unknown>), temperature }
+      })
+    }
+  }
+}
+
+/**
  * Build the inline extension carrying anyapp's permission gate and auto-commit.
  *
  * With Pi's built-in tools adopted unmodified, the `tool_call` handler below is the
@@ -320,6 +426,13 @@ function createAnyappExtension(params: {
 }): InlineExtension {
   const { rootPath, budget, trimEnabled, callbacks } = params
   const loopGuard = createLoopGuard()
+  const editRepair = createEditRepair({
+    rootPath,
+    // The diagnostic quotes a region of the file back, so it is a tool result like any
+    // other and gets the same per-result share of the window. A quarter of that is the
+    // quote itself; the rest is Pi's own message and the instructions around it.
+    maxQuoteTokens: Math.floor(budget.maxToolResultTokens / 4)
+  })
 
   return {
     name: 'anyapp-guard',
@@ -330,9 +443,17 @@ function createAnyappExtension(params: {
       // inner-loop round — assistant response plus its tool calls — which is exactly
       // the granularity a stuck model repeats at, so resetting there would clear the
       // streak between every repetition and the guard could never fire.
-      // `agent_start` fires once per submitted prompt.
+      // `agent_start` fires once per submitted prompt — and once more for each retry
+      // or overflow-compaction continuation, since `agentLoopContinue` re-emits it,
+      // so a continuation does clear the streak mid-turn. That is accepted: the guard
+      // exists to stop a model looping on its own output, and a continuation is Pi
+      // restarting the turn rather than the model repeating itself.
+      // `agent/retry-budget.ts` is what bounds the continuations.
       pi.on('agent_start', async () => {
         loopGuard.reset()
+        // A new prompt is a new task; a streak of failed edits on the previous one says
+        // nothing about this one.
+        editRepair.reset()
         return undefined
       })
 
@@ -341,7 +462,8 @@ function createAnyappExtension(params: {
       if (trimEnabled) {
         pi.on('context', async (event) => ({
           messages: trimContext(event.messages, {
-            maxToolResultTokens: budget.maxToolResultTokens
+            maxToolResultTokens: budget.maxToolResultTokens,
+            hardToolResultTokens: budget.hardToolResultTokens
           })
         }))
       }
@@ -379,13 +501,32 @@ function createAnyappExtension(params: {
       })
 
       pi.on('tool_result', async (event) => {
-        const path = (event.input as { path?: unknown }).path
+        const input = event.input as Record<string, unknown>
+        const path = input.path
         if (typeof path !== 'string') return undefined
+
+        // Pi's edit failure names no line and quotes no text, and misdescribes its own
+        // cause — so a small model retries the same mistake. Replacing the message with
+        // the file's real text is what breaks that cycle. Runs before auto-commit
+        // because a failed edit never commits anyway.
+        if (event.toolName === 'edit') {
+          const repair = await editRepair.repair({
+            input,
+            resultText: event.content
+              .map((block) => (block.type === 'text' ? block.text : ''))
+              .join('\n'),
+            isError: event.isError === true
+          })
+
+          if (repair.text !== undefined) {
+            return { content: [{ type: 'text' as const, text: repair.text }] }
+          }
+        }
 
         const outcome = await autoCommitToolResult({
           result: {
             toolName: event.toolName,
-            input: event.input as Record<string, unknown>,
+            input,
             isError: event.isError === true
           },
           rootPath,
@@ -434,6 +575,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     budget = deriveContextBudget(),
     toolProfile = 'auto',
     trimContext: trimEnabled = true,
+    samplingTemperature = DEFAULT_SAMPLING_TEMPERATURE,
     sessionFile,
     mcpSources = [],
     callbacks
@@ -459,17 +601,28 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
   const mcpBindings = getMcpToolBindings(mcpSources)
   const mcpTools = createMcpTools({ bindings: mcpBindings, callTool: callbacks.callMcpTool })
 
+  const toolNames = resolveToolNames({ profile: toolProfile, contextWindow: budget.window })
+
   const loader = new DefaultResourceLoader({
     cwd: app.path,
     agentDir,
     settingsManager,
-    systemPromptOverride: () => getSystemPrompt({ app, mcpTools: mcpBindings }),
+    systemPromptOverride: () =>
+      getSystemPrompt({
+        app,
+        mcpTools: mcpBindings,
+        toolNames: toolNames.filter((name) => PI_BUILTIN_TOOL_NAMES.includes(name))
+      }),
     skillsOverride: (current) => ({
       skills: [...current.skills, ...anyappSkills],
       diagnostics: current.diagnostics
     }),
+    agentsFilesOverride: confineContextFiles(app.path),
     extensionFactories: [
-      createAnyappExtension({ rootPath: app.path, budget, trimEnabled, callbacks })
+      createAnyappExtension({ rootPath: app.path, budget, trimEnabled, callbacks }),
+      ...(samplingTemperature === null
+        ? []
+        : [createSamplingExtension(samplingTemperature)])
     ]
   })
 
@@ -487,11 +640,9 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     modelRuntime,
     thinkingLevel: 'off',
     noTools: 'all',
-    tools: [
-      ...resolveToolNames({ profile: toolProfile, contextWindow: budget.window }),
-      ...mcpBindings.map((binding) => binding.qualifiedName)
-    ],
+    tools: [...toolNames, ...mcpBindings.map((binding) => binding.qualifiedName)],
     customTools: [
+      ...createFileTools({ rootPath: app.path }),
       ...createVersionTools(app.path),
       ...createWebTools({ rootPath: app.path, getAutoCommit: callbacks.getAutoCommit }),
       ...mcpTools
@@ -502,16 +653,40 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
   })
 
   const stall = createStallNotifier({ onStream: callbacks.onStream })
+  const retryBudget = createRetryBudget()
 
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     // Any event at all is proof the run is alive, so it resets the stall clock —
     // except `agent_start`, which is where the longest silence begins.
     if (event.type === 'agent_start') {
       stall.arm()
+      retryBudget.start()
     } else if (event.type === 'agent_end' || event.type === 'agent_settled') {
       stall.clear()
+      // `agent_end` also fires between retries, and the budget has to span those or
+      // it measures one attempt instead of the turn.
+      if (event.type === 'agent_settled' || !event.willRetry) retryBudget.clear()
     } else {
       stall.reset()
+    }
+
+    // Pi cannot tell a hung request from a dropped socket — it matches on error text,
+    // and "timed out" is in its retryable list. Retrying a request that produced no
+    // bytes for the whole idle timeout only spends another one, so the turn is cut
+    // here instead. Fast failures never reach the budget.
+    if (event.type === 'auto_retry_start' && retryBudget.exhausted()) {
+      callbacks.onStream({
+        type: 'error',
+        error:
+          'The model stopped responding and retrying is no longer helping. ' +
+          'Check that Ollama is running and has room for this model, then try again.'
+      })
+      // Order matters, and matches `agent:abort`: deny first, so a `tool_call`
+      // handler waiting on the user unblocks and Pi's loop can observe the abort.
+      // Aborting alone would not reach it.
+      callbacks.denyPendingApprovals()
+      void session.abort()
+      return
     }
 
     // Compaction replaces history with a summary, which is where a small model
@@ -554,6 +729,8 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     abort: async () => {
       await session.abort()
     },
+
+    getContextUsage: () => readContextUsage(session).contextUsage ?? null,
 
     dispose: () => {
       stall.clear()
