@@ -41,7 +41,7 @@ The implementation is split into **6 independent sessions**, each resulting in a
 | [16. MCP Tools](SESSION-16-MCP-TOOLS.md) | MCP on the agent | Connected MCP sources' tools reach the agent, gated by approval | Complete | [Notes](SESSION-16-NOTES.md) |
 | [17. Shell Design](SESSION-17-SHELL-DESIGN.md) | Layout + identity | Draggable header, contextual nav, design tokens, logo | Complete | [Notes](SESSION-17-NOTES.md) |
 | [18. Internet Access](SESSION-18-INTERNET-ACCESS.md) | Network tools | `web_fetch` and `install_deps`, gated; subprocess env leak fixed | Complete | [Notes](SESSION-18-NOTES.md) |
-| [19. Local Model Context](SESSION-19-LOCAL-MODEL-CONTEXT.md) | Context budget | Real context window, scaled compaction, visible recovery, context shaping | In progress | — |
+| [19. Local Model Context](SESSION-19-LOCAL-MODEL-CONTEXT.md) | Context budget | Real context window, scaled compaction, visible recovery, context shaping | Complete | [Notes](SESSION-19-NOTES.md) |
 
 ## Session 6 Sub-Sessions
 
