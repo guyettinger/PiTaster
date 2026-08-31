@@ -6,7 +6,7 @@ type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
 /** A single streamed update from the agent to the renderer. */
 interface StreamChunk {
   /** Type of chunk. */
-  type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error' | 'rate_limit'
+  type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error' | 'rate_limit' | 'status'
   /** Text content (for 'text' type). */
   text?: string
   /** Tool name (for 'tool_start' and 'tool_end' types). */
@@ -21,6 +21,30 @@ interface StreamChunk {
   error?: string
   /** Seconds until retry (for 'rate_limit' type). */
   retryAfterSeconds?: number
+  /** What the agent is doing (for 'status' type). */
+  status?: AgentStatus
+  /** Context consumed after this turn, when Pi has reported usage. */
+  contextUsage?: ContextUsage
+}
+
+/** What the agent is doing when it is not producing tokens. */
+interface AgentStatus {
+  /** What the agent is doing. */
+  kind: 'compacting' | 'retrying' | 'waiting' | 'settled'
+  /** One sentence for the user, when there is something worth saying. */
+  detail?: string
+  /** Retry attempt in progress, 1-indexed. */
+  attempt?: number
+  /** Retries the policy allows. */
+  maxAttempts?: number
+}
+
+/** How much of the context window the conversation currently occupies. */
+interface ContextUsage {
+  /** Tokens the conversation currently occupies. */
+  used: number
+  /** Tokens the model will actually accept. */
+  window: number
 }
 
 /** Tool approval request sent to renderer. */
@@ -112,6 +136,12 @@ interface AppConfig {
   theme: 'light' | 'dark' | 'system'
   /** Whether agent file writes auto-commit to git. */
   autoCommit: boolean
+  /** Context window to configure for the selected model, or null to discover it. */
+  contextWindow: number | null
+  /** Which tools the agent exposes; 'auto' picks from the context window. */
+  toolProfile: 'auto' | 'lean' | 'full'
+  /** Whether to shape the context sent to the model. */
+  trimContext: boolean
 }
 
 /** A model pulled into the local Ollama instance. */
@@ -122,8 +152,12 @@ interface OllamaModel {
   parameterSize?: string
   /** Size on disk in bytes. */
   sizeBytes?: number
-  /** Context window in tokens, from the model's own metadata when available. */
+  /** Context window the model's metadata advertises: its architectural maximum. */
   contextWindow: number
+  /** The window anyapp actually configures, probed from the daemon when it can be. */
+  effectiveContextWindow: number
+  /** Where the effective window came from. */
+  contextWindowSource: 'user' | 'daemon' | 'fallback'
   /** Whether the model supports function calling. The agent's tools require it. */
   supportsTools: boolean
   /** Whether the model accepts image input. */
@@ -351,6 +385,13 @@ const electronAPI = {
    */
   abortAgent: (): Promise<void> => {
     return ipcRenderer.invoke('agent:abort')
+  },
+
+  /**
+   * Read how full the context window is, without waiting for a turn to finish.
+   */
+  getContextUsage: (): Promise<ContextUsage | null> => {
+    return ipcRenderer.invoke('agent:get-context-usage')
   },
 
   // Version control methods

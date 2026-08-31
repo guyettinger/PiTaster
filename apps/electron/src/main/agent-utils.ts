@@ -43,7 +43,12 @@ export function describeElementContext(context: ElementContext): string {
     `XPath: ${element.xpath}`,
     `Bounds: ${element.bounds.width}×${element.bounds.height}px at (${element.bounds.x}, ${element.bounds.y})`,
     '',
-    'You can use the selector to locate this element in the source files.'
+    // This guidance used to live in the system prompt, where it was paid for on every
+    // turn including the great majority that have no selected element. It belongs with
+    // the element it describes.
+    'Search for this element by its selector in the component files. Change only the',
+    'element the user selected — if it comes from a reusable component, ask whether',
+    'they mean every instance or just this one. Say what you changed when you are done.'
   ]
 
   return lines.join('\n')

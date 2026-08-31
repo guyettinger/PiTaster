@@ -1,6 +1,48 @@
 import type { AppTemplate, AppTemplateConfig } from '@anyapp/core'
 
 /**
+ * The `.gitignore` every new sub-app is seeded with.
+ *
+ * Not a tidiness measure. `git_status` reports untracked files as modified, so
+ * without this an app that has run `install_deps` answers the agent's first
+ * `git_status` with every path under `node_modules/` — on a real project that is a
+ * result of several hundred kilobytes, far more than the whole context window, and
+ * the request that carries it cannot succeed. Ignored *and untracked* files are
+ * skipped by `statusMatrix`, which is what keeps the result small.
+ *
+ * A template may still ship its own `.gitignore`; this is only the default.
+ */
+export const DEFAULT_GITIGNORE = `# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+out/
+.vite/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# anyapp runtime state
+.chat-sessions.json
+
+# Editor and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+`
+
+/**
  * Get all available templates.
  */
 export function getTemplates(): AppTemplateConfig[] {

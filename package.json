@@ -1,11 +1,15 @@
 {
   "name": "anyapp",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "bun run --filter @anyapp/electron dev",
     "build": "bun run --workspaces build",
-    "typecheck:all": "bun run --workspaces typecheck"
+    "typecheck:all": "bun run --workspaces typecheck",
+    "test": "bun test"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1",

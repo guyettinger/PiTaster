@@ -20,6 +20,14 @@ export interface AppConfig {
   theme: 'light' | 'dark' | 'system'
   /** Whether to auto-commit file changes. */
   autoCommit: boolean
+  /** Context window to configure for the selected model, or null to discover it. */
+  contextWindow: number | null
+  /** Which tools the agent exposes; 'auto' picks from the context window. */
+  toolProfile: 'auto' | 'lean' | 'full'
+  /** Whether to shape the context sent to the model. */
+  trimContext: boolean
+  /** Sampling temperature for the model, or null for the model's own default. */
+  samplingTemperature: number | null
 }
 
 /**
@@ -30,8 +38,12 @@ export interface OllamaModel {
   id: string
   /** Parameter size string reported by Ollama, for example `30.5B`. */
   parameterSize?: string
-  /** Context window in tokens. */
+  /** Context window the model's metadata advertises: its architectural maximum. */
   contextWindow: number
+  /** The window anyapp actually configures, probed from the daemon when it can be. */
+  effectiveContextWindow: number
+  /** Where the effective window came from. */
+  contextWindowSource: 'user' | 'daemon' | 'fallback'
   /** Whether the model supports function calling. The agent's tools require it. */
   supportsTools: boolean
 }
@@ -51,7 +63,11 @@ const DEFAULT_CONFIG: AppConfig = {
   ollamaBaseUrl: 'http://localhost:11434',
   ollamaModel: null,
   theme: 'dark',
-  autoCommit: true
+  autoCommit: true,
+  contextWindow: null,
+  toolProfile: 'auto',
+  trimContext: true,
+  samplingTemperature: 0
 }
 
 /** Shared input styling, so every field in Settings matches. */
@@ -81,6 +97,42 @@ function Field({ label, hint, children }: FieldProps) {
       {hint && <p className="mt-1.5 text-[12px] text-ash">{hint}</p>}
     </div>
   )
+}
+
+/**
+ * Explain where the context window anyapp will use came from.
+ *
+ * Ollama advertises a model's architectural maximum, not what the daemon serves —
+ * 262144 against a served 65536 is normal — and believing the advertised number means
+ * the prompt is silently truncated instead of compacted. This hint says which number
+ * is in force and why.
+ *
+ * Deliberately not shared with the main process: this needs `OllamaModel` and the
+ * "it advertises N" clause, and the renderer cannot import from `src/main` anyway.
+ *
+ * @param model - The selected model, or undefined when none is chosen
+ * @returns One sentence for the field's hint
+ */
+function describeContextWindow(model: OllamaModel | undefined): string {
+  if (!model) {
+    return 'Leave empty to use whatever the daemon reports for the selected model.'
+  }
+
+  const effective = model.effectiveContextWindow.toLocaleString()
+  const advertised = model.contextWindow > 0 ? model.contextWindow.toLocaleString() : null
+
+  switch (model.contextWindowSource) {
+    case 'user':
+      return `Using ${effective} tokens, set here. Clear the field to discover it instead.`
+    case 'daemon':
+      return `Using ${effective} tokens, reported by the daemon for the loaded model${
+        advertised ? ` (it advertises ${advertised})` : ''
+      }.`
+    case 'fallback':
+      return `Using ${effective} tokens — a conservative default, because the daemon has not loaded this model yet${
+        advertised ? ` and it advertises ${advertised}, which is its maximum, not what it serves` : ''
+      }.`
+  }
 }
 
 /**
@@ -161,6 +213,8 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
   const selectedLacksTools = models.some(
     (model) => model.id === config.ollamaModel && !model.supportsTools
   )
+
+  const selectedModel = models.find((model) => model.id === config.ollamaModel)
 
   return (
     <div className="flex h-full flex-col">
@@ -304,6 +358,111 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
                     </div>
                   )}
                 </Field>
+
+                <Field
+                  label="Context window"
+                  hint={describeContextWindow(selectedModel)}
+                >
+                  <input
+                    type="number"
+                    // MIN_CONTEXT_WINDOW and MAX_CONTEXT_WINDOW in
+                    // main/agent/context-budget.ts are the source of truth; the
+                    // renderer cannot import from main, so these are mirrored the way
+                    // electron.d.ts mirrors the preload bridge. A value outside them
+                    // is rejected by `config:save`.
+                    min={2048}
+                    max={262144}
+                    step={1024}
+                    value={config.contextWindow ?? ''}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        contextWindow: e.target.value ? Number(e.target.value) : null
+                      })
+                    }
+                    placeholder="Discover automatically"
+                    className={FIELD_CLASS}
+                  />
+                </Field>
+
+                <Field
+                  label="Tool set"
+                  hint={
+                    config.toolProfile === 'auto'
+                      ? 'Automatic drops the branch tools on a small context window. Every tool costs context on every request, and a long list makes a small model pick worse.'
+                      : config.toolProfile === 'lean'
+                        ? 'Branch tools are hidden from the agent. You can still branch and view history from Version Control.'
+                        : 'Every tool is offered to the agent.'
+                  }
+                >
+                  <select
+                    value={config.toolProfile}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        toolProfile: e.target.value as AppConfig['toolProfile']
+                      })
+                    }
+                    className={FIELD_CLASS}
+                  >
+                    <option value="auto">Automatic</option>
+                    <option value="lean">Lean</option>
+                    <option value="full">Full</option>
+                  </select>
+                </Field>
+
+                <Field
+                  label="Temperature"
+                  hint={
+                    config.samplingTemperature === null
+                      ? "Using the model's own default, which Ollama takes from its Modelfile — usually 0.7 or higher."
+                      : 'Most of a coding turn is reproducing text that already exists exactly, which is what a low temperature is for. Leave empty to use the model\u2019s own default.'
+                  }
+                >
+                  <input
+                    type="number"
+                    // MIN_SAMPLING_TEMPERATURE and MAX_SAMPLING_TEMPERATURE in
+                    // main/agent/session.ts are the source of truth; the renderer
+                    // cannot import from main, so these are mirrored the way the
+                    // context window bounds above are. `config:save` rejects anything
+                    // outside them.
+                    min={0}
+                    max={2}
+                    step={0.1}
+                    value={config.samplingTemperature ?? ''}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        samplingTemperature: e.target.value === '' ? null : Number(e.target.value)
+                      })
+                    }
+                    placeholder="Model default"
+                    className={FIELD_CLASS}
+                  />
+                </Field>
+
+                <div className="mt-5">
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={config.trimContext}
+                      onChange={(e) =>
+                        setConfig({ ...config, trimContext: e.target.checked })
+                      }
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-line bg-raised accent-[var(--color-brass)]"
+                    />
+                    <span>
+                      <span className="block text-[12.5px] font-medium text-bone">
+                        Trim what the agent is sent
+                      </span>
+                      <span className="mt-0.5 block text-[12px] text-ash">
+                        Shortens long tool output, collapses files read more than once,
+                        and drops old screenshots. Only affects what reaches the model —
+                        the transcript and history keep everything.
+                      </span>
+                    </span>
+                  </label>
+                </div>
 
                 <Field label="Theme">
                   <select

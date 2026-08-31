@@ -43,6 +43,8 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
         return `Write to: ${(input.path as string) ?? 'file'}`
       case 'edit':
         return `Edit: ${(input.path as string) ?? 'file'}`
+      case 'replace_lines':
+        return `Replace lines ${(input.startLine as number) ?? '?'}-${(input.endLine as number) ?? '?'} in: ${(input.path as string) ?? 'file'}`
       case 'ls':
         return `List: ${(input.path as string) ?? '.'}`
       case 'grep':

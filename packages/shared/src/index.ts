@@ -21,6 +21,8 @@ export { McpClient } from './sources/mcp-client.js'
 
 // Skills
 export { SkillsLoader, extractSkillMentions, buildSystemPrompt } from './skills/loader.js'
+export { seedSkills, type SeedSkillsResult } from './skills/seed.js'
+export { SEED_SKILLS, type SeedSkill } from './skills/seed-content.js'
 
 // Apps
 export { AppManager } from './apps/manager.js'

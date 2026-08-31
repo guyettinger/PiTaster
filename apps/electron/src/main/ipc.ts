@@ -8,25 +8,38 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promises as fs } from 'node:fs'
-import { createAgentHost, type AgentHost } from './agent/session'
+import {
+  createAgentHost,
+  DEFAULT_SAMPLING_TEMPERATURE,
+  MAX_SAMPLING_TEMPERATURE,
+  MIN_SAMPLING_TEMPERATURE,
+  type AgentHost
+} from './agent/session'
 import { describeNetworkUse } from './agent/permission-gate'
 import {
   VersionManager,
   SourceManager,
+  seedSkills,
   SkillsLoader,
   AppManager,
   AppRunner,
   ChatHistoryManager,
   installDependencies
 } from '@anyapp/shared'
-import type { PermissionMode, StreamChunk, Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
+import type { AgentStatus, ContextUsage, PermissionMode, StreamChunk, Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
 import {
   DEFAULT_OLLAMA_BASE_URL,
   isOllamaReachable,
   listOllamaModels,
+  prepareModelForSession,
   syncOllamaModels,
   type OllamaModel
 } from './agent/ollama'
+import {
+  MAX_CONTEXT_WINDOW,
+  MIN_CONTEXT_WINDOW,
+  type ContextBudget
+} from './agent/context-budget'
 import { captureElement, type ElementInfo } from './screenshot'
 import { openExternalUrl } from './external-links'
 
@@ -46,10 +59,16 @@ interface ToolApprovalResponse {
   approved: boolean
 }
 
-/** Store for pending approval requests. */
+/**
+ * Approval requests waiting on the user.
+ *
+ * Resolve-only: every way one of these can end — answered, aborted, app switched,
+ * window closed — is either an approval or a denial. Rejecting instead would throw
+ * inside the `tool_call` handler awaiting it, which is not a decision the permission
+ * gate knows how to represent.
+ */
 const pendingApprovals = new Map<string, {
   resolve: (approved: boolean) => void
-  reject: (error: Error) => void
 }>()
 
 /** Current permission mode. */
@@ -60,9 +79,6 @@ let currentPermissionMode: PermissionMode = 'default'
  * Pi owns the transcript, so there is no separate in-memory history to keep.
  */
 let agentHost: AgentHost | null = null
-
-/** Default timeout for tool approval (60 seconds). */
-const APPROVAL_TIMEOUT_MS = 60000
 
 /** Maximum accepted prompt length, in characters. */
 const MAX_PROMPT_CHARS = 100000
@@ -121,6 +137,27 @@ interface AppConfig {
   theme: 'light' | 'dark' | 'system'
   /** Whether agent file writes auto-commit to git. */
   autoCommit: boolean
+  /**
+   * Context window to configure for the selected model, or null to discover it.
+   *
+   * Ollama's advertised context length is the model's architectural maximum, not
+   * what the daemon serves; anyapp probes `/api/ps` for the real number and falls
+   * back to a conservative default. This is the escape hatch when both are wrong.
+   */
+  contextWindow: number | null
+  /** Which tools the agent exposes; 'auto' picks from the context window. */
+  toolProfile: 'auto' | 'lean' | 'full'
+  /** Whether to shape the context sent to the model. */
+  trimContext: boolean
+  /**
+   * Sampling temperature for the model, or null to use the model's own default.
+   *
+   * Pi exposes no temperature and Ollama takes its default from the model's
+   * Modelfile — 0.7 to 1.0 on the qwen builds anyapp targets. Most of a coding turn
+   * is reproducing text that already exists, so anyapp pins 0; null restores the
+   * model's default for anyone who wants it.
+   */
+  samplingTemperature: number | null
 }
 
 /** Default configuration. */
@@ -128,7 +165,11 @@ const defaultConfig: AppConfig = {
   ollamaBaseUrl: DEFAULT_OLLAMA_BASE_URL,
   ollamaModel: null,
   theme: 'dark',
-  autoCommit: true
+  autoCommit: true,
+  contextWindow: null,
+  toolProfile: 'auto',
+  trimContext: true,
+  samplingTemperature: DEFAULT_SAMPLING_TEMPERATURE
 }
 
 /** Cached configuration, populated by {@link loadConfig}. */
@@ -188,7 +229,12 @@ async function saveConfig(config: AppConfig): Promise<void> {
   cachedConfig = config
 
   // Keep Pi's models.json in step with the configured daemon.
-  await syncOllamaModels({ agentDir: piAgentDir, baseUrl: config.ollamaBaseUrl })
+  await syncOllamaModels({
+    agentDir: piAgentDir,
+    baseUrl: config.ollamaBaseUrl,
+    selectedModel: config.ollamaModel,
+    contextWindowOverride: config.contextWindow
+  })
 }
 
 /**
@@ -199,7 +245,27 @@ async function saveConfig(config: AppConfig): Promise<void> {
  */
 export async function initializeConfig(): Promise<void> {
   const config = await loadConfig()
-  await syncOllamaModels({ agentDir: piAgentDir, baseUrl: config.ollamaBaseUrl })
+  await syncOllamaModels({
+    agentDir: piAgentDir,
+    baseUrl: config.ollamaBaseUrl,
+    selectedModel: config.ollamaModel,
+    contextWindowOverride: config.contextWindow
+  })
+}
+
+/**
+ * Install the seed skills, so a fresh machine's agent is not skill-less.
+ *
+ * `~/.anyapp/skills` was read by the agent and by the Skills panel and written by
+ * neither, so on any install where the `docs/skills/` copies had not been placed by hand
+ * the agent ran with none. `working-notes` is the one that matters: the post-compaction
+ * nudge in `agent/session.ts` tells the model to read `NOTES.md`, and that skill is
+ * where the convention for keeping one is defined.
+ *
+ * Existing skills are never overwritten — see {@link seedSkills}.
+ */
+export async function initializeSkills(): Promise<void> {
+  await seedSkills(join(configDir, 'skills'))
 }
 
 /**
@@ -364,6 +430,26 @@ function splitPrompt(prompt: string | SerializedContentBlock[]): {
 }
 
 /**
+ * Deny every approval prompt still waiting for an answer.
+ *
+ * Approval prompts have no timeout, so something has to settle the ones the user
+ * never answers. Pi cannot: it passes the run's `AbortSignal` as a second argument to
+ * `beforeToolCall`, but `AgentSession` destructures only the first and drops it, and
+ * `ToolCallEvent` carries no signal either — so aborting a run leaves a pending
+ * `tool_call` handler awaiting forever. Every path that ends a run therefore calls
+ * this.
+ *
+ * Denying is the only safe resolution: the user pressed Stop, switched app, or closed
+ * the window, and in none of those cases did they approve anything.
+ */
+function denyPendingApprovals(): void {
+  for (const [id, pending] of pendingApprovals) {
+    pendingApprovals.delete(id)
+    pending.resolve(false)
+  }
+}
+
+/**
  * Tear down the live agent session, if any.
  */
 async function disposeAgentHost(): Promise<void> {
@@ -376,6 +462,7 @@ async function disposeAgentHost(): Promise<void> {
     // Aborting an idle session is not an error.
   }
   host.dispose()
+  denyPendingApprovals()
 }
 
 /**
@@ -402,6 +489,39 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
 
   await disposeAgentHost()
 
+  // Load the model and rewrite models.json with the window it really got, before
+  // Pi's ModelRuntime reads that file.
+  //
+  // This is the longest wait in the app — tens of seconds for a large local model —
+  // and it happens before the session exists, so the session's own stall notice
+  // cannot cover it. Report it here, or the first prompt of every session looks like
+  // a hang.
+  const sendStatus = (status: AgentStatus | null): void => {
+    if (mainWindow.isDestroyed()) return
+    const chunk: StreamChunk = {
+      type: 'status',
+      status: status ?? { kind: 'settled' }
+    }
+    mainWindow.webContents.send('agent:stream', chunk)
+  }
+
+  sendStatus({
+    kind: 'waiting',
+    detail: `Loading ${config.ollamaModel} into memory — this takes a while the first time.`
+  })
+
+  let budget: ContextBudget
+  try {
+    budget = await prepareModelForSession({
+      agentDir: piAgentDir,
+      baseUrl: config.ollamaBaseUrl,
+      selectedModel: config.ollamaModel,
+      contextWindowOverride: config.contextWindow
+    })
+  } finally {
+    sendStatus(null)
+  }
+
   // Sessions are materialized on creation, so there is always a transcript to
   // resume. Create one only if the app has never had a session at all.
   let sessionFile = await chatHistoryManager.getActiveSessionPath(app.id)
@@ -415,10 +535,15 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
     app,
     agentDir: piAgentDir,
     modelId: config.ollamaModel,
+    budget,
+    toolProfile: config.toolProfile,
+    trimContext: config.trimContext,
+    samplingTemperature: config.samplingTemperature,
     sessionFile: sessionFile ?? undefined,
     mcpSources: sourceManager.getConnectedSources().filter((source) => source.connected),
     callbacks: {
       getPermissionMode: () => currentPermissionMode,
+      denyPendingApprovals,
       getAutoCommit: () => getConfig().autoCommit,
 
       callMcpTool: (sourceId, toolName, args) =>
@@ -447,16 +572,13 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
         if (mainWindow.isDestroyed()) return Promise.resolve(false)
         mainWindow.webContents.send('agent:tool-approval', request)
 
-        return new Promise((resolve, reject) => {
-          pendingApprovals.set(id, { resolve, reject })
-
-          // Deny by default if the user never answers.
-          setTimeout(() => {
-            if (pendingApprovals.has(id)) {
-              pendingApprovals.delete(id)
-              resolve(false)
-            }
-          }, APPROVAL_TIMEOUT_MS)
+        // Deliberately unbounded. A turn on a local model can take minutes, so
+        // stepping away while one runs is normal — and a timeout here does not fail
+        // safe, it silently *denies* a call the user meant to allow, with no way to
+        // tell that apart from a refusal. The prompt is settled by an answer, by
+        // aborting the run, or by the session being torn down.
+        return new Promise((resolve) => {
+          pendingApprovals.set(id, { resolve })
         })
       },
 
@@ -546,7 +668,19 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
   // Cancel the in-flight agent run
   ipcMain.handle('agent:abort', async (): Promise<void> => {
+    // Order matters: deny first, so the `tool_call` handler awaiting approval
+    // unblocks and Pi's loop can observe the abort. Aborting alone would not reach
+    // it — see denyPendingApprovals.
+    denyPendingApprovals()
     await agentHost?.abort()
+  })
+
+  // Report how full the context window is, for a chat panel that has just mounted
+  ipcMain.handle('agent:get-context-usage', async (): Promise<ContextUsage | null> => {
+    // Null covers three cases the renderer treats alike: no session yet, a model
+    // whose window Pi does not know, and the gap right after a compaction where Pi
+    // reports null tokens. There is nothing honest to show in any of them.
+    return agentHost?.getContextUsage() ?? null
   })
 
   // Handle tool approval response from renderer
@@ -813,6 +947,35 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (typeof config.autoCommit !== 'boolean') {
       throw new Error('Invalid autoCommit')
     }
+    // Bounded by the same numbers the derivation clamps to. A wider bound here is
+    // not more permissive, only less honest: the value is accepted, persisted, shown
+    // back in Settings, and then silently clamped on the way to the model.
+    if (
+      config.contextWindow !== null &&
+      (typeof config.contextWindow !== 'number' ||
+        !Number.isFinite(config.contextWindow) ||
+        config.contextWindow < MIN_CONTEXT_WINDOW ||
+        config.contextWindow > MAX_CONTEXT_WINDOW)
+    ) {
+      throw new Error('Invalid context window')
+    }
+    if (!['auto', 'lean', 'full'].includes(config.toolProfile)) {
+      throw new Error('Invalid tool profile')
+    }
+    if (typeof config.trimContext !== 'boolean') {
+      throw new Error('Invalid trimContext')
+    }
+    // Bounded by what the OpenAI-compatible endpoint accepts. Null is the deliberate
+    // "leave the model alone" value and is not the same as 0.
+    if (
+      config.samplingTemperature !== null &&
+      (typeof config.samplingTemperature !== 'number' ||
+        !Number.isFinite(config.samplingTemperature) ||
+        config.samplingTemperature < MIN_SAMPLING_TEMPERATURE ||
+        config.samplingTemperature > MAX_SAMPLING_TEMPERATURE)
+    ) {
+      throw new Error('Invalid sampling temperature')
+    }
     return saveConfig(config)
   })
 
@@ -820,7 +983,13 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
    * List the models pulled into the local Ollama daemon, refreshing Pi's catalog.
    */
   ipcMain.handle('models:list', async (): Promise<OllamaModel[]> => {
-    return syncOllamaModels({ agentDir: piAgentDir, baseUrl: getConfig().ollamaBaseUrl })
+    const config = getConfig()
+    return syncOllamaModels({
+      agentDir: piAgentDir,
+      baseUrl: config.ollamaBaseUrl,
+      selectedModel: config.ollamaModel,
+      contextWindowOverride: config.contextWindow
+    })
   })
 
   /**
@@ -1082,6 +1251,7 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('agent:clear-history')
   ipcMain.removeHandler('agent:message')
   ipcMain.removeHandler('agent:abort')
+  ipcMain.removeHandler('agent:get-context-usage')
   ipcMain.removeHandler('models:list')
   ipcMain.removeHandler('models:check-connection')
   ipcMain.removeAllListeners('agent:tool-response')
@@ -1164,9 +1334,8 @@ export function cleanupIpcHandlers(): void {
   // Disconnect all sources
   sourceManager.disconnectAll().catch(() => {})
   
-  // Reject any pending approvals
-  for (const [id, pending] of pendingApprovals) {
-    pending.reject(new Error('Window closed'))
-    pendingApprovals.delete(id)
-  }
+  // Deny, not reject: a rejection throws inside the `tool_call` handler that is
+  // awaiting it, which risks an unhandled rejection during teardown. Closing the
+  // window is a denial like any other.
+  denyPendingApprovals()
 }

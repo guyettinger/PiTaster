@@ -28,6 +28,8 @@ function getSummary(tool: string, input: Record<string, unknown>): string {
     case 'edit':
     case 'ls':
       return `${(input.path as string) ?? 'file'}`
+    case 'replace_lines':
+      return `${(input.path as string) ?? 'file'}:${(input.startLine as number) ?? '?'}-${(input.endLine as number) ?? '?'}`
     case 'grep':
     case 'find':
       return `${(input.pattern as string) ?? 'pattern'}`
