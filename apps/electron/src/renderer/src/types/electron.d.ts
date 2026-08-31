@@ -142,6 +142,10 @@ interface AppConfig {
   autoCommit: boolean
   /** Context window to configure for the selected model, or null to discover it. */
   contextWindow: number | null
+  /** Which tools the agent exposes; 'auto' picks from the context window. */
+  toolProfile: 'auto' | 'lean' | 'full'
+  /** Whether to shape the context sent to the model. */
+  trimContext: boolean
 }
 
 /** A model pulled into the local Ollama instance. */

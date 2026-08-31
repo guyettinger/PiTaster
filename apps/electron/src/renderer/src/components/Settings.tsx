@@ -22,6 +22,10 @@ export interface AppConfig {
   autoCommit: boolean
   /** Context window to configure for the selected model, or null to discover it. */
   contextWindow: number | null
+  /** Which tools the agent exposes; 'auto' picks from the context window. */
+  toolProfile: 'auto' | 'lean' | 'full'
+  /** Whether to shape the context sent to the model. */
+  trimContext: boolean
 }
 
 /**
@@ -58,7 +62,9 @@ const DEFAULT_CONFIG: AppConfig = {
   ollamaModel: null,
   theme: 'dark',
   autoCommit: true,
-  contextWindow: null
+  contextWindow: null,
+  toolProfile: 'auto',
+  trimContext: true
 }
 
 /** Shared input styling, so every field in Settings matches. */
@@ -366,6 +372,55 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
                     className={FIELD_CLASS}
                   />
                 </Field>
+
+                <Field
+                  label="Tool set"
+                  hint={
+                    config.toolProfile === 'auto'
+                      ? 'Automatic drops the branch tools on a small context window. Every tool costs context on every request, and a long list makes a small model pick worse.'
+                      : config.toolProfile === 'lean'
+                        ? 'Branch tools are hidden from the agent. You can still branch and view history from Version Control.'
+                        : 'Every tool is offered to the agent.'
+                  }
+                >
+                  <select
+                    value={config.toolProfile}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        toolProfile: e.target.value as AppConfig['toolProfile']
+                      })
+                    }
+                    className={FIELD_CLASS}
+                  >
+                    <option value="auto">Automatic</option>
+                    <option value="lean">Lean</option>
+                    <option value="full">Full</option>
+                  </select>
+                </Field>
+
+                <div className="mt-5">
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={config.trimContext}
+                      onChange={(e) =>
+                        setConfig({ ...config, trimContext: e.target.checked })
+                      }
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-line bg-raised accent-[var(--color-brass)]"
+                    />
+                    <span>
+                      <span className="block text-[12.5px] font-medium text-bone">
+                        Trim what the agent is sent
+                      </span>
+                      <span className="mt-0.5 block text-[12px] text-ash">
+                        Shortens long tool output, collapses files read more than once,
+                        and drops old screenshots. Only affects what reaches the model —
+                        the transcript and history keep everything.
+                      </span>
+                    </span>
+                  </label>
+                </div>
 
                 <Field label="Theme">
                   <select

@@ -61,6 +61,49 @@ ollama pull qwen3-coder:30b   # or llama3.1, gpt-oss, mistral-nemo
 Models are discovered from the daemon and written to `~/.anyapp/pi/models.json`;
 pick one in Settings. Electron 39+ is required — Pi needs Node >= 22.19.
 
+## The context window is not what Ollama advertises
+
+`/api/show` reports a model's *architectural maximum*; the daemon serves whatever
+it auto-sized to, which `/api/ps` reports and only while the model is resident.
+On `qwen3.8:27b-mlx` that is 262144 against a served 65536. Believing the
+advertised number means Pi never compacts and Ollama silently truncates the head
+of the prompt instead — no error, no event, and a model that has lost its system
+prompt mid-run.
+
+`num_ctx` cannot be set over the OpenAI-compatible `/v1` endpoint, so the real
+window is discovered, not configured: a session warms the model, reads `/api/ps`,
+and writes that into `models.json`. `agent/context-budget.ts` derives everything
+else from it — Pi's compaction thresholds, `maxTokens`, and the trimmer's
+tool-result cap — keeping `reserveTokens + keepRecentTokens < window * 0.9` so
+compaction always frees more than it reserves. Pi's own defaults reserve 36k,
+which is more than the whole window on the models anyapp targets.
+
+Settings carries an override for when both the daemon and the default are wrong.
+
+## Working within a small window
+
+Four things keep a long session coherent on a local model, all configurable:
+
+- **Compaction** is Pi's, with anyapp's thresholds. `compaction_end` nudges the
+  agent to re-read `NOTES.md`, which is on disk and survives being summarized.
+- **`agent/context-trim.ts`** runs on Pi's `context` hook and shapes what is
+  *sent*: long tool results truncated with a pointer to re-read, files read twice
+  collapsed to the newer read, screenshots older than two turns dropped. The
+  transcript, git history and chat UI keep everything.
+- **Tool profiles** (`resolveToolNames`) drop the branch tools on a small window.
+  Every tool's schema is a per-request cost, and a long list makes a small model
+  choose worse.
+- **`agent/loop-guard.ts`** soft-blocks a third consecutive identical tool call,
+  telling the model to change approach rather than burn the window repeating.
+
+## What the user sees while waiting
+
+Pi emits compaction, retry and settle events; `agent/events.ts` maps them to
+`StreamChunk` `status` so the UI can say what is happening. Prefill has no event
+— nothing happens during it — so silence longer than 20s is timed from outside
+and reported with an elapsed count. Tool approval prompts have no timeout: a turn
+takes minutes, and a timeout does not fail safe, it silently denies.
+
 ## Conventions
 
 Detailed, path-scoped guidance lives in `.claude/rules/` and loads automatically

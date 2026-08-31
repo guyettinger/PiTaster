@@ -42,15 +42,22 @@ Every new tool needs all four, or it is a hole:
    `agent/web-tools.ts`, or Pi's built-in set, **and** its name in
    `AGENT_TOOL_NAMES` in `agent/session.ts`.
    Pi's `tools` option is an allowlist; an unlisted custom tool is silently
-   dropped.
+   dropped. `resolveToolNames` may then *remove* names from that list for the
+   lean profile — it never adds any, so a tool the gate has not classified can
+   never reach the model through it.
 2. Classified in the permission gate (`FILE_TOOLS`, `VERSION_TOOLS`,
    `SUBPROCESS_TOOLS`, or `NETWORK_TOOLS`) so `acceptEdits` treats it
    deliberately. `NETWORK_TOOLS` also grants `plan` access — see below.
 3. Covered by `checkConfinement` if it takes a path, a command, or a URL.
 4. Covered by `auto-commit.ts` if it writes to the filesystem.
 
-Also update the `## Available Tools` list in `agent/system-prompt.ts`, the label
-maps in `ToolBubble.tsx`, and the summary switch in `InlineApproval.tsx`.
+Also update the label maps in `ToolBubble.tsx` and the summary switch in
+`InlineApproval.tsx`.
+
+The system prompt deliberately does **not** list the tools. Pi already puts every
+tool's name, description and JSON schema in the function-calling payload, so a
+prompt list was a duplicate paid for on every request — and one that silently
+drifted out of step. Do not reintroduce it.
 
 An unclassified tool falls through to `{ behavior: 'ask' }`. That is the safe
 default — but a tool that reads or writes must be classified deliberately, not
@@ -94,6 +101,17 @@ test is whether the call can change anything anywhere.
 Denials are soft: the block reason becomes the tool result and the agent
 continues, so the model can explain itself rather than crashing.
 
+## The Loop Guard Only Narrows
+
+`agent/loop-guard.ts` refuses a third consecutive identical call, on the same
+`tool_call` handler as the gate. It runs *after* `checkConfinement` and can only
+refuse a call that would otherwise have been allowed — it never approves one, and
+it never sees a call the gate has already blocked. Keep it that way: anything in
+that handler that can turn a denial into an approval is a security bug.
+
+Its refusal is soft, like every other, so the model is told to change approach
+rather than crashed.
+
 ## Network Access Is Not Confined
 
 There is deliberately **no host policy**. `web_fetch` can reach `localhost`
@@ -106,6 +124,15 @@ addresses. `checkConfinement` validates only that the URL is well-formed
 `describeNetworkUse` annotates such commands so the approval prompt can say why
 one matters, but it **refuses nothing** and is defeated by variable expansion
 like every other shell scan here. Do not describe it as a control.
+
+## Context Shaping Is Not Confinement
+
+`agent/context-trim.ts` runs on Pi's `context` hook and rewrites the message list
+before each provider request — truncating long tool results, collapsing repeated
+reads, dropping stale screenshots. It is a token-budget optimization and nothing
+more. It does not gate, filter, or redact anything for safety, and the untrimmed
+conversation is still on disk in Pi's transcript. Never rely on it to keep
+anything away from the model.
 
 ## Writes Auto-Commit
 

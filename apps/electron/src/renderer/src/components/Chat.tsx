@@ -477,6 +477,10 @@ export function Chat({
       console.error('Failed to abort agent:', err)
     } finally {
       setIsStreaming(false)
+      // Aborting denies any approval still waiting in the main process, so the card
+      // asking for it is answered and must not stay on screen.
+      setPendingApproval(null)
+      setStatus(null)
     }
   }, [])
 

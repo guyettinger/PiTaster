@@ -19,7 +19,7 @@ import {
   ChatHistoryManager,
   installDependencies
 } from '@anyapp/shared'
-import type { PermissionMode, StreamChunk, Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
+import type { AgentStatus, PermissionMode, StreamChunk, Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
 import {
   DEFAULT_OLLAMA_BASE_URL,
   isOllamaReachable,
@@ -28,6 +28,7 @@ import {
   syncOllamaModels,
   type OllamaModel
 } from './agent/ollama'
+import type { ContextBudget } from './agent/context-budget'
 import { captureElement, type ElementInfo } from './screenshot'
 import { openExternalUrl } from './external-links'
 
@@ -47,10 +48,16 @@ interface ToolApprovalResponse {
   approved: boolean
 }
 
-/** Store for pending approval requests. */
+/**
+ * Approval requests waiting on the user.
+ *
+ * Resolve-only: every way one of these can end — answered, aborted, app switched,
+ * window closed — is either an approval or a denial. Rejecting instead would throw
+ * inside the `tool_call` handler awaiting it, which is not a decision the permission
+ * gate knows how to represent.
+ */
 const pendingApprovals = new Map<string, {
   resolve: (approved: boolean) => void
-  reject: (error: Error) => void
 }>()
 
 /** Current permission mode. */
@@ -127,6 +134,10 @@ interface AppConfig {
    * back to a conservative default. This is the escape hatch when both are wrong.
    */
   contextWindow: number | null
+  /** Which tools the agent exposes; 'auto' picks from the context window. */
+  toolProfile: 'auto' | 'lean' | 'full'
+  /** Whether to shape the context sent to the model. */
+  trimContext: boolean
 }
 
 /** Default configuration. */
@@ -135,7 +146,9 @@ const defaultConfig: AppConfig = {
   ollamaModel: null,
   theme: 'dark',
   autoCommit: true,
-  contextWindow: null
+  contextWindow: null,
+  toolProfile: 'auto',
+  trimContext: true
 }
 
 /** Cached configuration, populated by {@link loadConfig}. */
@@ -381,6 +394,26 @@ function splitPrompt(prompt: string | SerializedContentBlock[]): {
 }
 
 /**
+ * Deny every approval prompt still waiting for an answer.
+ *
+ * Approval prompts have no timeout, so something has to settle the ones the user
+ * never answers. Pi cannot: it passes the run's `AbortSignal` as a second argument to
+ * `beforeToolCall`, but `AgentSession` destructures only the first and drops it, and
+ * `ToolCallEvent` carries no signal either — so aborting a run leaves a pending
+ * `tool_call` handler awaiting forever. Every path that ends a run therefore calls
+ * this.
+ *
+ * Denying is the only safe resolution: the user pressed Stop, switched app, or closed
+ * the window, and in none of those cases did they approve anything.
+ */
+function denyPendingApprovals(): void {
+  for (const [id, pending] of pendingApprovals) {
+    pendingApprovals.delete(id)
+    pending.resolve(false)
+  }
+}
+
+/**
  * Tear down the live agent session, if any.
  */
 async function disposeAgentHost(): Promise<void> {
@@ -393,14 +426,7 @@ async function disposeAgentHost(): Promise<void> {
     // Aborting an idle session is not an error.
   }
   host.dispose()
-
-  // Approval prompts are unbounded, so tearing the session down is what settles any
-  // the user never answered. Denying is the safe resolution: the call belonged to a
-  // session that no longer exists.
-  for (const [id, pending] of pendingApprovals) {
-    pendingApprovals.delete(id)
-    pending.resolve(false)
-  }
+  denyPendingApprovals()
 }
 
 /**
@@ -428,14 +454,37 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
   await disposeAgentHost()
 
   // Load the model and rewrite models.json with the window it really got, before
-  // Pi's ModelRuntime reads that file. This also moves the tens of seconds a large
-  // local model spends paging in off the user's first message.
-  const budget = await prepareModelForSession({
-    agentDir: piAgentDir,
-    baseUrl: config.ollamaBaseUrl,
-    selectedModel: config.ollamaModel,
-    contextWindowOverride: config.contextWindow
+  // Pi's ModelRuntime reads that file.
+  //
+  // This is the longest wait in the app — tens of seconds for a large local model —
+  // and it happens before the session exists, so the session's own stall notice
+  // cannot cover it. Report it here, or the first prompt of every session looks like
+  // a hang.
+  const sendStatus = (status: AgentStatus | null): void => {
+    if (mainWindow.isDestroyed()) return
+    const chunk: StreamChunk = {
+      type: 'status',
+      status: status ?? { kind: 'settled' }
+    }
+    mainWindow.webContents.send('agent:stream', chunk)
+  }
+
+  sendStatus({
+    kind: 'waiting',
+    detail: `Loading ${config.ollamaModel} into memory — this takes a while the first time.`
   })
+
+  let budget: ContextBudget
+  try {
+    budget = await prepareModelForSession({
+      agentDir: piAgentDir,
+      baseUrl: config.ollamaBaseUrl,
+      selectedModel: config.ollamaModel,
+      contextWindowOverride: config.contextWindow
+    })
+  } finally {
+    sendStatus(null)
+  }
 
   // Sessions are materialized on creation, so there is always a transcript to
   // resume. Create one only if the app has never had a session at all.
@@ -451,6 +500,8 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
     agentDir: piAgentDir,
     modelId: config.ollamaModel,
     budget,
+    toolProfile: config.toolProfile,
+    trimContext: config.trimContext,
     sessionFile: sessionFile ?? undefined,
     mcpSources: sourceManager.getConnectedSources().filter((source) => source.connected),
     callbacks: {
@@ -488,8 +539,8 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
         // safe, it silently *denies* a call the user meant to allow, with no way to
         // tell that apart from a refusal. The prompt is settled by an answer, by
         // aborting the run, or by the session being torn down.
-        return new Promise((resolve, reject) => {
-          pendingApprovals.set(id, { resolve, reject })
+        return new Promise((resolve) => {
+          pendingApprovals.set(id, { resolve })
         })
       },
 
@@ -579,6 +630,10 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
   // Cancel the in-flight agent run
   ipcMain.handle('agent:abort', async (): Promise<void> => {
+    // Order matters: deny first, so the `tool_call` handler awaiting approval
+    // unblocks and Pi's loop can observe the abort. Aborting alone would not reach
+    // it — see denyPendingApprovals.
+    denyPendingApprovals()
     await agentHost?.abort()
   })
 
@@ -854,6 +909,12 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
         config.contextWindow > 10_000_000)
     ) {
       throw new Error('Invalid context window')
+    }
+    if (!['auto', 'lean', 'full'].includes(config.toolProfile)) {
+      throw new Error('Invalid tool profile')
+    }
+    if (typeof config.trimContext !== 'boolean') {
+      throw new Error('Invalid trimContext')
     }
     return saveConfig(config)
   })
@@ -1212,9 +1273,8 @@ export function cleanupIpcHandlers(): void {
   // Disconnect all sources
   sourceManager.disconnectAll().catch(() => {})
   
-  // Reject any pending approvals
-  for (const [id, pending] of pendingApprovals) {
-    pending.reject(new Error('Window closed'))
-    pendingApprovals.delete(id)
-  }
+  // Deny, not reject: a rejection throws inside the `tool_call` handler that is
+  // awaiting it, which risks an unhandled rejection during teardown. Closing the
+  // window is a denial like any other.
+  denyPendingApprovals()
 }

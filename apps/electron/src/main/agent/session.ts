@@ -33,6 +33,9 @@ import type {
 import { SkillsLoader } from '@anyapp/shared'
 import { autoCommitToolResult } from './auto-commit'
 import { deriveContextBudget, type ContextBudget } from './context-budget'
+import { trimContext } from './context-trim'
+import { createLoopGuard } from './loop-guard'
+import { createStallNotifier } from './stall-notifier'
 import { toStreamChunk } from './events'
 import { createMcpTools, getMcpToolBindings, type CallMcpTool } from './mcp-tools'
 import {
@@ -70,6 +73,46 @@ export const AGENT_TOOL_NAMES = [
 ]
 
 /**
+ * Version tools dropped from the lean profile.
+ *
+ * Every tool costs context on every request — its name, description and JSON schema
+ * ride in the function-calling payload — and a long list measurably worsens which
+ * tool a small model picks. These four are the cheapest to lose: the agent rarely
+ * needs them mid-task, and the user drives all of them from the Version Control
+ * panel. `git_status` and `rollback` stay, because the agent does reach for those.
+ *
+ * This only ever *removes* names from the allowlist. Nothing here changes what a tool
+ * may do, or how `checkPermission` and `checkConfinement` classify it.
+ */
+const LEAN_PROFILE_OMITS = ['create_branch', 'switch_branch', 'list_branches', 'get_history']
+
+/** Window at or below which the lean tool profile is chosen automatically. */
+const LEAN_PROFILE_WINDOW = 32768
+
+/** Which tools a session exposes. */
+export type ToolProfile = 'auto' | 'lean' | 'full'
+
+/**
+ * Resolve the tool list for a session.
+ * @param params - The requested profile and the session's context window
+ * @returns The base tool names to enable
+ */
+export function resolveToolNames(params: {
+  /** The configured profile. */
+  profile: ToolProfile
+  /** The session's effective context window. */
+  contextWindow: number
+}): string[] {
+  const lean =
+    params.profile === 'lean' ||
+    (params.profile === 'auto' && params.contextWindow <= LEAN_PROFILE_WINDOW)
+
+  return lean
+    ? AGENT_TOOL_NAMES.filter((name) => !LEAN_PROFILE_OMITS.includes(name))
+    : AGENT_TOOL_NAMES
+}
+
+/**
  * Callbacks the host needs from the surrounding application.
  */
 export interface AgentHostCallbacks {
@@ -102,6 +145,10 @@ export interface CreateAgentHostParams {
    * — callers that have probed the daemon should pass what they found.
    */
   budget?: ContextBudget
+  /** Which tools to expose. Defaults to picking from the context window. */
+  toolProfile?: ToolProfile
+  /** Whether to shape the context sent to the model. Defaults to on. */
+  trimContext?: boolean
   /** Existing Pi session file to resume, or undefined to start a new one. */
   sessionFile?: string
   /** Currently connected MCP sources, whose tools join this session. */
@@ -215,15 +262,15 @@ const LOCAL_RETRY_BASE_DELAY_MS = 2000
 const HTTP_IDLE_TIMEOUT_MS = 600_000
 
 /**
- * Silence after which the user is told the model is still working.
+ * What the agent is told after its history has been summarized away.
  *
- * Prefill on a large context produces nothing for minutes. Without this the UI is
- * indistinguishable from a crash, and the usual response is to kill the run.
+ * Compaction is where a long task quietly goes wrong on a small model: the plan was
+ * in the messages that just got replaced by a paragraph. NOTES.md is on disk, so it
+ * survives — but only if the agent remembers to look.
  */
-const STALL_NOTICE_MS = 20_000
-
-/** How often the stall notice refreshes its elapsed time. */
-const STALL_REFRESH_MS = 10_000
+const COMPACTION_NOTICE =
+  'Your earlier conversation was summarized to free up context. If NOTES.md exists in ' +
+  'the app root, read it before continuing — it holds the goal and the remaining steps.'
 
 /**
  * Translate a context budget into the Pi settings that enforce it.
@@ -264,14 +311,41 @@ export function buildPiSettings(budget: ContextBudget): PiSettingsOverrides {
 function createAnyappExtension(params: {
   /** Absolute path to the sub-app root. */
   rootPath: string
+  /** The session's context budget. */
+  budget: ContextBudget
+  /** Whether to shape the context sent to the model. */
+  trimEnabled: boolean
   /** Application callbacks. */
   callbacks: AgentHostCallbacks
 }): InlineExtension {
-  const { rootPath, callbacks } = params
+  const { rootPath, budget, trimEnabled, callbacks } = params
+  const loopGuard = createLoopGuard()
 
   return {
     name: 'anyapp-guard',
     factory: (pi: ExtensionAPI) => {
+      // A new user prompt always breaks a loop, so the streak starts over.
+      //
+      // Deliberately `agent_start`, not `turn_start`. Pi emits `turn_start` once per
+      // inner-loop round — assistant response plus its tool calls — which is exactly
+      // the granularity a stuck model repeats at, so resetting there would clear the
+      // streak between every repetition and the guard could never fire.
+      // `agent_start` fires once per submitted prompt.
+      pi.on('agent_start', async () => {
+        loopGuard.reset()
+        return undefined
+      })
+
+      // Shape what the model sees, never what is stored. The transcript, git history
+      // and the chat UI keep the whole conversation regardless.
+      if (trimEnabled) {
+        pi.on('context', async (event) => ({
+          messages: trimContext(event.messages, {
+            maxToolResultTokens: budget.maxToolResultTokens
+          })
+        }))
+      }
+
       pi.on('tool_call', async (event) => {
         const call = {
           toolName: event.toolName,
@@ -281,6 +355,13 @@ function createAnyappExtension(params: {
         const violation = checkConfinement(call, rootPath)
         if (violation) {
           return { block: true, reason: violation }
+        }
+
+        // A narrowing only: this can refuse a call the gate would have allowed, never
+        // allow one it would have refused.
+        const loop = loopGuard.check(event.toolName, event.input)
+        if (loop.blocked) {
+          return { block: true, reason: loop.reason ?? 'Repeated call blocked' }
         }
 
         const decision = checkPermission(callbacks.getPermissionMode(), event.toolName)
@@ -340,79 +421,6 @@ function readContextUsage(session: AgentSession): { contextUsage?: ContextUsage 
 }
 
 /**
- * A stall notifier, tracking whether the run has gone quiet.
- */
-interface StallNotifier {
-  /** Start watching; call when a run begins. */
-  arm: () => void
-  /** Note that something happened, restarting the clock. */
-  reset: () => void
-  /** Stop watching and clear any notice. */
-  clear: () => void
-}
-
-/**
- * Tell the user the model is still working when nothing has happened for a while.
- *
- * On a large context a local model can spend minutes in prefill, emitting nothing at
- * all. Pi has no event for that — there is nothing to report — so the silence has to
- * be timed from outside. The notice repeats with a growing elapsed time so it reads
- * as progress rather than a frozen string.
- *
- * @param onStream - Where to send status chunks
- * @returns The notifier
- */
-function createStallNotifier(onStream: (chunk: StreamChunk) => void): StallNotifier {
-  let timer: NodeJS.Timeout | undefined
-  let startedAt = 0
-  let notified = false
-
-  const stop = (): void => {
-    if (timer) clearInterval(timer)
-    timer = undefined
-  }
-
-  const tick = (): void => {
-    const elapsed = Math.round((Date.now() - startedAt) / 1000)
-    if (elapsed * 1000 < STALL_NOTICE_MS) return
-
-    notified = true
-    onStream({
-      type: 'status',
-      status: {
-        kind: 'waiting',
-        detail: `Waiting on the model — ${elapsed}s so far. Prefill on a large context can take minutes.`
-      }
-    })
-  }
-
-  const arm = (): void => {
-    stop()
-    startedAt = Date.now()
-    notified = false
-    timer = setInterval(tick, STALL_REFRESH_MS)
-  }
-
-  return {
-    arm,
-    reset: () => {
-      startedAt = Date.now()
-      if (notified) {
-        notified = false
-        onStream({ type: 'status', status: { kind: 'settled' } })
-      }
-    },
-    clear: () => {
-      stop()
-      if (notified) {
-        notified = false
-        onStream({ type: 'status', status: { kind: 'settled' } })
-      }
-    }
-  }
-}
-
-/**
  * Create a Pi agent session bound to one sub-app.
  * @param params - The app, model, Pi directory, and application callbacks
  * @returns A live {@link AgentHost}
@@ -424,6 +432,8 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     agentDir,
     modelId,
     budget = deriveContextBudget(),
+    toolProfile = 'auto',
+    trimContext: trimEnabled = true,
     sessionFile,
     mcpSources = [],
     callbacks
@@ -458,7 +468,9 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
       skills: [...current.skills, ...anyappSkills],
       diagnostics: current.diagnostics
     }),
-    extensionFactories: [createAnyappExtension({ rootPath: app.path, callbacks })]
+    extensionFactories: [
+      createAnyappExtension({ rootPath: app.path, budget, trimEnabled, callbacks })
+    ]
   })
 
   await loader.reload()
@@ -475,7 +487,10 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     modelRuntime,
     thinkingLevel: 'off',
     noTools: 'all',
-    tools: [...AGENT_TOOL_NAMES, ...mcpBindings.map((binding) => binding.qualifiedName)],
+    tools: [
+      ...resolveToolNames({ profile: toolProfile, contextWindow: budget.window }),
+      ...mcpBindings.map((binding) => binding.qualifiedName)
+    ],
     customTools: [
       ...createVersionTools(app.path),
       ...createWebTools({ rootPath: app.path, getAutoCommit: callbacks.getAutoCommit }),
@@ -486,7 +501,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     settingsManager
   })
 
-  const stall = createStallNotifier(callbacks.onStream)
+  const stall = createStallNotifier({ onStream: callbacks.onStream })
 
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     // Any event at all is proof the run is alive, so it resets the stall clock —
@@ -497,6 +512,23 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
       stall.clear()
     } else {
       stall.reset()
+    }
+
+    // Compaction replaces history with a summary, which is where a small model
+    // loses the plan it was working to. The notes file survives it, so point at it.
+    if (event.type === 'compaction_end' && !event.aborted && !event.errorMessage) {
+      void session
+        .sendCustomMessage(
+          {
+            customType: 'anyapp-compaction-notice',
+            content: COMPACTION_NOTICE,
+            display: false
+          },
+          { deliverAs: 'nextTurn' }
+        )
+        .catch(() => {
+          // The nudge is an optimization; failing to queue it must not break the run.
+        })
     }
 
     const chunk = toStreamChunk(event)
