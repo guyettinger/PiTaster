@@ -3,7 +3,7 @@
  */
 
 import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent'
-import type { StreamChunk } from '@anyapp/core'
+import type { AgentStatus, StreamChunk } from '@anyapp/core'
 
 /** Maximum characters of tool output forwarded to the renderer. */
 const MAX_OUTPUT_CHARS = 500
@@ -54,10 +54,24 @@ function renderResult(result: unknown): string {
 }
 
 /**
+ * Build a status chunk.
+ * @param status - What the agent is doing
+ * @returns The chunk to forward
+ */
+function toStatus(status: AgentStatus): StreamChunk {
+  return { type: 'status', status }
+}
+
+/**
  * Convert one Pi session event into a {@link StreamChunk}.
  *
- * Returns null for events the renderer does not consume — turn boundaries, queue
- * updates, compaction, and thinking deltas.
+ * Pi already reports compaction and retries; every one of those events used to fall
+ * through to `null`, so the two things most likely to happen on a slow local model —
+ * summarizing a full context, and re-issuing a request the daemon dropped — rendered
+ * as a silent hang. They are the whole reason `status` exists.
+ *
+ * Still dropped: thinking deltas, queue updates, and turn boundaries the renderer
+ * does not distinguish.
  *
  * @param event - The Pi session event
  * @returns The chunk to forward, or null to drop the event
@@ -95,10 +109,79 @@ export function toStreamChunk(event: AgentSessionEvent): StreamChunk | null {
         ...(event.isError ? { error: summarizeOutput(event.result) } : {})
       }
 
+    case 'compaction_start':
+      return toStatus({
+        kind: 'compacting',
+        detail:
+          event.reason === 'overflow'
+            ? 'Context overflowed — summarizing history to recover.'
+            : 'Summarizing history to free up context.'
+      })
+
+    case 'compaction_end': {
+      if (event.aborted) return toStatus({ kind: 'settled' })
+      if (event.errorMessage && !event.willRetry) {
+        return {
+          type: 'error',
+          error: `Could not summarize history: ${event.errorMessage}`
+        }
+      }
+      return toStatus({ kind: 'settled' })
+    }
+
+    case 'auto_retry_start':
+      return toStatus({
+        kind: 'retrying',
+        attempt: event.attempt,
+        maxAttempts: event.maxAttempts,
+        detail: describeRetry(event.errorMessage)
+      })
+
+    case 'auto_retry_end':
+      return event.success
+        ? toStatus({ kind: 'settled' })
+        : {
+            type: 'error',
+            error: event.finalError ?? 'The model could not be reached after several tries'
+          }
+
+    case 'summarization_retry_scheduled':
+      return toStatus({
+        kind: 'retrying',
+        attempt: event.attempt,
+        maxAttempts: event.maxAttempts,
+        detail: 'Retrying the history summary.'
+      })
+
+    case 'summarization_retry_finished':
+    case 'agent_settled':
+      return toStatus({ kind: 'settled' })
+
     case 'agent_end':
       return { type: 'complete' }
 
     default:
       return null
   }
+}
+
+/**
+ * Turn a provider error into something worth reading during a retry.
+ *
+ * A local daemon fails in a small number of recognisable ways, and naming the likely
+ * one saves the user from reading a stack trace to find out whether to wait.
+ *
+ * @param errorMessage - The error Pi is retrying past
+ * @returns One sentence describing the situation
+ */
+function describeRetry(errorMessage: string): string {
+  const lower = errorMessage.toLowerCase()
+
+  if (lower.includes('econnrefused') || lower.includes('fetch failed')) {
+    return 'The Ollama daemon is not answering — retrying.'
+  }
+  if (lower.includes('memory') || lower.includes('oom') || lower.includes('500')) {
+    return 'The daemon ran short of memory — retrying.'
+  }
+  return `Request failed, retrying: ${errorMessage}`
 }

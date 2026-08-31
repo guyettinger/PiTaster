@@ -19,6 +19,37 @@ export interface ToolResult {
 }
 
 /**
+ * What the agent is doing when it is not producing tokens.
+ */
+export interface AgentStatus {
+  /** What the agent is doing. */
+  kind: AgentStatusKind
+  /** One sentence for the user, when there is something worth saying. */
+  detail?: string
+  /** Retry attempt in progress, 1-indexed. */
+  attempt?: number
+  /** Retries the policy allows. */
+  maxAttempts?: number
+}
+
+/**
+ * The states the agent passes through between tokens.
+ *
+ * On a slow local model these are most of the wall-clock time, and Pi already
+ * emits every one of them. Rendering them is the difference between a recovery
+ * and an apparent hang.
+ */
+export type AgentStatusKind =
+  /** Summarizing history because the context window is nearly full. */
+  | 'compacting'
+  /** Re-issuing a request the local daemon failed. */
+  | 'retrying'
+  /** Waiting on the model with nothing yet on the wire — usually prefill. */
+  | 'waiting'
+  /** Working normally again; clear any status the UI is showing. */
+  | 'settled'
+
+/**
  * A single streamed update from the agent to the renderer.
  *
  * This is the canonical definition. The preload bridge and the renderer's
@@ -27,7 +58,7 @@ export interface ToolResult {
  */
 export interface StreamChunk {
   /** Type of chunk. */
-  type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error' | 'rate_limit'
+  type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error' | 'rate_limit' | 'status'
   /** Text content (for 'text' type). */
   text?: string
   /** Tool name (for 'tool_start' and 'tool_end' types). */
@@ -47,6 +78,20 @@ export interface StreamChunk {
   error?: string
   /** Seconds until retry (for 'rate_limit' type). */
   retryAfterSeconds?: number
+  /** What the agent is doing (for 'status' type). */
+  status?: AgentStatus
+  /** Context consumed after this turn, when Pi has reported usage. */
+  contextUsage?: ContextUsage
+}
+
+/**
+ * How much of the context window the conversation currently occupies.
+ */
+export interface ContextUsage {
+  /** Tokens the conversation currently occupies. */
+  used: number
+  /** Tokens the model will actually accept. */
+  window: number
 }
 
 /**

@@ -6,7 +6,7 @@ type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
 /** A single streamed update from the agent to the renderer. */
 interface StreamChunk {
   /** Type of chunk. */
-  type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error' | 'rate_limit'
+  type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error' | 'rate_limit' | 'status'
   /** Text content (for 'text' type). */
   text?: string
   /** Tool name (for 'tool_start' and 'tool_end' types). */
@@ -21,6 +21,30 @@ interface StreamChunk {
   error?: string
   /** Seconds until retry (for 'rate_limit' type). */
   retryAfterSeconds?: number
+  /** What the agent is doing (for 'status' type). */
+  status?: AgentStatus
+  /** Context consumed after this turn, when Pi has reported usage. */
+  contextUsage?: ContextUsage
+}
+
+/** What the agent is doing when it is not producing tokens. */
+interface AgentStatus {
+  /** What the agent is doing. */
+  kind: 'compacting' | 'retrying' | 'waiting' | 'settled'
+  /** One sentence for the user, when there is something worth saying. */
+  detail?: string
+  /** Retry attempt in progress, 1-indexed. */
+  attempt?: number
+  /** Retries the policy allows. */
+  maxAttempts?: number
+}
+
+/** How much of the context window the conversation currently occupies. */
+interface ContextUsage {
+  /** Tokens the conversation currently occupies. */
+  used: number
+  /** Tokens the model will actually accept. */
+  window: number
 }
 
 /** Tool approval request sent to renderer. */

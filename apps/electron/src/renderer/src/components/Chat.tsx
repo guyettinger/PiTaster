@@ -10,6 +10,8 @@ import { ElementContextBubble } from './ElementContextBubble'
 import { PermissionModeControl, describePermissionMode } from './PermissionModeControl'
 import type { Message, ContentBlock } from './MessageBubble'
 import type {
+  AgentStatus,
+  ContextUsage,
   PermissionMode,
   StreamChunk,
   ToolApprovalRequest,
@@ -123,6 +125,79 @@ function convertToSerializedBlocks(blocks: ContentBlock[]): SerializedContentBlo
 /**
  * Main chat interface with streaming messages and tool approval.
  */
+/**
+ * Props for {@link AgentStatusStrip}.
+ */
+interface AgentStatusStripProps {
+  /** What the agent is doing. */
+  status: AgentStatus
+}
+
+/**
+ * One line saying what the agent is doing while it is not producing tokens.
+ *
+ * Compaction, retries and long prefills are most of the wall-clock time on a slow
+ * local model. Left unrendered they are indistinguishable from a crash, and the usual
+ * response is to kill a run that was about to recover on its own.
+ */
+function AgentStatusStrip({ status }: AgentStatusStripProps) {
+  const attempt =
+    status.attempt && status.maxAttempts
+      ? ` (${status.attempt} of ${status.maxAttempts})`
+      : ''
+
+  return (
+    <div className="mx-auto mb-2 flex max-w-3xl items-center gap-2 text-[12px] text-ash">
+      <span
+        aria-hidden
+        className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-brass"
+      />
+      <span role="status">
+        {status.detail ?? 'Working…'}
+        {attempt}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * Props for {@link ContextMeter}.
+ */
+interface ContextMeterProps {
+  /** How much of the context window the conversation occupies. */
+  usage: ContextUsage
+}
+
+/**
+ * How full the context window is.
+ *
+ * Worth showing because on a small window it is the thing that decides when the
+ * agent stops to summarize — and because a meter that never moves is the first sign
+ * the configured window does not match what the daemon serves.
+ */
+function ContextMeter({ usage }: ContextMeterProps) {
+  const fraction = Math.min(1, usage.used / Math.max(1, usage.window))
+  const tokens = (value: number): string =>
+    value >= 1000 ? `${Math.round(value / 1000)}k` : String(value)
+
+  return (
+    <div
+      className="flex items-center gap-2 text-[11px] text-ash"
+      title={`${usage.used.toLocaleString()} of ${usage.window.toLocaleString()} tokens used`}
+    >
+      <span className="h-1 w-16 overflow-hidden rounded-full bg-line">
+        <span
+          className={`block h-full rounded-full ${fraction > 0.85 ? 'bg-rust' : 'bg-brass'}`}
+          style={{ width: `${Math.round(fraction * 100)}%` }}
+        />
+      </span>
+      <span className="tabular-nums">
+        {tokens(usage.used)} / {tokens(usage.window)}
+      </span>
+    </div>
+  )
+}
+
 export function Chat({
   app,
   permissionMode,
@@ -136,6 +211,8 @@ export function Chat({
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [pendingApproval, setPendingApproval] = useState<ToolApprovalRequest | null>(null)
+  const [status, setStatus] = useState<AgentStatus | null>(null)
+  const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const internalInputRef = useRef<HTMLInputElement>(null)
   
@@ -271,8 +348,14 @@ export function Chat({
         currentToolRef.current = null
       } else if (chunk.type === 'complete') {
         setIsStreaming(false)
+        setStatus(null)
         currentToolRef.current = null
+        if (chunk.contextUsage) setContextUsage(chunk.contextUsage)
         // The agent persists its own transcript; nothing to save here.
+      } else if (chunk.type === 'status') {
+        // Compaction, retries and long prefills are most of the wall-clock time on a
+        // local model. Without this they render as a hang.
+        setStatus(chunk.status?.kind === 'settled' ? null : (chunk.status ?? null))
       } else if (chunk.type === 'rate_limit') {
         // Show rate-limit notice as a text block in the assistant message
         setMessages(prev => {
@@ -482,6 +565,7 @@ export function Chat({
 
       {/* Composer */}
       <div className="border-t border-line px-6 py-4">
+        {status && <AgentStatusStrip status={status} />}
         <div className="mx-auto max-w-3xl">
           <div className="flex gap-2">
             <input
@@ -518,14 +602,18 @@ export function Chat({
           <div className="mt-2 flex items-center justify-between gap-3">
             <PermissionModeControl mode={permissionMode} onModeChange={onModeChange} />
 
-            {messages.length > 0 && (
-              <button
-                onClick={clearHistory}
-                className="rounded px-2 py-0.5 text-[11px] text-ash transition-colors hover:bg-raised hover:text-bone"
-              >
-                Clear this chat
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {contextUsage && <ContextMeter usage={contextUsage} />}
+
+              {messages.length > 0 && (
+                <button
+                  onClick={clearHistory}
+                  className="rounded px-2 py-0.5 text-[11px] text-ash transition-colors hover:bg-raised hover:text-bone"
+                >
+                  Clear this chat
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

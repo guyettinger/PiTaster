@@ -24,6 +24,7 @@ import {
 } from '@earendil-works/pi-coding-agent'
 import type {
   ConnectedSource,
+  ContextUsage,
   ElementContext,
   PermissionMode,
   StreamChunk,
@@ -214,6 +215,17 @@ const LOCAL_RETRY_BASE_DELAY_MS = 2000
 const HTTP_IDLE_TIMEOUT_MS = 600_000
 
 /**
+ * Silence after which the user is told the model is still working.
+ *
+ * Prefill on a large context produces nothing for minutes. Without this the UI is
+ * indistinguishable from a crash, and the usual response is to kill the run.
+ */
+const STALL_NOTICE_MS = 20_000
+
+/** How often the stall notice refreshes its elapsed time. */
+const STALL_REFRESH_MS = 10_000
+
+/**
  * Translate a context budget into the Pi settings that enforce it.
  *
  * Pi's own `DEFAULT_COMPACTION_SETTINGS` reserves 16384 tokens and retains 20000 —
@@ -312,6 +324,95 @@ function createAnyappExtension(params: {
 }
 
 /**
+ * Read how full the context window is, in anyapp's shape.
+ *
+ * Pi reports null tokens immediately after a compaction, before the next response
+ * re-establishes usage; there is nothing honest to show until then, so the field is
+ * simply absent.
+ *
+ * @param session - The live Pi session
+ * @returns A partial chunk carrying usage, or an empty object when it is unknown
+ */
+function readContextUsage(session: AgentSession): { contextUsage?: ContextUsage } {
+  const usage = session.getContextUsage()
+  if (!usage || usage.tokens === null) return {}
+  return { contextUsage: { used: usage.tokens, window: usage.contextWindow } }
+}
+
+/**
+ * A stall notifier, tracking whether the run has gone quiet.
+ */
+interface StallNotifier {
+  /** Start watching; call when a run begins. */
+  arm: () => void
+  /** Note that something happened, restarting the clock. */
+  reset: () => void
+  /** Stop watching and clear any notice. */
+  clear: () => void
+}
+
+/**
+ * Tell the user the model is still working when nothing has happened for a while.
+ *
+ * On a large context a local model can spend minutes in prefill, emitting nothing at
+ * all. Pi has no event for that — there is nothing to report — so the silence has to
+ * be timed from outside. The notice repeats with a growing elapsed time so it reads
+ * as progress rather than a frozen string.
+ *
+ * @param onStream - Where to send status chunks
+ * @returns The notifier
+ */
+function createStallNotifier(onStream: (chunk: StreamChunk) => void): StallNotifier {
+  let timer: NodeJS.Timeout | undefined
+  let startedAt = 0
+  let notified = false
+
+  const stop = (): void => {
+    if (timer) clearInterval(timer)
+    timer = undefined
+  }
+
+  const tick = (): void => {
+    const elapsed = Math.round((Date.now() - startedAt) / 1000)
+    if (elapsed * 1000 < STALL_NOTICE_MS) return
+
+    notified = true
+    onStream({
+      type: 'status',
+      status: {
+        kind: 'waiting',
+        detail: `Waiting on the model — ${elapsed}s so far. Prefill on a large context can take minutes.`
+      }
+    })
+  }
+
+  const arm = (): void => {
+    stop()
+    startedAt = Date.now()
+    notified = false
+    timer = setInterval(tick, STALL_REFRESH_MS)
+  }
+
+  return {
+    arm,
+    reset: () => {
+      startedAt = Date.now()
+      if (notified) {
+        notified = false
+        onStream({ type: 'status', status: { kind: 'settled' } })
+      }
+    },
+    clear: () => {
+      stop()
+      if (notified) {
+        notified = false
+        onStream({ type: 'status', status: { kind: 'settled' } })
+      }
+    }
+  }
+}
+
+/**
  * Create a Pi agent session bound to one sub-app.
  * @param params - The app, model, Pi directory, and application callbacks
  * @returns A live {@link AgentHost}
@@ -385,9 +486,27 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     settingsManager
   })
 
+  const stall = createStallNotifier(callbacks.onStream)
+
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
+    // Any event at all is proof the run is alive, so it resets the stall clock —
+    // except `agent_start`, which is where the longest silence begins.
+    if (event.type === 'agent_start') {
+      stall.arm()
+    } else if (event.type === 'agent_end' || event.type === 'agent_settled') {
+      stall.clear()
+    } else {
+      stall.reset()
+    }
+
     const chunk = toStreamChunk(event)
-    if (chunk) callbacks.onStream(chunk)
+    if (!chunk) return
+
+    // The end of a turn is the only moment context usage changes, so the meter rides
+    // the chunk that already marks it rather than a polling channel of its own.
+    callbacks.onStream(
+      chunk.type === 'complete' ? { ...chunk, ...readContextUsage(session) } : chunk
+    )
   })
 
   return {
@@ -405,6 +524,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     },
 
     dispose: () => {
+      stall.clear()
       unsubscribe()
       session.dispose()
     }

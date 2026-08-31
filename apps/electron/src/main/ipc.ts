@@ -62,9 +62,6 @@ let currentPermissionMode: PermissionMode = 'default'
  */
 let agentHost: AgentHost | null = null
 
-/** Default timeout for tool approval (60 seconds). */
-const APPROVAL_TIMEOUT_MS = 60000
-
 /** Maximum accepted prompt length, in characters. */
 const MAX_PROMPT_CHARS = 100000
 
@@ -396,6 +393,14 @@ async function disposeAgentHost(): Promise<void> {
     // Aborting an idle session is not an error.
   }
   host.dispose()
+
+  // Approval prompts are unbounded, so tearing the session down is what settles any
+  // the user never answered. Denying is the safe resolution: the call belonged to a
+  // session that no longer exists.
+  for (const [id, pending] of pendingApprovals) {
+    pendingApprovals.delete(id)
+    pending.resolve(false)
+  }
 }
 
 /**
@@ -478,16 +483,13 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
         if (mainWindow.isDestroyed()) return Promise.resolve(false)
         mainWindow.webContents.send('agent:tool-approval', request)
 
+        // Deliberately unbounded. A turn on a local model can take minutes, so
+        // stepping away while one runs is normal — and a timeout here does not fail
+        // safe, it silently *denies* a call the user meant to allow, with no way to
+        // tell that apart from a refusal. The prompt is settled by an answer, by
+        // aborting the run, or by the session being torn down.
         return new Promise((resolve, reject) => {
           pendingApprovals.set(id, { resolve, reject })
-
-          // Deny by default if the user never answers.
-          setTimeout(() => {
-            if (pendingApprovals.has(id)) {
-              pendingApprovals.delete(id)
-              resolve(false)
-            }
-          }, APPROVAL_TIMEOUT_MS)
         })
       },
 
