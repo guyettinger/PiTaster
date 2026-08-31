@@ -20,6 +20,8 @@ export interface AppConfig {
   theme: 'light' | 'dark' | 'system'
   /** Whether to auto-commit file changes. */
   autoCommit: boolean
+  /** Context window to configure for the selected model, or null to discover it. */
+  contextWindow: number | null
 }
 
 /**
@@ -30,8 +32,12 @@ export interface OllamaModel {
   id: string
   /** Parameter size string reported by Ollama, for example `30.5B`. */
   parameterSize?: string
-  /** Context window in tokens. */
+  /** Context window the model's metadata advertises: its architectural maximum. */
   contextWindow: number
+  /** The window anyapp actually configures, probed from the daemon when it can be. */
+  effectiveContextWindow: number
+  /** Where the effective window came from. */
+  contextWindowSource: 'user' | 'daemon' | 'fallback'
   /** Whether the model supports function calling. The agent's tools require it. */
   supportsTools: boolean
 }
@@ -51,7 +57,8 @@ const DEFAULT_CONFIG: AppConfig = {
   ollamaBaseUrl: 'http://localhost:11434',
   ollamaModel: null,
   theme: 'dark',
-  autoCommit: true
+  autoCommit: true,
+  contextWindow: null
 }
 
 /** Shared input styling, so every field in Settings matches. */
@@ -81,6 +88,39 @@ function Field({ label, hint, children }: FieldProps) {
       {hint && <p className="mt-1.5 text-[12px] text-ash">{hint}</p>}
     </div>
   )
+}
+
+/**
+ * Explain where the context window anyapp will use came from.
+ *
+ * Ollama advertises a model's architectural maximum, not what the daemon serves —
+ * 262144 against a served 65536 is normal — and believing the advertised number means
+ * the prompt is silently truncated instead of compacted. This hint says which number
+ * is in force and why.
+ *
+ * @param model - The selected model, or undefined when none is chosen
+ * @returns One sentence for the field's hint
+ */
+function describeContextWindow(model: OllamaModel | undefined): string {
+  if (!model) {
+    return 'Leave empty to use whatever the daemon reports for the selected model.'
+  }
+
+  const effective = model.effectiveContextWindow.toLocaleString()
+  const advertised = model.contextWindow > 0 ? model.contextWindow.toLocaleString() : null
+
+  switch (model.contextWindowSource) {
+    case 'user':
+      return `Using ${effective} tokens, set here. Clear the field to discover it instead.`
+    case 'daemon':
+      return `Using ${effective} tokens, reported by the daemon for the loaded model${
+        advertised ? ` (it advertises ${advertised})` : ''
+      }.`
+    case 'fallback':
+      return `Using ${effective} tokens — a conservative default, because the daemon has not loaded this model yet${
+        advertised ? ` and it advertises ${advertised}, which is its maximum, not what it serves` : ''
+      }.`
+  }
 }
 
 /**
@@ -161,6 +201,8 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
   const selectedLacksTools = models.some(
     (model) => model.id === config.ollamaModel && !model.supportsTools
   )
+
+  const selectedModel = models.find((model) => model.id === config.ollamaModel)
 
   return (
     <div className="flex h-full flex-col">
@@ -303,6 +345,26 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
                       )}
                     </div>
                   )}
+                </Field>
+
+                <Field
+                  label="Context window"
+                  hint={describeContextWindow(selectedModel)}
+                >
+                  <input
+                    type="number"
+                    min={2048}
+                    step={1024}
+                    value={config.contextWindow ?? ''}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        contextWindow: e.target.value ? Number(e.target.value) : null
+                      })
+                    }
+                    placeholder="Discover automatically"
+                    className={FIELD_CLASS}
+                  />
                 </Field>
 
                 <Field label="Theme">

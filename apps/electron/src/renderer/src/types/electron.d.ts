@@ -116,6 +116,8 @@ interface AppConfig {
   theme: 'light' | 'dark' | 'system'
   /** Whether agent file writes auto-commit to git. */
   autoCommit: boolean
+  /** Context window to configure for the selected model, or null to discover it. */
+  contextWindow: number | null
 }
 
 /** A model pulled into the local Ollama instance. */
@@ -126,8 +128,12 @@ interface OllamaModel {
   parameterSize?: string
   /** Size on disk in bytes. */
   sizeBytes?: number
-  /** Context window in tokens, from the model's own metadata when available. */
+  /** Context window the model's metadata advertises: its architectural maximum. */
   contextWindow: number
+  /** The window anyapp actually configures, probed from the daemon when it can be. */
+  effectiveContextWindow: number
+  /** Where the effective window came from. */
+  contextWindowSource: 'user' | 'daemon' | 'fallback'
   /** Whether the model supports function calling. The agent's tools require it. */
   supportsTools: boolean
   /** Whether the model accepts image input. */

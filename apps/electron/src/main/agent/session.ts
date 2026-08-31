@@ -31,6 +31,7 @@ import type {
 } from '@anyapp/core'
 import { SkillsLoader } from '@anyapp/shared'
 import { autoCommitToolResult } from './auto-commit'
+import { deriveContextBudget, type ContextBudget } from './context-budget'
 import { toStreamChunk } from './events'
 import { createMcpTools, getMcpToolBindings, type CallMcpTool } from './mcp-tools'
 import {
@@ -93,6 +94,13 @@ export interface CreateAgentHostParams {
   agentDir: string
   /** Model tag to run, for example `qwen3-coder:30b`. */
   modelId: string
+  /**
+   * The context budget for that model.
+   *
+   * Defaults to a conservative derivation when omitted, which is safe but pessimistic
+   * — callers that have probed the daemon should pass what they found.
+   */
+  budget?: ContextBudget
   /** Existing Pi session file to resume, or undefined to start a new one. */
   sessionFile?: string
   /** Currently connected MCP sources, whose tools join this session. */
@@ -175,6 +183,64 @@ async function loadPiSkills(skillsDir: string): Promise<PiSkill[]> {
 }
 
 /**
+ * The settings shape `SettingsManager.applyOverrides` accepts.
+ *
+ * Pi does not export its `Settings` interface from the package root, so it is read
+ * back off the method that consumes it. That also means this stays correct if Pi
+ * changes the shape.
+ */
+type PiSettingsOverrides = Parameters<SettingsManager['applyOverrides']>[0]
+
+/**
+ * Retries Pi should make when the local daemon fails a request.
+ *
+ * A local daemon fails differently from a hosted API: no rate limits, but connection
+ * refused while it restarts, a 500 when it runs out of memory, and long stalls while
+ * it swaps another model out. Those recover in seconds, so a handful of attempts with
+ * a couple of seconds between them is the right shape.
+ */
+const LOCAL_RETRY_ATTEMPTS = 4
+
+/** Backoff base. Pi doubles this per attempt. */
+const LOCAL_RETRY_BASE_DELAY_MS = 2000
+
+/**
+ * How long a request may go without producing bytes before Pi gives up.
+ *
+ * Prefill on a large context is exactly that: minutes of silence with nothing on the
+ * wire. The stall heartbeat, not this timeout, is what tells the user something is
+ * happening.
+ */
+const HTTP_IDLE_TIMEOUT_MS = 600_000
+
+/**
+ * Translate a context budget into the Pi settings that enforce it.
+ *
+ * Pi's own `DEFAULT_COMPACTION_SETTINGS` reserves 16384 tokens and retains 20000 —
+ * 36k of budget, which is more than the whole window on the models anyapp targets.
+ * Left alone it either never compacts or compacts in a loop.
+ *
+ * Provider-level retries are disabled deliberately. Pi's own retry policy is the one
+ * that emits `auto_retry_*` events; retries underneath it are invisible and turn a
+ * recoverable failure into a longer, unexplained wait.
+ *
+ * @param budget - The resolved context budget for this session's model
+ * @returns Settings to layer over Pi's own, without persisting them
+ */
+export function buildPiSettings(budget: ContextBudget): PiSettingsOverrides {
+  return {
+    compaction: budget.compaction,
+    retry: {
+      enabled: true,
+      maxRetries: LOCAL_RETRY_ATTEMPTS,
+      baseDelayMs: LOCAL_RETRY_BASE_DELAY_MS,
+      provider: { maxRetries: 0 }
+    },
+    httpIdleTimeoutMs: HTTP_IDLE_TIMEOUT_MS
+  }
+}
+
+/**
  * Build the inline extension carrying anyapp's permission gate and auto-commit.
  *
  * With Pi's built-in tools adopted unmodified, the `tool_call` handler below is the
@@ -252,7 +318,15 @@ function createAnyappExtension(params: {
  * @throws {Error} If the configured model is not available from Ollama
  */
 export async function createAgentHost(params: CreateAgentHostParams): Promise<AgentHost> {
-  const { app, agentDir, modelId, sessionFile, mcpSources = [], callbacks } = params
+  const {
+    app,
+    agentDir,
+    modelId,
+    budget = deriveContextBudget(),
+    sessionFile,
+    mcpSources = [],
+    callbacks
+  } = params
 
   const modelRuntime = await ModelRuntime.create({
     authPath: join(agentDir, 'auth.json'),
@@ -267,6 +341,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
   }
 
   const settingsManager = SettingsManager.create(app.path, agentDir)
+  settingsManager.applyOverrides(buildPiSettings(budget))
 
   const anyappSkills = await loadPiSkills(join(homedir(), '.anyapp', 'skills'))
 

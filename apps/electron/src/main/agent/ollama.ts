@@ -8,6 +8,7 @@
 
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
+import { deriveContextBudget, type ContextBudget, type ContextWindowSource } from './context-budget'
 
 /** Default address of the local Ollama daemon, without the `/v1` suffix. */
 export const DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434'
@@ -16,13 +17,18 @@ export const DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434'
 const DISCOVERY_TIMEOUT_MS = 5000
 
 /**
- * Fallback context window for models whose metadata Ollama does not report.
- * Pi's own default is 128k; matching it keeps behaviour predictable.
+ * How long to wait for a model to load into memory.
+ *
+ * A 27B model on Apple Silicon takes tens of seconds to page in. This is the one
+ * Ollama call anyapp makes that is expected to be slow.
  */
-const DEFAULT_CONTEXT_WINDOW = 128000
+const WARM_TIMEOUT_MS = 180_000
 
-/** Fallback maximum output tokens. */
-const DEFAULT_MAX_TOKENS = 16384
+/** How long to keep a warmed model resident, in Ollama's own duration syntax. */
+const WARM_KEEP_ALIVE = '30m'
+
+/** Sentinel for a context length Ollama did not report. */
+const UNKNOWN_CONTEXT_WINDOW = 0
 
 /**
  * A model pulled into the local Ollama instance.
@@ -34,8 +40,17 @@ export interface OllamaModel {
   parameterSize?: string
   /** Size on disk in bytes. */
   sizeBytes?: number
-  /** Context window in tokens, from the model's own metadata when available. */
+  /**
+   * Context window the model's metadata advertises, or 0 when Ollama reports none.
+   *
+   * This is the model's *architectural maximum*, not what the daemon serves. Do not
+   * hand it to Pi — see {@link effectiveContextWindow}.
+   */
   contextWindow: number
+  /** The window anyapp actually configures, from {@link deriveContextBudget}. */
+  effectiveContextWindow: number
+  /** Where {@link effectiveContextWindow} came from. */
+  contextWindowSource: ContextWindowSource
   /**
    * Whether the model supports function calling.
    *
@@ -81,7 +96,7 @@ export interface WriteOllamaModelsFileParams {
   agentDir: string
   /** Ollama daemon base URL, without the `/v1` suffix. */
   baseUrl: string
-  /** Models to register with Pi. */
+  /** Models to register with Pi, each carrying its resolved effective window. */
   models: OllamaModel[]
 }
 
@@ -93,6 +108,22 @@ export interface SyncOllamaModelsParams {
   agentDir: string
   /** Ollama daemon base URL, without the `/v1` suffix. */
   baseUrl: string
+  /** The model the user selected, whose loaded window is probed. */
+  selectedModel?: string | null
+  /** The user's context-window override from Settings, when they set one. */
+  contextWindowOverride?: number | null
+}
+
+/**
+ * Parameters for {@link listOllamaModels}.
+ */
+export interface ListOllamaModelsParams {
+  /** Ollama daemon base URL, without the `/v1` suffix. */
+  baseUrl: string
+  /** The model the user selected, whose loaded window is probed. */
+  selectedModel?: string | null
+  /** The user's context-window override from Settings, when they set one. */
+  contextWindowOverride?: number | null
 }
 
 /**
@@ -114,9 +145,11 @@ export function normalizeOllamaBaseUrl(baseUrl: string): string {
 async function describeModel(
   baseUrl: string,
   id: string
-): Promise<Pick<OllamaModel, 'contextWindow' | 'supportsTools' | 'supportsVision' | 'supportsThinking'>> {
+): Promise<
+  Pick<OllamaModel, 'contextWindow' | 'supportsTools' | 'supportsVision' | 'supportsThinking'>
+> {
   const fallback = {
-    contextWindow: DEFAULT_CONTEXT_WINDOW,
+    contextWindow: UNKNOWN_CONTEXT_WINDOW,
     supportsTools: false,
     supportsVision: false,
     supportsThinking: false
@@ -137,7 +170,7 @@ async function describeModel(
       : []
 
     // Ollama namespaces context length by architecture, e.g. `qwen3_5.context_length`.
-    let contextWindow = DEFAULT_CONTEXT_WINDOW
+    let contextWindow = UNKNOWN_CONTEXT_WINDOW
     for (const [key, value] of Object.entries(payload.model_info ?? {})) {
       if (key.endsWith('.context_length') && typeof value === 'number' && value > 0) {
         contextWindow = value
@@ -163,11 +196,22 @@ async function describeModel(
  * OpenAI-compatible `/v1/models` listing, and `/api/show` reports per-model
  * capabilities. Embedding-only models are excluded — they cannot drive an agent.
  *
- * @param baseUrl - Ollama daemon base URL, without the `/v1` suffix
+ * The selected model's entry also carries the window anyapp will actually configure,
+ * resolved from the user's override, the daemon's loaded context length, and the
+ * advertised maximum — in that order.
+ *
+ * @param params - Daemon URL, the selected model, and any user override
  * @returns The pulled chat models, or an empty array if the daemon is unreachable
  */
-export async function listOllamaModels(baseUrl: string): Promise<OllamaModel[]> {
+export async function listOllamaModels(params: ListOllamaModelsParams): Promise<OllamaModel[]> {
+  const { baseUrl, selectedModel, contextWindowOverride } = params
   const normalized = normalizeOllamaBaseUrl(baseUrl)
+
+  // Only the selected model is worth probing: `/api/ps` answers for loaded models,
+  // and loading every pulled model to ask would be absurd.
+  const daemonWindow = selectedModel
+    ? await getLoadedContextLength({ baseUrl: normalized, modelId: selectedModel })
+    : null
 
   let entries: OllamaTagEntry[]
   try {
@@ -190,6 +234,12 @@ export async function listOllamaModels(baseUrl: string): Promise<OllamaModel[]> 
       if (typeof id !== 'string' || id.length === 0) return null
 
       const capabilities = await describeModel(normalized, id)
+      const isSelected = id === selectedModel
+      const budget = deriveContextBudget({
+        userOverride: isSelected ? contextWindowOverride : null,
+        daemonWindow: isSelected ? daemonWindow : null,
+        advertisedWindow: capabilities.contextWindow
+      })
 
       return {
         id,
@@ -198,7 +248,9 @@ export async function listOllamaModels(baseUrl: string): Promise<OllamaModel[]> 
             ? entry.details.parameter_size
             : undefined,
         sizeBytes: typeof entry.size === 'number' ? entry.size : undefined,
-        ...capabilities
+        ...capabilities,
+        effectiveContextWindow: budget.window,
+        contextWindowSource: budget.source
       }
     })
   )
@@ -208,6 +260,100 @@ export async function listOllamaModels(baseUrl: string): Promise<OllamaModel[]> 
     // Embedding-only models report no tool support and cannot complete a chat turn.
     .filter((model) => model.supportsTools || model.supportsVision || model.supportsThinking)
     .sort((a, b) => a.id.localeCompare(b.id))
+}
+
+/**
+ * Parameters for {@link getLoadedContextLength} and {@link warmModel}.
+ */
+export interface LoadedModelParams {
+  /** Ollama daemon base URL, without the `/v1` suffix. */
+  baseUrl: string
+  /** Model tag to ask about. */
+  modelId: string
+}
+
+/**
+ * Shape of a single entry in Ollama's `/api/ps` response.
+ */
+interface OllamaRunningEntry {
+  /** Model tag. */
+  name?: unknown
+  /** Model identifier. */
+  model?: unknown
+  /** Context length the daemon actually loaded this model with. */
+  context_length?: unknown
+}
+
+/**
+ * Read the context length the daemon actually loaded a model with.
+ *
+ * This is the number that matters and the only place Ollama publishes it.
+ * `/api/show` reports the model's architectural maximum instead — 262144 against a
+ * served 65536 on the reference machine — and `num_ctx` cannot be set over the
+ * OpenAI-compatible endpoint, so this is discovery, not configuration.
+ *
+ * Answers only while the model is resident; call {@link warmModel} first if that
+ * matters. An unloaded model, an old daemon, or an unreachable one all return null,
+ * which leaves the budget on its conservative default.
+ *
+ * @param params - Daemon URL and model tag
+ * @returns The loaded context length in tokens, or null when it cannot be read
+ */
+export async function getLoadedContextLength(
+  params: LoadedModelParams
+): Promise<number | null> {
+  const { baseUrl, modelId } = params
+
+  try {
+    const response = await fetch(`${normalizeOllamaBaseUrl(baseUrl)}/api/ps`, {
+      signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS)
+    })
+    if (!response.ok) return null
+
+    const payload = (await response.json()) as { models?: unknown }
+    if (!Array.isArray(payload.models)) return null
+
+    for (const entry of payload.models as OllamaRunningEntry[]) {
+      const id = typeof entry.name === 'string' ? entry.name : entry.model
+      if (id !== modelId) continue
+      return typeof entry.context_length === 'number' && entry.context_length > 0
+        ? entry.context_length
+        : null
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Load a model into memory without asking it for anything.
+ *
+ * Two reasons to do this before the first prompt: it makes the model's real context
+ * length readable from `/api/ps`, and it moves the tens of seconds a large local
+ * model spends paging in out of the user's first message, where it looks like a hang.
+ *
+ * Failure is not fatal — the agent will simply load the model on its first request,
+ * as it did before.
+ *
+ * @param params - Daemon URL and model tag
+ * @returns True when the daemon reported the model loaded
+ */
+export async function warmModel(params: LoadedModelParams): Promise<boolean> {
+  const { baseUrl, modelId } = params
+
+  try {
+    const response = await fetch(`${normalizeOllamaBaseUrl(baseUrl)}/api/generate`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      // An empty prompt is Ollama's documented way to load a model and return.
+      body: JSON.stringify({ model: modelId, prompt: '', keep_alive: WARM_KEEP_ALIVE }),
+      signal: AbortSignal.timeout(WARM_TIMEOUT_MS)
+    })
+    return response.ok
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -254,15 +400,20 @@ export async function writeOllamaModelsFile(
           supportsReasoningEffort: false,
           supportsStore: false
         },
-        models: models.map((model) => ({
-          id: model.id,
-          name: model.parameterSize ? `${model.id} (${model.parameterSize})` : model.id,
-          input: model.supportsVision ? ['text', 'image'] : ['text'],
-          reasoning: model.supportsThinking,
-          contextWindow: model.contextWindow,
-          maxTokens: DEFAULT_MAX_TOKENS,
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
-        }))
+        models: models.map((model) => {
+          // Pi sizes compaction off `contextWindow`, so this must be what the daemon
+          // serves, never the architectural maximum `/api/show` advertises.
+          const budget = deriveContextBudget({ userOverride: model.effectiveContextWindow })
+          return {
+            id: model.id,
+            name: model.parameterSize ? `${model.id} (${model.parameterSize})` : model.id,
+            input: model.supportsVision ? ['text', 'image'] : ['text'],
+            reasoning: model.supportsThinking,
+            contextWindow: budget.window,
+            maxTokens: budget.maxTokens,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+          }
+        })
       }
     }
   }
@@ -277,11 +428,53 @@ export async function writeOllamaModelsFile(
 
 /**
  * Discover the local Ollama models and write Pi's `models.json` in one step.
- * @param params - Agent directory and daemon base URL
- * @returns The discovered models
+ *
+ * This does not warm anything: opening Settings should not page a 20GB model into
+ * memory. The selected model's window is read from `/api/ps` if it happens to be
+ * resident, and falls back to the conservative default otherwise. Call
+ * {@link warmModel} and re-sync when a session is about to start, which is the point
+ * at which loading it is what the user asked for anyway.
+ *
+ * @param params - Agent directory, daemon URL, selected model, and any user override
+ * @returns The discovered models, each carrying its effective context window
  */
 export async function syncOllamaModels(params: SyncOllamaModelsParams): Promise<OllamaModel[]> {
-  const models = await listOllamaModels(params.baseUrl)
-  await writeOllamaModelsFile({ ...params, models })
+  const models = await listOllamaModels({
+    baseUrl: params.baseUrl,
+    selectedModel: params.selectedModel,
+    contextWindowOverride: params.contextWindowOverride
+  })
+  await writeOllamaModelsFile({ agentDir: params.agentDir, baseUrl: params.baseUrl, models })
   return models
+}
+
+/**
+ * Load the selected model, then re-sync Pi's catalog with the window it really got.
+ *
+ * The order matters: `/api/ps` only answers for a resident model, so warming has to
+ * happen before the probe, and `models.json` has to be rewritten before Pi's
+ * `ModelRuntime` reads it.
+ *
+ * @param params - Agent directory, daemon URL, selected model, and any user override
+ * @returns The budget anyapp configured for the selected model
+ */
+export async function prepareModelForSession(
+  params: SyncOllamaModelsParams & { selectedModel: string }
+): Promise<ContextBudget> {
+  await warmModel({ baseUrl: params.baseUrl, modelId: params.selectedModel })
+
+  const daemonWindow = await getLoadedContextLength({
+    baseUrl: params.baseUrl,
+    modelId: params.selectedModel
+  })
+  const models = await syncOllamaModels(params)
+  const selected = models.find((model) => model.id === params.selectedModel)
+
+  // Derived from the raw inputs rather than from the already-resolved window, so the
+  // returned budget reports where its number actually came from.
+  return deriveContextBudget({
+    userOverride: params.contextWindowOverride,
+    daemonWindow,
+    advertisedWindow: selected?.contextWindow
+  })
 }

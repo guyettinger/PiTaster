@@ -24,6 +24,7 @@ import {
   DEFAULT_OLLAMA_BASE_URL,
   isOllamaReachable,
   listOllamaModels,
+  prepareModelForSession,
   syncOllamaModels,
   type OllamaModel
 } from './agent/ollama'
@@ -121,6 +122,14 @@ interface AppConfig {
   theme: 'light' | 'dark' | 'system'
   /** Whether agent file writes auto-commit to git. */
   autoCommit: boolean
+  /**
+   * Context window to configure for the selected model, or null to discover it.
+   *
+   * Ollama's advertised context length is the model's architectural maximum, not
+   * what the daemon serves; anyapp probes `/api/ps` for the real number and falls
+   * back to a conservative default. This is the escape hatch when both are wrong.
+   */
+  contextWindow: number | null
 }
 
 /** Default configuration. */
@@ -128,7 +137,8 @@ const defaultConfig: AppConfig = {
   ollamaBaseUrl: DEFAULT_OLLAMA_BASE_URL,
   ollamaModel: null,
   theme: 'dark',
-  autoCommit: true
+  autoCommit: true,
+  contextWindow: null
 }
 
 /** Cached configuration, populated by {@link loadConfig}. */
@@ -188,7 +198,12 @@ async function saveConfig(config: AppConfig): Promise<void> {
   cachedConfig = config
 
   // Keep Pi's models.json in step with the configured daemon.
-  await syncOllamaModels({ agentDir: piAgentDir, baseUrl: config.ollamaBaseUrl })
+  await syncOllamaModels({
+    agentDir: piAgentDir,
+    baseUrl: config.ollamaBaseUrl,
+    selectedModel: config.ollamaModel,
+    contextWindowOverride: config.contextWindow
+  })
 }
 
 /**
@@ -199,7 +214,12 @@ async function saveConfig(config: AppConfig): Promise<void> {
  */
 export async function initializeConfig(): Promise<void> {
   const config = await loadConfig()
-  await syncOllamaModels({ agentDir: piAgentDir, baseUrl: config.ollamaBaseUrl })
+  await syncOllamaModels({
+    agentDir: piAgentDir,
+    baseUrl: config.ollamaBaseUrl,
+    selectedModel: config.ollamaModel,
+    contextWindowOverride: config.contextWindow
+  })
 }
 
 /**
@@ -402,6 +422,16 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
 
   await disposeAgentHost()
 
+  // Load the model and rewrite models.json with the window it really got, before
+  // Pi's ModelRuntime reads that file. This also moves the tens of seconds a large
+  // local model spends paging in off the user's first message.
+  const budget = await prepareModelForSession({
+    agentDir: piAgentDir,
+    baseUrl: config.ollamaBaseUrl,
+    selectedModel: config.ollamaModel,
+    contextWindowOverride: config.contextWindow
+  })
+
   // Sessions are materialized on creation, so there is always a transcript to
   // resume. Create one only if the app has never had a session at all.
   let sessionFile = await chatHistoryManager.getActiveSessionPath(app.id)
@@ -415,6 +445,7 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
     app,
     agentDir: piAgentDir,
     modelId: config.ollamaModel,
+    budget,
     sessionFile: sessionFile ?? undefined,
     mcpSources: sourceManager.getConnectedSources().filter((source) => source.connected),
     callbacks: {
@@ -813,6 +844,15 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (typeof config.autoCommit !== 'boolean') {
       throw new Error('Invalid autoCommit')
     }
+    if (
+      config.contextWindow !== null &&
+      (typeof config.contextWindow !== 'number' ||
+        !Number.isFinite(config.contextWindow) ||
+        config.contextWindow < 0 ||
+        config.contextWindow > 10_000_000)
+    ) {
+      throw new Error('Invalid context window')
+    }
     return saveConfig(config)
   })
 
@@ -820,7 +860,13 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
    * List the models pulled into the local Ollama daemon, refreshing Pi's catalog.
    */
   ipcMain.handle('models:list', async (): Promise<OllamaModel[]> => {
-    return syncOllamaModels({ agentDir: piAgentDir, baseUrl: getConfig().ollamaBaseUrl })
+    const config = getConfig()
+    return syncOllamaModels({
+      agentDir: piAgentDir,
+      baseUrl: config.ollamaBaseUrl,
+      selectedModel: config.ollamaModel,
+      contextWindowOverride: config.contextWindow
+    })
   })
 
   /**
