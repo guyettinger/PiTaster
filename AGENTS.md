@@ -12,8 +12,8 @@ never leaves the machine.
 
 Pi owns the agent loop, the built-in tools (`read`, `write`, `edit`, `bash`,
 `grep`, `find`, `ls`), and the session transcript. anyapp adds the permission
-gate, path confinement, git auto-commit, its own version-control and network
-tools, and a bridge that exposes connected MCP sources' tools as
+gate, path confinement, git auto-commit, its own version-control, network and
+skill tools, and a bridge that exposes connected MCP sources' tools as
 `mcp__<source>__<tool>`.
 
 ## Monorepo layout
@@ -43,6 +43,7 @@ package may import from `apps/electron/`.
 | `bun run dev` | Start the app with hot reload |
 | `bun run build` | Build all packages |
 | `bun run typecheck:all` | Type check the entire monorepo |
+| `bun run sync:skills` | Regenerate the seeded skills from `docs/skills/` |
 | `bun run --filter @anyapp/electron dev` | Run one workspace |
 
 Run `bun run typecheck:all` after changing any source file. It is the gate that
@@ -208,6 +209,72 @@ retry count would give up the cheap retries that are the point of the policy, so
 `agent/retry-budget.ts` bounds the wall clock instead: fast failures never come
 near it, a hung request exhausts it on the first retry.
 
+## Skills
+
+There are three populations, and they used to fail in complementary ways.
+
+| Population | Lives in | Whose it is |
+|---|---|---|
+| Claude Code skills | `.claude/skills/` | The agent building **anyapp**. Nothing to do with the running app. |
+| App skills | `<app-root>/skills/` | Pi, for one sub-app. Committed with it, so they roll back with it. |
+| Workspace skills | `~/.anyapp/skills/` | Pi, offered to every app. Seeded from `docs/skills/`. |
+
+**A skill's description and its body are paid for differently, and that is the whole
+design.** The description rides in the manifest in *every* request and is the only text
+the model matches a task against; the body costs nothing until the model asks for it.
+The Skills page is drawn in those two registers, with a token count on each, because
+nothing in the UI used to say so and skills were being written like documentation.
+
+**Bodies arrive through `load_skill`, not `read`.** Pi renders its own manifest with each
+skill's absolute `<location>` and the instruction to open it with `read`. Every workspace
+skill is outside the app root, `read` is a path tool, and `checkConfinement` refuses it —
+so for as long as skills existed, the model was shown a menu it was blocked from ordering
+from, and no body had ever reached it. `agent/skill-tools.ts` takes a **name**, resolves
+it against the two roots itself, and returns the body; there is no path argument for
+confinement to refuse and no way to spell one that reaches another file. The tool is
+classified with `read` in `checkPermission`, and the load is visible in the transcript,
+which pointing at a path never was. `session.ts` therefore suppresses Pi's manifest
+(`skillsOverride` returns no skills) and `system-prompt.ts` renders anyapp's.
+
+**App skills win a name collision**, and the workspace copy is shown as shadowed rather
+than hidden — a user looking for why their workspace skill has no effect needs to see it.
+Nothing else discovers `<app>/skills/`: Pi's project scope is `.pi/skills` and
+`DefaultResourceLoader` runs with `includeDefaults: false`, so the path is anyapp's to
+define. The agent had already invented it, writing skills there because it is the only
+place it can write, and registering them by hand in the app's `AGENTS.md`.
+
+**Turning a skill off is real.** `SubApp.disabledSkills` is per-app, persisted in
+`.anyapp-meta.json`, and a disabled skill is left out of the manifest entirely — so the
+page's "N tokens in every request" drops when you turn one off. That number is the honest
+answer to what a skill costs, and it is why the count is in the header.
+
+**Seeding corrects itself.** `seedSkills` never overwrites, which is right for a file the
+user edited and wrong for one anyapp shipped with a defect — `manage-versions` documented
+nine `version_*` tools that have never existed, and every install kept them forever. A
+body that still matches one anyapp shipped exactly (`SUPERSEDED_SEEDS`) is replaced, or
+deleted where the correction is that the skill should not exist. A body that differs by
+one character is left alone and flagged **Outdated** in the panel.
+
+`docs/skills/` is the editable source; `bun run sync:skills` regenerates
+`seed-content.ts` from it, and a test fails if the two drift. The content is embedded
+rather than read from `docs/` at runtime because a packaged app does not ship that tree.
+
+**A skill's identity is its directory name, never its frontmatter.** The `name:` in a
+`SKILL.md` is written by whoever wrote the file — which includes the agent, under
+`acceptEdits`, possibly from text it just fetched. If it were trusted, a file at
+`skills/anything/SKILL.md` could declare `name: manage-versions`, shadow the workspace
+skill of that name, and have `load_skill('manage-versions')` return its body — which the
+prompt tells the model to follow. One auto-approved write, and every later session loads
+it. `toSkill` in `packages/shared/src/skills/loader.ts` takes the directory name for
+exactly this reason; do not "fix" it to prefer the frontmatter.
+
+**Skill bodies are still an accepted residual injection surface.** They are inlined into
+a tool result and the prompt tells the model to follow them, and the agent can write one
+into `<app>/skills/` — so an instruction planted in a skill persists across sessions in a
+way a single poisoned `web_fetch` does not. Identity spoofing is closed; provenance is
+not tracked. It is mitigated the same way `web_fetch` is: every write and every load is a
+visible tool call in the transcript, and the Skills panel shows the body.
+
 ## Conventions
 
 Detailed, path-scoped guidance lives in `.claude/rules/` and loads automatically
@@ -308,6 +375,11 @@ GET's query string carries data *out*: with no host policy and no prompt in
 is an accepted residual risk, mitigated only by every call and its URL being
 visible in the transcript.
 
+`load_skill` is classified with the file tools rather than given an entry of its own:
+it opens one file the user placed in their own skills directory, which is what `read`
+does. It is the tool that *replaced* pointing the model at that file's path and having
+the gate refuse it, so treating it more strictly would restore the original bug.
+
 **MCP source tools are the exception to `acceptEdits`**: they always prompt
 outside `bypassPermissions`. Path confinement cannot reach inside a separate
 server process, so approval is their only boundary.
@@ -345,21 +417,10 @@ Chat history is Pi's own tree-structured JSONL transcript, stored under
 | `docs/plans/` | One document per implementation session, plus notes. See `docs/plans/README.md`. |
 | `docs/skills/` | **anyapp's own runtime skills** — app content, not Claude Code skills. See below. |
 
-`docs/skills/*/SKILL.md` are seed copies of the skills the *running app* loads
-for its agent, via `SkillsLoader` from `~/.anyapp/skills`
-(`packages/shared/src/skills/loader.ts`). They are application domain content.
-Do not move or edit them when the task is about configuring Claude Code — that
-lives in `.claude/`.
+`docs/skills/*/SKILL.md` are the editable source for the skills the *running app*
+seeds into `~/.anyapp/skills`. They are application domain content. Do not move or
+edit them when the task is about configuring Claude Code — that lives in `.claude/`.
 
 ## Config location
 
 User data is stored at `~/.anyapp/` — sub-apps, skills, sources, chat history.
-
-`~/.anyapp/skills` is **seeded on first run** from `packages/shared/src/skills/seed-content.ts`,
-which embeds the `docs/skills/*/SKILL.md` bodies as constants. Before that it was read by
-the agent and by the Skills panel and written by neither, so a fresh install ran with no
-skills at all — including `working-notes`, which is the `NOTES.md` convention the
-post-compaction nudge sends the model to read. The content is embedded rather than copied
-out of `docs/` because a packaged app does not ship the repository's `docs/` tree, so
-reading from it would work in development and fail silently in a build. Seeding never
-overwrites an existing skill; the Skills panel edits are the user's.

@@ -169,8 +169,26 @@ const FILE_WRITING_COMMANDS = [
  */
 const PATH_TOOLS = new Set(['read', 'write', 'edit', 'replace_lines', 'grep', 'find', 'ls'])
 
-/** Tools auto-approved in `acceptEdits` mode: reads and writes within the app root. */
-const FILE_TOOLS = ['read', 'write', 'edit', 'replace_lines', 'grep', 'find', 'ls']
+/**
+ * Tools auto-approved in `acceptEdits` mode: reads and writes within the app root.
+ *
+ * `load_skill` is here rather than in {@link PATH_TOOLS} because it takes a skill
+ * *name*, not a path — there is no argument for {@link checkConfinement} to resolve, and
+ * no way to spell one that reaches another file. It is classified with `read` because
+ * that is what it does: open one file the user put in their own skills directory. It is
+ * the tool that replaced pointing the model at that file's path and having the gate
+ * refuse it, so treating it more strictly than `read` would restore the original bug.
+ */
+const FILE_TOOLS = [
+  'read',
+  'write',
+  'edit',
+  'replace_lines',
+  'grep',
+  'find',
+  'ls',
+  'load_skill'
+]
 
 /**
  * Commands that reach the network, flagged for the approval prompt.

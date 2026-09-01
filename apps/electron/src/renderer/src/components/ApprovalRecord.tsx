@@ -42,6 +42,8 @@ function getSummary(tool: string, input: Record<string, unknown>): string {
       return `${(input.url as string) ?? 'URL'}`
     case 'install_deps':
       return 'bun install'
+    case 'load_skill':
+      return `skill: ${(input.name as string) ?? ''}`
     default:
       return tool
   }

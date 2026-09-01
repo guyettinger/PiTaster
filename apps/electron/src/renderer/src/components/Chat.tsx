@@ -2,12 +2,20 @@
  * Chat component with inline tool bubbles and approvals.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { nanoid } from 'nanoid'
 import { MessageBubble } from './MessageBubble'
 import { InlineApproval } from './InlineApproval'
 import { ElementContextBubble } from './ElementContextBubble'
 import { PermissionModeControl, describePermissionMode } from './PermissionModeControl'
+import {
+  SkillMentionMenu,
+  completeMention,
+  trailingMention,
+  useMentionCursor,
+  useMentionMatches
+} from './skills/SkillMentionMenu'
+import { useSkills } from '../hooks/useSkills'
 import type { Message, ContentBlock } from './MessageBubble'
 import type {
   AgentStatus,
@@ -25,16 +33,6 @@ import type {
 } from '@anyapp/core'
 
 /**
- * Skill definition for @mention insertion.
- */
-interface Skill {
-  name: string
-  description: string
-  content: string
-  filepath: string
-}
-
-/**
  * Props for the Chat component.
  */
 interface ChatProps {
@@ -44,14 +42,6 @@ interface ChatProps {
   permissionMode: PermissionMode
   /** Change how much the agent is allowed to do. */
   onModeChange: (mode: PermissionMode) => void
-  /** Callback when a skill is selected from the skills panel. */
-  onSkillSelect?: (skill: Skill) => void
-  /** Input ref for external control (e.g., inserting @mentions). */
-  inputRef?: React.RefObject<HTMLInputElement | null>
-  /** External input value (controlled). */
-  externalInput?: string
-  /** External input change handler (controlled). */
-  onExternalInputChange?: (value: string) => void
   /** Currently active session ID. */
   activeSessionId: string | null
 }
@@ -220,9 +210,6 @@ export function Chat({
   app,
   permissionMode,
   onModeChange,
-  inputRef: externalInputRef,
-  externalInput,
-  onExternalInputChange,
   activeSessionId
 }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([])
@@ -232,7 +219,7 @@ export function Chat({
   const [status, setStatus] = useState<AgentStatus | null>(null)
   const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const internalInputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   
   // Track current tool being used for input data
   const currentToolRef = useRef<{ name: string; input?: Record<string, unknown> } | null>(null)
@@ -241,10 +228,28 @@ export function Chat({
   const messagesRef = useRef<Message[]>([])
   messagesRef.current = messages
   
-  // Use external input if provided (controlled mode)
-  const currentInput = externalInput !== undefined ? externalInput : input
-  const setCurrentInput = onExternalInputChange || setInput
-  const inputRefToUse = externalInputRef || internalInputRef
+
+  // Mention completion. The skills come from the same libraries the manifest is built
+  // from, so a name the menu offers is a name `load_skill` can resolve.
+  const { library: skillLibrary } = useSkills()
+  const mentionableSkills = useMemo(
+    () =>
+      [...skillLibrary.app, ...skillLibrary.workspace].filter(
+        (skill) => skill.enabled && !skill.shadowed && skill.description.length > 0
+      ),
+    [skillLibrary]
+  )
+  const mentionQuery = trailingMention(input)
+  const mentionMatches = useMentionMatches(mentionableSkills, mentionQuery)
+  const [mentionIndex, setMentionIndex] = useMentionCursor(mentionQuery, mentionMatches.length)
+
+  const pickMention = useCallback(
+    (name: string) => {
+      setInput(completeMention(input, name))
+      inputRef.current?.focus()
+    },
+    [input, inputRef, setInput]
+  )
 
   // Scroll to bottom when messages change or pending approval appears
   useEffect(() => {
@@ -507,13 +512,13 @@ export function Chat({
   }, [])
 
   const sendMessage = useCallback(async () => {
-    if (!currentInput.trim() || isStreaming || !activeSessionId) return
+    if (!input.trim() || isStreaming || !activeSessionId) return
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: currentInput,
-      blocks: [{ type: 'text' as const, content: currentInput }]
+      content: input,
+      blocks: [{ type: 'text' as const, content: input }]
     }
 
     const assistantMessage: Message = {
@@ -523,13 +528,13 @@ export function Chat({
     }
 
     setMessages(prev => [...prev, userMessage, assistantMessage])
-    setCurrentInput('')
+    setInput('')
     setIsStreaming(true)
 
     // Convert message blocks to serialized format for agent
     const serializedBlocks = convertToSerializedBlocks(userMessage.blocks || [])
     await window.electronAPI.sendMessage(serializedBlocks)
-  }, [currentInput, isStreaming, setCurrentInput, activeSessionId])
+  }, [input, isStreaming, setInput, activeSessionId])
 
   /**
    * Cancel the in-flight agent run.
@@ -600,7 +605,7 @@ export function Chat({
               It&rsquo;s set to <span className="text-bone">{mode.label}</span> — {mode.hint}
             </p>
             <p className="mt-4 text-[12px] text-ash">
-              Type <span className="font-mono text-bone">@</span> and a skill name to include a skill.
+              Type <span className="font-mono text-bone">@</span> to hand it a skill.
             </p>
           </div>
         ) : (
@@ -635,13 +640,47 @@ export function Chat({
       <div className="border-t border-line px-6 py-4">
         {status && <AgentStatusStrip status={status} />}
         <div className="mx-auto max-w-3xl">
+          <SkillMentionMenu
+            skills={mentionableSkills}
+            query={mentionQuery}
+            activeIndex={mentionIndex}
+            onPick={pickMention}
+          />
           <div className="flex gap-2">
             <input
-              ref={inputRefToUse}
+              ref={inputRef}
               type="text"
-              value={currentInput}
-              onChange={(e) => setCurrentInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                // While the menu is up the arrows and Enter belong to it, or Enter
+                // would send a message with a half-typed skill name in it.
+                if (mentionMatches.length > 0) {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    setMentionIndex((mentionIndex + 1) % mentionMatches.length)
+                    return
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    setMentionIndex(
+                      (mentionIndex - 1 + mentionMatches.length) % mentionMatches.length
+                    )
+                    return
+                  }
+                  if (e.key === 'Enter' || e.key === 'Tab') {
+                    e.preventDefault()
+                    pickMention(mentionMatches[mentionIndex].name)
+                    return
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    setInput(`${input} `)
+                    return
+                  }
+                }
+                if (e.key === 'Enter' && !e.shiftKey) sendMessage()
+              }}
               placeholder={`Ask the agent about ${app.name}…`}
               disabled={isStreaming || !activeSessionId}
               className="h-11 min-w-0 flex-1 rounded-lg border border-line bg-raised px-4 text-bone placeholder-ash transition-colors hover:border-ash disabled:opacity-50"
@@ -656,7 +695,7 @@ export function Chat({
             ) : (
               <button
                 onClick={sendMessage}
-                disabled={!currentInput.trim() || !activeSessionId}
+                disabled={!input.trim() || !activeSessionId}
                 className="h-11 shrink-0 rounded-lg bg-brass px-5 font-medium text-ground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Send

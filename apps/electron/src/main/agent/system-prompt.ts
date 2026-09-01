@@ -4,7 +4,8 @@
  * Pi consumes this through `DefaultResourceLoader({ systemPromptOverride })`.
  */
 
-import type { AppTemplate, SubApp } from '@anyapp/core'
+import type { AppTemplate, Skill, SubApp } from '@anyapp/core'
+import { renderSkillManifest } from '@anyapp/shared'
 import type { McpToolBinding } from './mcp-tools'
 import { renderToolGuidance } from './tool-guidance'
 
@@ -121,6 +122,14 @@ const EDITING_RULES = `
 export interface SystemPromptParams {
   /** The active sub-app, or null if none is selected. */
   app: SubApp | null
+  /**
+   * The skills this session advertises.
+   *
+   * anyapp renders its own manifest rather than using Pi's. Pi's tells the model to
+   * open a skill with `read`, and every workspace skill sits outside the app root where
+   * `checkConfinement` refuses exactly that. See `agent/skill-tools.ts`.
+   */
+  skills?: Skill[]
   /** Tools contributed by connected MCP sources. */
   mcpTools?: McpToolBinding[]
   /**
@@ -149,6 +158,7 @@ export interface SystemPromptParams {
  */
 export function getSystemPrompt({
   app,
+  skills = [],
   mcpTools = [],
   toolNames = []
 }: SystemPromptParams): string {
@@ -174,7 +184,10 @@ ${app.hasChanges ? '- **Status**: Uncommitted changes present' : ''}
 All paths are relative to the app root. You cannot read or write outside it.
 
 \`write\`, \`edit\` and \`replace_lines\` auto-commit, so every change can be rolled back.
-${renderMcpSection(mcpTools)}
+
+This app's own skills live in \`skills/\`, one folder per skill with a \`SKILL.md\` in it.
+That is inside the app root, so you can write one — see the \`create-skill\` skill.
+${renderSkillManifest(skills)}${renderMcpSection(mcpTools)}
 ${TEMPLATE_HINTS[app.template]}
 
 ## Reading From the Web

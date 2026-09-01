@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Chat } from './components/Chat'
 import { VersionControl } from './components/VersionControl'
-import { SkillsPanel } from './components/SkillsPanel'
+import { SkillsPanel } from './components/skills/SkillsPanel'
 import { Settings } from './components/Settings'
 import { Help } from './components/Help'
 import { AppListing } from './components/AppListing'
@@ -16,16 +16,6 @@ import { RunningAppsProvider } from './context/RunningAppsContext'
 import type { MainPanel, RightPanel, BottomPanel } from './types/navigation'
 import type { PermissionMode } from './types/electron'
 import type { SubApp } from '@anyapp/core'
-
-/**
- * Skill definition for @mention insertion.
- */
-interface Skill {
-  name: string
-  description: string
-  content: string
-  filepath: string
-}
 
 /**
  * Root application component.
@@ -47,8 +37,6 @@ export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
 
   // Chat input state, so the skills panel can insert an @mention into it
-  const [chatInput, setChatInput] = useState('')
-  const chatInputRef = useRef<HTMLInputElement>(null)
 
   // Load initial permission mode
   useEffect(() => {
@@ -128,23 +116,6 @@ export function App() {
     [activeApp, refreshActiveApp]
   )
 
-  const handleSkillSelect = useCallback(
-    (skill: Skill) => {
-      // Skills are workspace-global, so this panel is reachable with no app open.
-      // Inserting a mention only means something once there is a chat to put it in.
-      if (!activeApp) return
-
-      const mention = `@${skill.name} `
-      setChatInput((prev) => {
-        if (!prev || prev.endsWith(' ')) return prev + mention
-        return prev + ' ' + mention
-      })
-      setMainPanel('chat')
-      setTimeout(() => chatInputRef.current?.focus(), 0)
-    },
-    [activeApp]
-  )
-
   const handleSessionSelect = useCallback(async (sessionId: string) => {
     setMainPanel('chat')
     await window.electronAPI.setActiveChatSession(sessionId)
@@ -211,9 +182,6 @@ export function App() {
                       app={activeApp}
                       permissionMode={permissionMode}
                       onModeChange={handleModeChange}
-                      inputRef={chatInputRef}
-                      externalInput={chatInput}
-                      onExternalInputChange={setChatInput}
                       activeSessionId={activeSessionId}
                     />
                   ) : (
@@ -221,10 +189,7 @@ export function App() {
                   ))}
 
                 {mainPanel === 'skills' && (
-                  <SkillsPanel
-                    onSkillSelect={handleSkillSelect}
-                    canInsertMention={activeApp !== null}
-                  />
+                  <SkillsPanel appName={activeApp?.name ?? null} />
                 )}
                 {mainPanel === 'help' && <Help />}
                 {mainPanel === 'settings' && (
