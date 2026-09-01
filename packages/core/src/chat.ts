@@ -109,6 +109,23 @@ export interface PersistedMessage {
 }
 
 /**
+ * A session's transcript, tagged with the session it belongs to.
+ *
+ * The tag is what makes loading a chat correct rather than order-dependent. The
+ * main process emits a session change and a history load as two separate events,
+ * and the renderer clears its messages whenever the active session changes — so
+ * an untagged transcript that arrives on either side of that change is
+ * indistinguishable from the right one, and applying the wrong one silently shows
+ * an empty chat.
+ */
+export interface ChatHistoryPayload {
+  /** The session the messages belong to, or null when there is no active session. */
+  sessionId: string | null
+  /** The session's messages, in order. */
+  messages: PersistedMessage[]
+}
+
+/**
  * A chat session within an app.
  */
 export interface ChatSession {
@@ -122,6 +139,15 @@ export interface ChatSession {
   updatedAt: string
   /** Number of messages in this session. */
   messageCount: number
+  /**
+   * Whether the title is a name someone set, rather than one derived from the
+   * first message.
+   *
+   * This is what keeps auto-titling from running twice or overwriting a manual
+   * rename: a session is a candidate for a generated title only while this is
+   * false, and writing one sets it.
+   */
+  hasExplicitName: boolean
 }
 
 /**

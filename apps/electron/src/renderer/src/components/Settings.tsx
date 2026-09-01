@@ -20,6 +20,8 @@ export interface AppConfig {
   theme: 'light' | 'dark' | 'system'
   /** Whether to auto-commit file changes. */
   autoCommit: boolean
+  /** Whether a new chat is named by the local model after its first turn. */
+  autoTitleChats: boolean
   /** Context window to configure for the selected model, or null to discover it. */
   contextWindow: number | null
   /** Which tools the agent exposes; 'auto' picks from the context window. */
@@ -64,6 +66,7 @@ const DEFAULT_CONFIG: AppConfig = {
   ollamaModel: null,
   theme: 'dark',
   autoCommit: true,
+  autoTitleChats: true,
   contextWindow: null,
   toolProfile: 'auto',
   trimContext: true,
@@ -495,6 +498,28 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
                       <span className="mt-0.5 block text-[12px] text-ash">
                         Each write becomes its own commit, so anything can be rolled back
                         from History.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
+                <div className="mt-5">
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={config.autoTitleChats}
+                      onChange={(e) =>
+                        setConfig({ ...config, autoTitleChats: e.target.checked })
+                      }
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-line bg-raised accent-[var(--color-brass)]"
+                    />
+                    <span>
+                      <span className="block text-[12.5px] font-medium text-bone">
+                        Name new chats from their first message
+                      </span>
+                      <span className="mt-0.5 block text-[12px] text-ash">
+                        One short local call after the first reply, once per chat. Off,
+                        a chat is still named after its first message, just uncondensed.
                       </span>
                     </span>
                   </label>
