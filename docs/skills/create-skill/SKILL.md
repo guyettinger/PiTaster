@@ -1,108 +1,69 @@
 ---
 name: create-skill
-description: Create new skills for Anyapp. Use when user wants to add new agent capabilities.
+description: Write a new skill for this app, so a workflow you just worked out is available next time. Use when the user asks for a skill, or when you have found a repeatable procedure worth keeping.
 ---
 
-# Creating Skills
+# Writing a Skill
 
-Use this skill to create new skills for Anyapp.
+A skill is a folder with a `SKILL.md` in it. Write one when you have worked out how to
+do something in *this* app that you would otherwise work out again from scratch.
 
-## Skill Structure
-
-Skills are stored in `~/.anyapp/skills/{name}/SKILL.md`
+## Where It Goes
 
 ```
-~/.anyapp/skills/
-├── my-skill/
-│   └── SKILL.md
-├── another-skill/
-│   └── SKILL.md
+skills/<name>/SKILL.md
 ```
 
-## SKILL.md Format
+In the app root — the same place as `package.json`. That is inside the directory you
+can write to, and it is committed with the app, so the skill is versioned alongside the
+code it describes.
+
+Do not try to write to `~/.anyapp/skills`. That is the user's own library, shared by
+every app, and it is outside your reach.
+
+## The File
 
 ```markdown
 ---
-name: skill-name
-description: Brief description for when to use this skill.
+name: add-endpoint
+description: Add a REST endpoint to this app's Hono server, wired to a handler and a type. Use when adding a new route.
 ---
 
-# Skill Title
+# Add an Endpoint
 
-Instructions for the agent when this skill is activated...
+...the steps...
 ```
 
-### Frontmatter Fields
+Two frontmatter fields, both required:
 
-- `name`: Kebab-case identifier (must match folder name)
-- `description`: 1-2 sentence description with trigger words
+- **`name`** — lowercase letters, numbers and hyphens. It must match the folder name.
+- **`description`** — **one line.** A second line is silently discarded.
 
-## Best Practices
+## The Description Is the Whole Trigger
 
-### Description Writing
+It is the only part of a skill anyone sees before deciding to open it — it sits in
+every request, and it is what a later session matches the task against. The body costs
+nothing until it is loaded.
 
-- Include specific trigger words users might say
-- Be concise but descriptive
-- Examples:
-  - Good: "Create React components with TypeScript and shadcn/ui"
-  - Bad: "Help with UI"
+So write the description as *when to use this*, not *what this is*:
 
-### Content Writing
+- Good: "Add a pony behavior, building, or shop item. Use when extending the reducer or
+  gameData."
+- Bad: "Game system helper."
 
-- Start with a clear purpose statement
-- Include concrete examples and code snippets
-- Use markdown formatting for structure
-- Keep under 500 lines for context efficiency
-- Reference specific files/paths when relevant
+Name the concrete things a request would mention — files, features, the words the user
+would actually say.
 
-### Naming
+## The Body
 
-- Use kebab-case for skill names
-- Choose descriptive, action-oriented names
-- Examples: `create-component`, `debug-error`, `optimize-performance`
+- **Be specific to this app.** Real paths, real function names, real commands read from
+  `package.json`. A skill that could apply to any project is not worth loading.
+- **Write the steps in order**, the way you just did them.
+- **Say what not to do**, if you hit something that did not work. That is the part
+  worth keeping.
+- **Keep it under a couple of hundred lines.** It is read into a small context window.
 
-## Using Skills
+## After Writing It
 
-Users activate skills by mentioning them with `@`:
-
-```
-@create-skill Create a new skill for database migrations
-```
-
-Multiple skills can be combined:
-
-```
-@enhance-ui @create-component Add a new settings dialog
-```
-
-## Example Skill
-
-```markdown
----
-name: add-test
-description: Write tests for React components using Vitest and Testing Library.
----
-
-# Writing Tests
-
-## Test File Location
-
-Place tests next to the component:
-
-- `components/Button.tsx`
-- `components/Button.test.tsx`
-
-## Test Structure
-
-\`\`\`typescript
-import { render, screen } from '@testing-library/react'
-import { Button } from './Button'
-
-describe('Button', () => {
-  it('renders children', () => {
-    render(<Button>Click me</Button>)
-    expect(screen.getByText('Click me')).toBeInTheDocument()
-  })
-})
-\`\`\`
-```
+Say the name out loud to the user — a skill nobody knows exists is not much use. It is
+available immediately; call `load_skill` with its name when the task comes round again.

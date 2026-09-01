@@ -41,6 +41,14 @@ export interface SubApp {
   currentBranch?: string
   /** Whether app has uncommitted changes. */
   hasChanges?: boolean
+  /**
+   * Names of skills this app does not offer to the model.
+   *
+   * Stored as an opt-*out* so a newly added skill is on by default and an app that
+   * has never been touched carries no list at all. A disabled skill is left out of
+   * the prompt entirely, so turning one off costs nothing and saves its description.
+   */
+  disabledSkills?: string[]
 }
 
 /**
@@ -69,13 +77,22 @@ export interface AppContext {
  * Metadata stored in .anyapp-meta.json
  */
 export interface AppMetadata {
+  /** Unique identifier, matching the directory name. */
   id: string
+  /** Display name. */
   name: string
+  /** Brief description. */
   description: string
+  /** Template used to create the app. */
   template: AppTemplate
+  /** Current status. */
   status: AppStatus
+  /** ISO timestamp when created. */
   createdAt: string
+  /** ISO timestamp when last modified. */
   updatedAt: string
+  /** Names of skills this app does not offer to the model. */
+  disabledSkills?: string[]
 }
 
 /**

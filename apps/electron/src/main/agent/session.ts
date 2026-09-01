@@ -7,11 +7,9 @@
  * version tools, and the system prompt.
  */
 
-import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
   createAgentSession,
-  createSyntheticSourceInfo,
   DefaultResourceLoader,
   ModelRuntime,
   SessionManager,
@@ -19,8 +17,7 @@ import {
   type AgentSession,
   type AgentSessionEvent,
   type ExtensionAPI,
-  type InlineExtension,
-  type Skill as PiSkill
+  type InlineExtension
 } from '@earendil-works/pi-coding-agent'
 import type {
   ConnectedSource,
@@ -30,7 +27,6 @@ import type {
   StreamChunk,
   SubApp
 } from '@anyapp/core'
-import { SkillsLoader } from '@anyapp/shared'
 import { autoCommitToolResult } from './auto-commit'
 import {
   deriveContextBudget,
@@ -55,6 +51,8 @@ import {
 import { getSystemPrompt } from './system-prompt'
 import { createVersionTools, VERSION_TOOL_NAMES } from './version-tools'
 import { createWebTools, WEB_TOOL_NAMES } from './web-tools'
+import { createSkillTools, SKILL_TOOL_NAMES } from './skill-tools'
+import { loadSessionSkills } from './skills'
 import { elementContextToPrompt } from '../agent-utils'
 
 /**
@@ -79,7 +77,8 @@ export const AGENT_TOOL_NAMES = [
   'ls',
   ...FILE_TOOL_NAMES,
   ...VERSION_TOOL_NAMES,
-  ...WEB_TOOL_NAMES
+  ...WEB_TOOL_NAMES,
+  ...SKILL_TOOL_NAMES
 ]
 
 /**
@@ -251,35 +250,6 @@ export interface SendPromptParams {
 export function getAppSessionDir(agentDir: string, appPath: string): string {
   const slug = `--${resolve(appPath).replace(/^[/\\]/, '').replace(/[/\\:]/g, '-')}--`
   return join(agentDir, 'sessions', slug)
-}
-
-/**
- * Map anyapp's runtime skills onto Pi's skill shape.
- * @param skillsDir - Directory holding `<name>/SKILL.md` entries
- * @returns Pi skills, or an empty array when none load
- */
-async function loadPiSkills(skillsDir: string): Promise<PiSkill[]> {
-  try {
-    const skills = await new SkillsLoader(skillsDir).loadAll()
-    return skills.map((skill) => ({
-      name: skill.name,
-      description: skill.description,
-      filePath: skill.filepath,
-      baseDir: join(skillsDir, skill.name),
-      sourceInfo: createSyntheticSourceInfo(skill.filepath, {
-        source: 'anyapp',
-        scope: 'user',
-        origin: 'top-level',
-        baseDir: join(skillsDir, skill.name)
-      }),
-      // anyapp skills are activated by @mention, but leaving them model-invocable
-      // preserves the previous behaviour where a mentioned skill shaped the turn.
-      disableModelInvocation: false
-    }))
-  } catch {
-    // Skills are optional; a missing or malformed directory must not block the agent.
-    return []
-  }
 }
 
 /**
@@ -596,7 +566,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
   const settingsManager = SettingsManager.create(app.path, agentDir)
   settingsManager.applyOverrides(buildPiSettings(budget))
 
-  const anyappSkills = await loadPiSkills(join(homedir(), '.anyapp', 'skills'))
+  const skills = await loadSessionSkills(app)
 
   const mcpBindings = getMcpToolBindings(mcpSources)
   const mcpTools = createMcpTools({ bindings: mcpBindings, callTool: callbacks.callMcpTool })
@@ -610,13 +580,16 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     systemPromptOverride: () =>
       getSystemPrompt({
         app,
+        skills,
         mcpTools: mcpBindings,
         toolNames: toolNames.filter((name) => PI_BUILTIN_TOOL_NAMES.includes(name))
       }),
-    skillsOverride: (current) => ({
-      skills: [...current.skills, ...anyappSkills],
-      diagnostics: current.diagnostics
-    }),
+    // Pi's own manifest is suppressed, not extended. It tells the model to open a
+    // skill's `<location>` with `read`, and every path it would print is outside the
+    // app root, where `checkConfinement` refuses it — so it advertised skills that
+    // could never be loaded. `getSystemPrompt` renders anyapp's instead, naming
+    // `load_skill`. Pi's diagnostics are kept; only its prompt section is dropped.
+    skillsOverride: (current) => ({ skills: [], diagnostics: current.diagnostics }),
     agentsFilesOverride: confineContextFiles(app.path),
     extensionFactories: [
       createAnyappExtension({ rootPath: app.path, budget, trimEnabled, callbacks }),
@@ -645,6 +618,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
       ...createFileTools({ rootPath: app.path }),
       ...createVersionTools(app.path),
       ...createWebTools({ rootPath: app.path, getAutoCommit: callbacks.getAutoCommit }),
+      ...createSkillTools({ skills }),
       ...mcpTools
     ],
     resourceLoader: loader,

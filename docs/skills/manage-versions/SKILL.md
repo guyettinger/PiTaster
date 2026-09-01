@@ -1,59 +1,51 @@
 ---
 name: manage-versions
-description: Manage version control for modifications. Use when user wants to create branches, rollback, or experiment safely.
+description: Branch, inspect history, and roll back the app's git repository. Use before a risky change, or when something you did needs undoing.
 ---
 
 # Version Management
 
-## Safe Experimentation
+Every `write`, `edit` and `replace_lines` you make is committed automatically. You do
+not commit anything yourself — there is no commit tool, and there does not need to be.
+What these tools give you is the ability to *move* through that history.
 
-1. version_create_branch for new experiments
-2. Make changes on the branch
-3. Test thoroughly
-4. version_merge if successful, or switch back to main
+## The Tools
 
-## Quick Rollback
+| Tool | What it does |
+|------|--------------|
+| `git_status` | Current branch, HEAD, and any uncommitted changes |
+| `get_history` | Recent commits, newest first. Takes an optional `count` |
+| `rollback` | Restore the app to a commit. Takes a `commit` SHA |
+| `create_branch` | Create a branch and switch to it. Takes a `name` |
+| `switch_branch` | Switch to an existing branch. Takes a `name` |
+| `list_branches` | Every branch; the current one is marked `*` |
 
-1. version_history to see recent commits
-2. version_rollback to restore previous state
+There is **no merge tool and no diff tool**. If a branch worked out, the user merges it
+from the Version Control panel — say so rather than trying to do it yourself.
 
-## Version Control Tools
+On a small context window the four branch tools are left out of the session to save
+room. If you do not see them, work on the current branch and rely on `rollback`.
 
-### Status
-- `version_status` - Check current state (branch, HEAD, uncommitted changes)
+## Undoing Something
 
-### Branches
-- `version_list_branches` - See all branches
-- `version_create_branch` - Create new experiment branch
-- `version_switch_branch` - Change to different branch
+1. `get_history` to find the commit before the change went wrong.
+2. `rollback` with that SHA.
 
-### History
-- `version_history` - List recent commits
-- `version_rollback` - Restore to a specific commit
+Read the history before you roll back. The auto-commit message names the tool and the
+file, so the commit you want is usually recognisable by its message alone.
 
-### Merging
-- `version_merge` - Merge a branch into current
+## Trying Something Risky
 
-## Workflow Examples
+1. `create_branch` with a name that says what you are trying.
+2. Make the changes. They commit to that branch as you go.
+3. Verify them.
+4. Tell the user the branch name, and whether it worked.
 
-### Risky Change
-```
-1. version_create_branch("experiment-feature")
-2. Make changes
-3. Test
-4. If good: version_merge("experiment-feature")
-5. If bad: version_switch_branch("main")
-```
+If it did not work, `switch_branch` back and leave the branch behind — it costs nothing
+and it is the evidence of what you tried.
 
-### Quick Fix
-```
-1. Make fix directly on main
-2. Changes auto-commit
-3. If broken: version_rollback to previous commit
-```
+## Before a Rollback
 
-### Compare Changes
-```
-1. version_history to find commit SHAs
-2. version_diff(from, to) to see what changed
-```
+Rolling back discards work. Say what you are about to undo and why, in one line, before
+you call `rollback`. The user is watching the transcript, and a rollback they did not
+expect is worse than the bug it fixed.

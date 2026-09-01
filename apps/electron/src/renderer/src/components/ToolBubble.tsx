@@ -14,6 +14,7 @@ import {
   SourceIcon,
   GlobeIcon,
   PlusIcon,
+  SkillsIcon,
   ToolIcon
 } from './icons'
 import { isMcpToolName, parseMcpToolName, summarizeMcpInput } from '../lib/mcpToolDisplay'
@@ -63,7 +64,8 @@ const TOOL_DISPLAY: Record<string, ToolDisplay> = {
   rollback: { Icon: HistoryIcon, label: 'Roll back' },
   git_status: { Icon: HistoryIcon, label: 'Git status' },
   web_fetch: { Icon: GlobeIcon, label: 'Fetch URL' },
-  install_deps: { Icon: PlusIcon, label: 'Install dependencies' }
+  install_deps: { Icon: PlusIcon, label: 'Install dependencies' },
+  load_skill: { Icon: SkillsIcon, label: 'Load skill' }
 }
 
 /**
@@ -131,6 +133,7 @@ function getInputSummary(tool: string, input?: Record<string, unknown>): string 
       return (input.pattern as string) ?? null
     case 'create_branch':
     case 'switch_branch':
+    case 'load_skill':
       return (input.name as string) ?? null
     case 'rollback':
       return (input.commit as string) ?? null

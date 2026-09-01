@@ -1,63 +1,43 @@
 ---
 name: enhance-ui
-description: Improve the Anyapp user interface using shadcn/ui and Tailwind CSS.
+description: Change how this app looks — layout, styling, components. Use when the request is about appearance rather than behavior.
 ---
 
-# UI Enhancement Guidelines
+# Changing the UI
 
-Use this skill when improving the Anyapp user interface.
+## Find the Real Conventions First
 
-## Component Library
+This app has its own. Do not assume a component library, a design system, or a set of
+color names — read for them:
 
-Anyapp uses shadcn/ui components. Import from:
+1. `read package.json` for what is actually installed. Tailwind? A component library?
+   A CSS-in-JS runtime? The dependency list settles it in one call.
+2. `ls src` and read one existing component that is close to what you are changing.
+   That file is the convention: how it exports, how it names, how it styles.
+3. Check for a theme file — `tailwind.config.*`, an `index.css` with custom
+   properties, a `theme.ts`. If the app defines its own colors and spacing, use those
+   names rather than raw values.
 
-```typescript
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Dialog } from '@/components/ui/dialog'
-```
+An app with tokens has them for a reason. Adding `#3b82f6` next to a `--color-accent`
+is how a UI stops looking like one thing.
 
-## Styling Guidelines
+## Making the Change
 
-### Tailwind CSS
+- **Match the file you are editing.** Its indentation, its export style, its naming.
+- **Change the smallest thing that does the job.** Restyling a component the user did
+  not ask about is not a bonus.
+- **Keep contrast usable.** Text on a background needs to be readable at a glance; if
+  you are unsure, go further apart rather than closer.
+- **Keep the keyboard working.** Do not remove a focus outline. If you restyle one,
+  it still has to be visible.
+- **Don't add a dependency for something CSS already does.** A dependency costs an
+  install, a bundle, and a version to keep current.
 
-- Use utility classes directly in components
-- Follow mobile-first responsive design
-- Use the neutral color palette for dark mode consistency
-- Common patterns:
-  - `bg-neutral-950` - main background
-  - `bg-neutral-900` - card/panel background
-  - `bg-neutral-800` - input/elevated surface
-  - `text-neutral-50` - primary text
-  - `text-neutral-400` - secondary text
-  - `border-neutral-700/800` - borders
+## Verifying
 
-### Dark Mode
+You cannot see the app. Run the build (read `package.json` for the script) so type and
+syntax errors are caught, then tell the user what to look at — the screen, and what
+should be different about it. The Preview panel is theirs, not yours.
 
-The app uses a dark theme by default. Ensure:
-
-- Sufficient contrast for text readability
-- Consistent use of the neutral color scale
-- Hover/focus states are visible
-
-## Adding New Components
-
-1. Check if a shadcn/ui component exists first
-2. Read existing similar components for patterns
-3. Follow the existing file naming convention (kebab-case)
-4. Use named exports, not default exports
-5. Add TypeScript interfaces with TSDoc comments
-
-## State Management
-
-- Use React hooks for local state
-- Use IPC for data from main process
-- Consider React Query for caching server state
-
-## Testing Changes
-
-1. Run `bun run dev` to start hot reload
-2. Test in the Electron window
-3. Check responsive behavior
-4. Verify dark mode consistency
-5. Run `bun run typecheck:all` before committing
+If the app is a `react-vite` template, the dev server hot-reloads, so the user sees a
+change the moment it is written.

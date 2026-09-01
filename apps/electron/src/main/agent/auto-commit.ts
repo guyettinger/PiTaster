@@ -148,3 +148,47 @@ export async function autoCommitInstallArtifacts(params: {
     }
   }
 }
+
+/**
+ * Commit an app skill the user wrote or deleted in the Skills panel.
+ *
+ * App skills live inside the app root and the panel marks them **Versioned**, which is
+ * only true if they actually reach git. The agent's own writes get there through
+ * {@link autoCommitToolResult}, which is a `tool_result` hook — a panel edit never passes
+ * through a tool, so without this the file sits untracked and `rollback` leaves it
+ * behind, exactly the way `install_deps` did before it committed its own artifacts.
+ *
+ * Deletion commits too: `git` records a removal, and a skill that stays in HEAD after
+ * being deleted comes back on the next rollback.
+ *
+ * @param params - The app root, the skill's path relative to it, and the setting
+ * @returns Whether a commit was made
+ */
+export async function autoCommitSkillChange(params: {
+  /** Absolute path to the sub-app root. */
+  rootPath: string
+  /** The skill's `SKILL.md`, relative to the app root. */
+  relativePath: string
+  /** How to describe the change in the commit message. */
+  action: 'write' | 'delete'
+  /** Whether the user has auto-commit enabled. */
+  enabled: boolean
+}): Promise<AutoCommitOutcome> {
+  const { rootPath, relativePath, action, enabled } = params
+
+  if (!enabled) return { committed: false }
+
+  try {
+    await new VersionManager(rootPath).commit({
+      message: `${action}: ${relativePath}`,
+      files: action === 'delete' ? [] : [relativePath],
+      removed: action === 'delete' ? [relativePath] : []
+    })
+    return { committed: true }
+  } catch (error) {
+    return {
+      committed: false,
+      note: `\n[auto-commit failed for ${relativePath}: ${(error as Error).message}]`
+    }
+  }
+}

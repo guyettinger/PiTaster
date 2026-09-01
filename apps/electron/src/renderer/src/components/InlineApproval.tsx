@@ -67,6 +67,8 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
         return `Fetch: ${(input.url as string) ?? 'URL'}`
       case 'install_deps':
         return 'Install dependencies (bun install)'
+      case 'load_skill':
+        return `Load skill: ${(input.name as string) ?? 'skill'}`
       default:
         return `Use ${tool}`
     }

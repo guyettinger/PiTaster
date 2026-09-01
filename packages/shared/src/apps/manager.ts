@@ -173,10 +173,21 @@ export class AppManager {
 
   /**
    * Update app metadata.
+   *
+   * Every field is carried forward explicitly rather than spread, because `SubApp`
+   * carries three fields that are derived at read time — `path`, `currentBranch` and
+   * `hasChanges` — and writing those into the metadata file would persist a stale copy
+   * of the git state. The cost is that a new persisted field has to be added here too;
+   * leaving one out silently drops it on the next rename.
+   *
+   * @param id - The app to update
+   * @param updates - The fields to change
+   * @returns The app, re-read from disk
+   * @throws {Error} If no app has that id
    */
   async updateApp(
     id: string,
-    updates: Partial<Pick<SubApp, 'name' | 'description'>>
+    updates: Partial<Pick<SubApp, 'name' | 'description' | 'disabledSkills'>>
   ): Promise<SubApp> {
     const app = await this.getApp(id)
     if (!app) {
@@ -190,7 +201,8 @@ export class AppManager {
       template: app.template,
       status: app.status,
       createdAt: app.createdAt,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      disabledSkills: updates.disabledSkills ?? app.disabledSkills
     }
 
     await writeFile(join(app.path, '.anyapp-meta.json'), JSON.stringify(meta, null, 2))

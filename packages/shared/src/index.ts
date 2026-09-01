@@ -20,9 +20,21 @@ export { SourceManager } from './sources/manager.js'
 export { McpClient } from './sources/mcp-client.js'
 
 // Skills
-export { SkillsLoader, extractSkillMentions, buildSystemPrompt } from './skills/loader.js'
+export {
+  SkillsLoader,
+  extractSkillMentions,
+  isValidSkillName,
+  parseSkillBody,
+  renderSkillFile
+} from './skills/loader.js'
+export { buildSkillLibrary, activeSkills } from './skills/library.js'
+export type { BuildSkillLibraryParams } from './skills/library.js'
+export { renderSkillManifest, renderSkillEntry } from './skills/manifest.js'
+export { estimateTokens } from './skills/tokens.js'
 export { seedSkills, type SeedSkillsResult } from './skills/seed.js'
 export { SEED_SKILLS, type SeedSkill } from './skills/seed-content.js'
+export { SUPERSEDED_SEEDS, isSupersededSeed } from './skills/superseded-seeds.js'
+export type { SupersededSeed } from './skills/superseded-seeds.js'
 
 // Apps
 export { AppManager } from './apps/manager.js'

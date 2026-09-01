@@ -9,7 +9,8 @@
     "dev": "bun run --filter @anyapp/electron dev",
     "build": "bun run --workspaces build",
     "typecheck:all": "bun run --workspaces typecheck",
-    "test": "bun test"
+    "test": "bun test",
+    "sync:skills": "bun run scripts/generate-seed-content.ts"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1",

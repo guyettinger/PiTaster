@@ -20,6 +20,15 @@ export interface CommitOptions {
   message: string
   /** Files to stage and commit (relative paths). */
   files: string[]
+  /**
+   * Paths to stage as removed (relative).
+   *
+   * Separate from {@link CommitOptions.files} because isomorphic-git needs a different
+   * call: `git.add` reads the file from the working tree and throws `ENOENT` when it is
+   * gone, so a deletion staged as an addition fails and the path stays in `HEAD` — where
+   * the next rollback brings it back.
+   */
+  removed?: string[]
 }
 
 /**
@@ -67,13 +76,17 @@ export class VersionManager {
 
   /**
    * Commit staged files with a message.
-   * @param options - Commit options including message and files.
+   * @param options - Commit options including message, files, and removals.
    * @returns The created commit.
    */
   async commit(options: CommitOptions): Promise<Commit> {
     // Stage files
     for (const filepath of options.files) {
       await git.add({ fs, dir: this.dir, filepath })
+    }
+
+    for (const filepath of options.removed ?? []) {
+      await git.remove({ fs, dir: this.dir, filepath })
     }
 
     // Commit

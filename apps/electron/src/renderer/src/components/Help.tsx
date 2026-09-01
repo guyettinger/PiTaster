@@ -281,24 +281,48 @@ export function Help() {
           <HelpSection title="Skills">
             <div className="space-y-4">
               <p className="text-bone">
-                Skills are specialized AI capabilities that can be activated with @mentions. 
-                Use them to get better results for specific tasks.
+                A skill is a short instruction file the agent loads when a task matches
+                it &mdash; how to add a feature here, how this project verifies a change,
+                what not to do. The agent decides when to reach for one, and you can hand
+                it one by typing <span className="font-mono text-bone">@</span> in the
+                composer.
+              </p>
+
+              <p className="text-bone">
+                Every skill&rsquo;s <strong>description</strong> is sent to the model in
+                every request &mdash; that is what makes a skill trigger, and what the
+                Skills page counts. Its <strong>instructions</strong> cost nothing until
+                the agent actually loads it, which shows in the transcript as a
+                &ldquo;Load skill&rdquo; step. Turning a skill off removes its description
+                too, so the count on the Skills page drops.
               </p>
 
               <div className="space-y-3">
                 <div className="rounded border border-line bg-raised/30 p-3">
-                  <h4 className="font-semibold text-brass">@enhance-ui</h4>
-                  <p className="text-sm text-bone mt-1">
-                    Specialized UI enhancement with knowledge of the component library, 
-                    design patterns, and styling guidelines.
+                  <h4 className="eyebrow text-patina">This app</h4>
+                  <p className="mt-1 text-sm text-bone">
+                    Kept in the app&rsquo;s own{' '}
+                    <span className="font-mono">skills/</span> folder, committed with it,
+                    and rolled back with it. The agent can write these itself. Where an
+                    app skill and a workspace skill share a name, the app&rsquo;s wins.
                   </p>
                 </div>
-                
-                <p className="text-sm text-ash">
-                  💡 <strong>Tip:</strong> Open <strong>Skills</strong> in the rail to browse 
-                  available skills and insert them into your chat.
-                </p>
+
+                <div className="rounded border border-line bg-raised/30 p-3">
+                  <h4 className="eyebrow text-ash">Workspace</h4>
+                  <p className="mt-1 text-sm text-bone">
+                    Kept in <span className="font-mono">~/.anyapp/skills</span> and
+                    offered to every app. anyapp seeds a few to start with; they are
+                    yours to edit or delete.
+                  </p>
+                </div>
               </div>
+
+              <p className="text-sm text-ash">
+                Skills for the agent that builds <strong>anyapp itself</strong> are a
+                different thing entirely &mdash; they live in the repository under{' '}
+                <span className="font-mono">.claude/skills/</span> and never appear here.
+              </p>
             </div>
           </HelpSection>
 

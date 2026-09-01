@@ -9,6 +9,8 @@
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { SEED_SKILLS } from './seed-content.js'
+import { SUPERSEDED_SEEDS } from './superseded-seeds.js'
+import { parseSkillBody } from './loader.js'
 
 /**
  * What {@link seedSkills} did.
@@ -18,6 +20,10 @@ export interface SeedSkillsResult {
   installed: string[]
   /** Names already present and therefore left alone. */
   skipped: string[]
+  /** Names whose superseded body anyapp replaced with the corrected one. */
+  corrected: string[]
+  /** Names anyapp removed because the skill described work this agent cannot do. */
+  removed: string[]
 }
 
 /**
@@ -29,15 +35,49 @@ export interface SeedSkillsResult {
  * decision, but an undetectable one from here, so a deleted skill does come back; the
  * panel is where it can be emptied instead.
  *
+ * That leaves the case this function used to have no answer for: a skill anyapp itself
+ * shipped with content that was untrue. `manage-versions` documented nine `version_*`
+ * tools that have never existed. Because seeding never overwrites, every install that
+ * had ever run kept them forever. So before seeding, any skill whose body still matches
+ * one anyapp shipped exactly — meaning the user has not touched it — is corrected in
+ * place, or deleted when the honest correction is that the skill should not exist. A
+ * body that differs by so much as a character is left alone; the panel flags it as
+ * outdated instead. See {@link SUPERSEDED_SEEDS}.
+ *
  * Failures are per-skill and non-fatal. This runs at startup, and a skill that cannot
  * be written is not a reason for the app not to open.
  *
  * @param skillsDir - The skills root, normally `~/.anyapp/skills`
- * @returns Which skills were installed and which were already there
+ * @returns What was installed, left alone, corrected and removed
  */
 export async function seedSkills(skillsDir: string): Promise<SeedSkillsResult> {
   const installed: string[] = []
   const skipped: string[] = []
+  const corrected: string[] = []
+  const removed: string[] = []
+
+  for (const seed of SUPERSEDED_SEEDS) {
+    const target = join(skillsDir, seed.name, 'SKILL.md')
+
+    try {
+      const onDisk = await fs.readFile(target, 'utf-8')
+      if (parseSkillBody(onDisk) !== seed.body) continue
+
+      if (seed.removed) {
+        await fs.rm(join(skillsDir, seed.name), { recursive: true, force: true })
+        removed.push(seed.name)
+        continue
+      }
+
+      const replacement = SEED_SKILLS.find((candidate) => candidate.name === seed.name)
+      if (!replacement) continue
+      await fs.writeFile(target, replacement.content, 'utf-8')
+      corrected.push(seed.name)
+    } catch {
+      // Absent, unreadable, or unwritable. Seeding below covers the absent case, and
+      // the other two are not worth failing startup over.
+    }
+  }
 
   for (const skill of SEED_SKILLS) {
     const target = join(skillsDir, skill.name, 'SKILL.md')
@@ -60,5 +100,5 @@ export async function seedSkills(skillsDir: string): Promise<SeedSkillsResult> {
     }
   }
 
-  return { installed, skipped }
+  return { installed, skipped, corrected, removed }
 }

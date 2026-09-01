@@ -118,12 +118,38 @@ interface ConnectedSource {
   error?: string
 }
 
-/** Skill definition. */
-interface Skill {
+/** Where a skill lives. */
+type SkillScope = 'app' | 'workspace'
+
+/** The editable part of a skill. */
+interface SkillDraft {
   name: string
   description: string
   content: string
+}
+
+/** A skill as loaded from disk. */
+interface Skill extends SkillDraft {
   filepath: string
+  scope: SkillScope
+  enabled: boolean
+  manifestTokens: number
+  bodyTokens: number
+  outdated: boolean
+  shadowed: boolean
+  loadedThisChat: number
+}
+
+/** The two skill libraries available to one app. */
+interface SkillLibrary {
+  app: Skill[]
+  workspace: Skill[]
+}
+
+/** The result of a change to a skill library. */
+interface SkillLibraryUpdate {
+  library: SkillLibrary
+  warning?: string
 }
 
 /** Application configuration. */
@@ -517,34 +543,52 @@ const electronAPI = {
   // Skills methods
 
   /**
-   * Get all available skills.
+   * Get both skill libraries for the open app.
    */
-  getSkills: (): Promise<Skill[]> => {
+  getSkills: (): Promise<SkillLibrary> => {
     return ipcRenderer.invoke('skills:list')
   },
 
   /**
-   * Get a specific skill by name.
-   * @param name - The skill name
+   * Create or overwrite a skill.
+   * @param request - Which library to write to, and the skill's editable fields
+   * @returns Both libraries, reloaded, and any warning about the change
    */
-  getSkill: (name: string): Promise<Skill | null> => {
-    return ipcRenderer.invoke('skills:get', name)
+  saveSkill: (request: { scope: SkillScope; draft: SkillDraft }): Promise<SkillLibraryUpdate> => {
+    return ipcRenderer.invoke('skills:save', request)
   },
 
   /**
-   * Save a skill.
-   * @param skill - The skill to save
+   * Delete a skill and its directory.
+   * @param request - Which library it is in, and its name
+   * @returns Both libraries, reloaded, and any warning about the change
    */
-  saveSkill: (skill: Skill): Promise<void> => {
-    return ipcRenderer.invoke('skills:save', skill)
+  deleteSkill: (request: { scope: SkillScope; name: string }): Promise<SkillLibraryUpdate> => {
+    return ipcRenderer.invoke('skills:delete', request)
   },
 
   /**
-   * Delete a skill.
-   * @param name - The skill name to delete
+   * Turn a skill on or off for the open app.
+   * @param request - The skill's name and whether the app should offer it
+   * @returns Both libraries, reloaded
    */
-  deleteSkill: (name: string): Promise<void> => {
-    return ipcRenderer.invoke('skills:delete', name)
+  setSkillEnabled: (request: { name: string; enabled: boolean }): Promise<SkillLibrary> => {
+    return ipcRenderer.invoke('skills:set-enabled', request)
+  },
+
+  /**
+   * Listen for the skill libraries changing on disk.
+   * @param callback - Function called when a skill may have been added or changed
+   */
+  onSkillsChanged: (callback: () => void): void => {
+    ipcRenderer.on('skills:changed', () => callback())
+  },
+
+  /**
+   * Remove the skills-changed listener.
+   */
+  offSkillsChanged: (): void => {
+    ipcRenderer.removeAllListeners('skills:changed')
   },
 
   // Config methods

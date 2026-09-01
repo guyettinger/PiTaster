@@ -93,6 +93,22 @@ const TRUNCATABLE_TOOLS = new Set([
 ])
 
 /**
+ * Tools bounded only by {@link TrimContextOptions.hardToolResultTokens}.
+ *
+ * A loaded skill is not evidence the agent gathered, it is the instructions it is
+ * working from — cutting it in history is cutting the model's own brief, and a model
+ * that has lost half a procedure mid-task does something worse than repeat a `read`.
+ * So the ordinary "is this still worth its space" cap does not apply to `load_skill`.
+ *
+ * The hard cap still does, because it answers a different question: past half the
+ * window a single result cannot coexist with the system prompt and the surrounding
+ * history, so the request fails either way — as an unexplained timeout rather than as
+ * an oversized result. A skill that large is a skill worth splitting, and truncating it
+ * says so where a timeout would not.
+ */
+const HARD_CAP_ONLY_TOOLS = new Set(['load_skill'])
+
+/**
  * Options for {@link trimContext}.
  */
 export interface TrimContextOptions {
@@ -492,12 +508,16 @@ export function trimContext(
       return withText(message, `${SUPERSEDED_MARKER} ${region.path}${describeRegion(region)}]`)
     }
 
-    if (!TRUNCATABLE_TOOLS.has(result.toolName)) return message
+    const hardCapOnly = HARD_CAP_ONLY_TOOLS.has(result.toolName)
+    if (!hardCapOnly && !TRUNCATABLE_TOOLS.has(result.toolName)) return message
 
     const text = renderContent(result.content)
     const truncated = truncateResult({
       text,
-      maxTokens: inCurrentTurn ? options.hardToolResultTokens : options.maxToolResultTokens,
+      maxTokens:
+        hardCapOnly || inCurrentTurn
+          ? options.hardToolResultTokens
+          : options.maxToolResultTokens,
       startLine: result.toolName === READ_TOOL ? region?.start : undefined
     })
     return truncated === text ? message : withText(message, truncated)

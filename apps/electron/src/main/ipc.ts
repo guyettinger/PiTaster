@@ -16,17 +16,23 @@ import {
   type AgentHost
 } from './agent/session'
 import { describeNetworkUse } from './agent/permission-gate'
+import { autoCommitSkillChange } from './agent/auto-commit'
+import { getAppSkillsDir } from './agent/skills'
 import {
   VersionManager,
   SourceManager,
   seedSkills,
   SkillsLoader,
+  buildSkillLibrary,
+  activeSkills,
+  extractSkillMentions,
+  isValidSkillName,
   AppManager,
   AppRunner,
   ChatHistoryManager,
   installDependencies
 } from '@anyapp/shared'
-import type { AgentStatus, ContextUsage, PermissionMode, StreamChunk, Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
+import type { AgentStatus, ContextUsage, PermissionMode, StreamChunk, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
 import {
   DEFAULT_OLLAMA_BASE_URL,
   isOllamaReachable,
@@ -97,8 +103,11 @@ const piAgentDir = join(configDir, 'pi')
 /** Source manager instance. */
 const sourceManager = new SourceManager(configDir)
 
-/** Skills loader instance. */
-const skillsLoader = new SkillsLoader(join(configDir, 'skills'))
+/** The workspace skills root, shared by every app. */
+const workspaceSkillsDir = join(configDir, 'skills')
+
+/** Loader for the workspace skills library. */
+const workspaceSkills = new SkillsLoader(workspaceSkillsDir, 'workspace')
 
 /** App manager instance. */
 const appManager = new AppManager()
@@ -116,6 +125,59 @@ let activeAppId: string | null = null
 let activeSessionId: string | null = null
 
 /**
+ * How many times the agent has loaded each skill, per chat.
+ *
+ * Counted in main rather than in the renderer because the Skills page and the chat are
+ * different main panels: the transcript's stream subscription is torn down when the user
+ * navigates to Skills, which is exactly when they want to see this. Main is also simply
+ * where the truth is — the tool call passes through here on its way to the transcript.
+ *
+ */
+const skillLoadsByChat = new Map<string, Map<string, number>>()
+
+/**
+ * Forget the load counts for chats that no longer exist.
+ *
+ * The counts are keyed by chat, and a deleted chat's key would otherwise be held for the
+ * lifetime of the process. Deleting an app takes its chats with it, so both paths clear.
+ *
+ * @param sessionIds - The chats being removed
+ */
+function forgetSkillLoads(sessionIds: string[]): void {
+  for (const sessionId of sessionIds) {
+    skillLoadsByChat.delete(sessionId)
+  }
+}
+
+/** The load counts for the open chat, or an empty map when there is no chat. */
+function currentSkillLoads(): Map<string, number> {
+  return skillLoadsByChat.get(activeSessionId ?? '') ?? new Map()
+}
+
+/**
+ * Record a skill the agent has just loaded.
+ *
+ * Keyed by chat rather than reset on every switch: the counts are then simply correct
+ * when the user comes back to an earlier chat, and there is no list of assignment sites
+ * that has to stay in step with a reset call.
+ *
+ * @param chunk - A streamed chunk on its way to the renderer
+ * @returns True when a count changed and the panel should be told
+ */
+function recordSkillLoad(chunk: StreamChunk): boolean {
+  if (chunk.type !== 'tool_start' || chunk.tool !== 'load_skill') return false
+
+  const name = chunk.input?.name
+  if (typeof name !== 'string' || name.length === 0) return false
+
+  const chatId = activeSessionId ?? ''
+  const counts = skillLoadsByChat.get(chatId) ?? new Map<string, number>()
+  counts.set(name, (counts.get(name) ?? 0) + 1)
+  skillLoadsByChat.set(chatId, counts)
+  return true
+}
+
+/**
  * Bring the session list up to date after a turn, and name the chat if it has none.
  *
  * Titling runs at most once per session and never over a name someone set: the
@@ -129,6 +191,16 @@ async function onTurnComplete(mainWindow: BrowserWindow): Promise<void> {
   const appId = activeAppId
   const sessionId = activeSessionId
   if (!appId) return
+
+  // The agent can write a skill into the app's `skills/` directory during a turn, and
+  // the panel would otherwise not show it until the user pressed reload. A turn boundary
+  // is a cheap and sufficient trigger — a skill library is a handful of small files, and
+  // it is the only moment a skill can appear without the renderer already knowing. A
+  // filesystem watcher would also catch a hand edit in Finder, which the reload button
+  // covers, at the price of two watchers whose lifetime tracks the active app.
+  if (!mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('skills:changed')
+  }
 
   const sessions = await broadcastSessions(mainWindow, appId)
 
@@ -370,6 +442,203 @@ export async function initializeConfig(): Promise<void> {
   })
 }
 
+/** Longest accepted skill description. One line, and it rides in every request. */
+const MAX_SKILL_DESCRIPTION_CHARS = 500
+
+/** Longest accepted skill body. */
+const MAX_SKILL_CONTENT_CHARS = 100000
+
+/**
+ * Load both skill libraries for the open app.
+ *
+ * With no app open only the workspace library is populated — that is not an error, it
+ * is what the Skills page shows before an app is picked.
+ *
+ * @returns The app and workspace libraries, resolved against each other
+ */
+async function loadSkillLibrary(): Promise<SkillLibrary> {
+  const app = await getActiveApp()
+
+  const library = await buildSkillLibrary({
+    appSkillsDir: app ? getAppSkillsDir(app.path) : null,
+    workspaceSkillsDir,
+    disabledSkills: app?.disabledSkills
+  })
+
+  const loads = currentSkillLoads()
+  for (const skill of [...library.app, ...library.workspace]) {
+    skill.loadedThisChat = loads.get(skill.name) ?? 0
+  }
+
+  return library
+}
+
+/**
+ * Resolve a scope to the loader that owns it.
+ *
+ * The app root is read from the active app here rather than accepted from the renderer.
+ * The renderer is untrusted, and a path argument would let it name any directory on the
+ * machine as a skills root — which is a write primitive, since `save` creates what it
+ * needs.
+ *
+ * @param scope - Which library to act on
+ * @returns A loader bound to that library's directory
+ * @throws {Error} If the app library is asked for with no app open
+ */
+async function loaderForScope(scope: SkillScope): Promise<SkillsLoader> {
+  if (scope === 'workspace') return workspaceSkills
+
+  const app = await getActiveApp()
+  if (!app) {
+    throw new Error("Open an app before changing that app's skills")
+  }
+  return new SkillsLoader(getAppSkillsDir(app.path), 'app')
+}
+
+/**
+ * Validate a `{ scope, name }` request from the renderer.
+ * @param request - The raw IPC argument
+ * @returns The validated scope and skill name
+ * @throws {Error} If either field is missing or malformed
+ */
+function parseSkillRef(request: unknown): { scope: SkillScope; name: string } {
+  if (typeof request !== 'object' || request === null) {
+    throw new Error('Invalid request')
+  }
+  const { scope, name } = request as { scope?: unknown; name?: unknown }
+  if (scope !== 'app' && scope !== 'workspace') {
+    throw new Error('Invalid skill scope')
+  }
+  if (!isValidSkillName(name)) {
+    throw new Error('Invalid skill name. Use lowercase letters, numbers and hyphens.')
+  }
+  return { scope, name }
+}
+
+/**
+ * Validate a `{ scope, draft }` write request from the renderer.
+ *
+ * The description is rejected outright if it spans more than one line rather than being
+ * silently joined: the frontmatter parser reads to the end of the first line, so a
+ * wrapped description loses its tail, and the tail is the part carrying the trigger
+ * words. Failing here is what makes that visible.
+ *
+ * @param request - The raw IPC argument
+ * @returns The validated scope and skill draft
+ * @throws {Error} If any field is missing, malformed, or too long
+ */
+function parseSkillWrite(request: unknown): { scope: SkillScope; draft: SkillDraft } {
+  if (typeof request !== 'object' || request === null) {
+    throw new Error('Invalid request')
+  }
+  const { scope, draft } = request as { scope?: unknown; draft?: unknown }
+  if (scope !== 'app' && scope !== 'workspace') {
+    throw new Error('Invalid skill scope')
+  }
+  if (typeof draft !== 'object' || draft === null) {
+    throw new Error('Invalid skill')
+  }
+
+  const { name, description, content } = draft as {
+    name?: unknown
+    description?: unknown
+    content?: unknown
+  }
+
+  if (!isValidSkillName(name)) {
+    throw new Error('Invalid skill name. Use lowercase letters, numbers and hyphens.')
+  }
+  if (
+    typeof description !== 'string' ||
+    description.length === 0 ||
+    description.length > MAX_SKILL_DESCRIPTION_CHARS
+  ) {
+    throw new Error(`A description is required, up to ${MAX_SKILL_DESCRIPTION_CHARS} characters`)
+  }
+  if (/[\r\n]/.test(description)) {
+    throw new Error('A description must be a single line')
+  }
+  if (typeof content !== 'string' || content.length > MAX_SKILL_CONTENT_CHARS) {
+    throw new Error(`A skill body may be up to ${MAX_SKILL_CONTENT_CHARS} characters`)
+  }
+
+  return { scope, draft: { name, description, content } }
+}
+
+/**
+ * Commit an app skill the user just wrote or deleted.
+ *
+ * The panel marks app skills **Versioned**, and they only are if a panel edit reaches
+ * git — the agent's writes get there through the `tool_result` hook, and a panel edit
+ * passes through no tool. Workspace skills are not in any repository, so nothing is
+ * committed for them.
+ *
+ * Best-effort: a repository that is not initialised, or a commit that fails, must not
+ * cost the user the skill they just wrote.
+ *
+ * A failure is returned rather than swallowed: the write itself succeeded, so throwing
+ * would misreport it, but `.claude/rules/self-modification.md` is explicit that a git
+ * failure must still be reported. The panel shows it beside the skill.
+ *
+ * @param scope - Which library was changed
+ * @param name - The skill's name
+ * @param action - Whether the skill was written or deleted
+ * @returns A warning when the change landed on disk but not in git
+ */
+async function commitAppSkill(
+  scope: SkillScope,
+  name: string,
+  action: 'write' | 'delete'
+): Promise<string | undefined> {
+  if (scope !== 'app') return undefined
+
+  const app = await getActiveApp()
+  if (!app) return undefined
+
+  const relativePath = `skills/${name}/SKILL.md`
+  const outcome = await autoCommitSkillChange({
+    rootPath: app.path,
+    relativePath,
+    action,
+    enabled: getConfig().autoCommit
+  })
+
+  if (outcome.committed || !outcome.note) return undefined
+  return `Saved, but not committed: ${relativePath} is not versioned with the app.${outcome.note}`
+}
+
+/**
+ * Turn `@skill-name` mentions into an instruction the model can act on.
+ *
+ * The mention used to be decoration. The Skills panel typed `@name ` into the composer,
+ * the composer's empty state advertised it, and nothing in the main process ever read
+ * it — the whole mechanism was a string that happened to appear in a message, and a
+ * mistyped name failed the same way a correct one did.
+ *
+ * The user's own text is left exactly as written and the directive is appended, so the
+ * transcript still shows what they typed. Only names that resolve to a skill this
+ * session actually offers are honoured, which is what keeps an ordinary `@someone` in
+ * prose from becoming an instruction.
+ *
+ * @param text - The user's message
+ * @returns The message, with a directive appended when it named a real skill
+ */
+async function withSkillDirectives(text: string): Promise<string> {
+  const mentions = extractSkillMentions(text)
+  if (mentions.length === 0) return text
+
+  const available = activeSkills(await loadSkillLibrary())
+  const named = [...new Set(mentions.map((mention) => mention.name))].filter((name) =>
+    available.some((skill) => skill.name === name)
+  )
+  if (named.length === 0) return text
+
+  const list = named.map((name) => `\`${name}\``).join(', ')
+  return `${text}
+
+The user named ${named.length === 1 ? 'a skill' : 'skills'}: ${list}. Call \`load_skill\` for ${named.length === 1 ? 'it' : 'each of them'} before starting, and follow what ${named.length === 1 ? 'it says' : 'they say'}.`
+}
+
 /**
  * Install the seed skills, so a fresh machine's agent is not skill-less.
  *
@@ -379,10 +648,22 @@ export async function initializeConfig(): Promise<void> {
  * nudge in `agent/session.ts` tells the model to read `NOTES.md`, and that skill is
  * where the convention for keeping one is defined.
  *
- * Existing skills are never overwritten — see {@link seedSkills}.
+ * A skill the user has edited is never overwritten, but one anyapp shipped with content
+ * that was untrue of this agent is corrected in place — see {@link seedSkills}.
  */
 export async function initializeSkills(): Promise<void> {
-  await seedSkills(join(configDir, 'skills'))
+  const result = await seedSkills(workspaceSkillsDir)
+
+  // Worth a line in the log: correcting or removing a skill changes what the agent is
+  // told it can do, and it happens once, silently, on an upgrade.
+  if (result.corrected.length > 0 || result.removed.length > 0) {
+    console.log(
+      '[skills] corrected:',
+      result.corrected.join(', ') || 'none',
+      '| removed:',
+      result.removed.join(', ') || 'none'
+    )
+  }
 }
 
 /**
@@ -703,6 +984,10 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
         if (mainWindow.isDestroyed()) return
         mainWindow.webContents.send('agent:stream', chunk)
 
+        if (recordSkillLoad(chunk)) {
+          mainWindow.webContents.send('skills:changed')
+        }
+
         // A finished turn is the only moment the session list is known to have
         // changed — a new message moves `updatedAt`, and the first one gives an
         // untitled chat a name. Deliberately after the turn, never during it: a
@@ -783,7 +1068,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
         throw new Error('Prompt too long')
       }
 
-      await host.sendPrompt({ text, elements })
+      await host.sendPrompt({ text: await withSkillDirectives(text), elements })
     } catch (error) {
       const err = error as Error
       onStream({ type: 'error', error: err.message })
@@ -911,6 +1196,14 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (typeof id !== 'string' || id.length === 0) {
       throw new Error('Invalid app ID')
     }
+    // The app's chats go with it, so their skill-load counts are dead keys. Best-effort:
+    // an unreadable session list is not a reason to refuse to delete the app.
+    try {
+      forgetSkillLoads((await chatHistoryManager.listSessions(id)).map((session) => session.id))
+    } catch {
+      // The counts are a display detail; the app still goes.
+    }
+
     // Clear active if deleting active app
     if (activeAppId === id) {
       activeAppId = null
@@ -1021,29 +1314,47 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   })
 
   // Skills IPC handlers
-  ipcMain.handle('skills:list', async () => {
-    return skillsLoader.loadAll()
+  ipcMain.handle('skills:list', async (): Promise<SkillLibrary> => {
+    return loadSkillLibrary()
   })
 
-  ipcMain.handle('skills:get', async (_, name: string) => {
-    if (typeof name !== 'string' || name.length === 0) {
-      throw new Error('Invalid skill name')
-    }
-    return skillsLoader.load(name)
+  ipcMain.handle('skills:save', async (_, request: unknown): Promise<SkillLibraryUpdate> => {
+    const { scope, draft } = parseSkillWrite(request)
+    await (await loaderForScope(scope)).save(draft)
+    const warning = await commitAppSkill(scope, draft.name, 'write')
+    await disposeAgentHost()
+    return { library: await loadSkillLibrary(), warning }
   })
 
-  ipcMain.handle('skills:save', async (_, skill: Skill) => {
-    if (!skill || typeof skill.name !== 'string') {
-      throw new Error('Invalid skill')
-    }
-    return skillsLoader.save(skill)
+  ipcMain.handle('skills:delete', async (_, request: unknown): Promise<SkillLibraryUpdate> => {
+    const { scope, name } = parseSkillRef(request)
+    await (await loaderForScope(scope)).delete(name)
+    const warning = await commitAppSkill(scope, name, 'delete')
+    await disposeAgentHost()
+    return { library: await loadSkillLibrary(), warning }
   })
 
-  ipcMain.handle('skills:delete', async (_, name: string) => {
-    if (typeof name !== 'string' || name.length === 0) {
-      throw new Error('Invalid skill name')
+  ipcMain.handle('skills:set-enabled', async (_, request: unknown): Promise<SkillLibrary> => {
+    if (typeof request !== 'object' || request === null) {
+      throw new Error('Invalid request')
     }
-    return skillsLoader.delete(name)
+    const { name, enabled } = request as { name?: unknown; enabled?: unknown }
+    if (!isValidSkillName(name) || typeof enabled !== 'boolean') {
+      throw new Error('Invalid skill name or state')
+    }
+
+    const app = await getActiveApp()
+    if (!app) {
+      throw new Error('Open an app before turning a skill on or off')
+    }
+
+    const disabled = new Set(app.disabledSkills ?? [])
+    if (enabled) disabled.delete(name)
+    else disabled.add(name)
+
+    await appManager.updateApp(app.id, { disabledSkills: [...disabled].sort() })
+    await disposeAgentHost()
+    return loadSkillLibrary()
   })
 
   // Config IPC handlers
@@ -1174,6 +1485,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     }
 
     await chatHistoryManager.deleteSession(activeAppId, sessionId)
+    forgetSkillLoads([sessionId])
 
     // If we deleted the active session, load the new active
     if (activeSessionId === sessionId) {
@@ -1428,9 +1740,9 @@ export function cleanupIpcHandlers(): void {
 
   // Skills handlers
   ipcMain.removeHandler('skills:list')
-  ipcMain.removeHandler('skills:get')
   ipcMain.removeHandler('skills:save')
   ipcMain.removeHandler('skills:delete')
+  ipcMain.removeHandler('skills:set-enabled')
 
   // Config handlers
   ipcMain.removeHandler('config:get')

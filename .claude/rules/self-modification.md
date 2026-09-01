@@ -210,6 +210,29 @@ Its per-path failure counter is not a gate. It escalates by telling the model to
 tools; it never blocks an edit, because a model with no way to change the file is worse
 than one editing badly.
 
+## Skills Are Instructions the Agent Can Write
+
+`load_skill` returns a skill's body as a tool result, and the system prompt tells the
+model to follow it. The agent can also *write* a skill, into `<app-root>/skills/`, which
+is inside what `acceptEdits` auto-approves. So a skill is the one place where text the
+agent produced in one session becomes an instruction it is told to obey in the next.
+
+Two rules follow, and the first was a real hole:
+
+- **A skill's identity is its directory name, never its frontmatter `name:`.** Trusting
+  the frontmatter let any file declare itself `manage-versions`, shadow the real one, and
+  be returned by `load_skill` under that name. A directory entry cannot contain a
+  separator and cannot be forged from inside a file. `toSkill` in
+  `packages/shared/src/skills/loader.ts` keys on the directory; keep it that way.
+- **`load_skill` takes a name, never a path**, and resolves it against a list built at
+  session start from the two known roots. That is why it is not in `PATH_TOOLS` and why
+  `checkConfinement` has nothing to check — not an omission. A `path` parameter would
+  make it a path tool and would have to be gated like one.
+
+The residual risk — a planted instruction persisting across sessions — is accepted, and
+mitigated only by every write and every load appearing in the transcript. Do not describe
+skill content as trusted.
+
 ## Writes Auto-Commit
 
 `agent/auto-commit.ts` commits through `VersionManager`

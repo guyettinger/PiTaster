@@ -2,7 +2,7 @@
  * Type definitions for the Electron API exposed via preload script.
  */
 
-import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, ElementContext, SerializedContentBlock } from '@anyapp/core'
+import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, ElementContext, SerializedContentBlock, Skill, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope } from '@anyapp/core'
 
 /** Permission mode type for tool execution. */
 type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
@@ -120,14 +120,6 @@ interface ConnectedSource {
   connected: boolean
   tools?: McpTool[]
   error?: string
-}
-
-/** Skill definition. */
-interface Skill {
-  name: string
-  description: string
-  content: string
-  filepath: string
 }
 
 /** Application configuration. */
@@ -292,14 +284,18 @@ interface ElectronAPI {
   deleteSource: (id: string) => Promise<void>
 
   // Skills methods
-  /** Get all available skills. */
-  getSkills: () => Promise<Skill[]>
-  /** Get a specific skill by name. */
-  getSkill: (name: string) => Promise<Skill | null>
-  /** Save a skill. */
-  saveSkill: (skill: Skill) => Promise<void>
-  /** Delete a skill. */
-  deleteSkill: (name: string) => Promise<void>
+  /** Get both skill libraries for the open app. */
+  getSkills: () => Promise<SkillLibrary>
+  /** Create or overwrite a skill. */
+  saveSkill: (request: { scope: SkillScope; draft: SkillDraft }) => Promise<SkillLibraryUpdate>
+  /** Delete a skill and its directory. */
+  deleteSkill: (request: { scope: SkillScope; name: string }) => Promise<SkillLibraryUpdate>
+  /** Turn a skill on or off for the open app. */
+  setSkillEnabled: (request: { name: string; enabled: boolean }) => Promise<SkillLibrary>
+  /** Listen for the skill libraries changing on disk. */
+  onSkillsChanged: (callback: () => void) => void
+  /** Remove the skills-changed listener. */
+  offSkillsChanged: () => void
 
   // Config methods
   /** Get the application configuration. */
@@ -421,6 +417,10 @@ export type {
   SourceConfig,
   ConnectedSource,
   Skill,
+  SkillDraft,
+  SkillLibrary,
+  SkillLibraryUpdate,
+  SkillScope,
   AppConfig,
   OllamaModel,
   RunningApp,
