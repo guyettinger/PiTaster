@@ -26,7 +26,7 @@ import {
   ChatHistoryManager,
   installDependencies
 } from '@anyapp/shared'
-import type { AgentStatus, ContextUsage, PermissionMode, StreamChunk, Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
+import type { AgentStatus, ContextUsage, PermissionMode, StreamChunk, Skill, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
 import {
   DEFAULT_OLLAMA_BASE_URL,
   isOllamaReachable,
@@ -35,6 +35,7 @@ import {
   syncOllamaModels,
   type OllamaModel
 } from './agent/ollama'
+import { summarizeSessionTitle } from './agent/session-title'
 import {
   MAX_CONTEXT_WINDOW,
   MIN_CONTEXT_WINDOW,
@@ -114,6 +115,113 @@ let activeAppId: string | null = null
 /** Currently active session ID for the active app. */
 let activeSessionId: string | null = null
 
+/**
+ * Bring the session list up to date after a turn, and name the chat if it has none.
+ *
+ * Titling runs at most once per session and never over a name someone set: the
+ * guard is `hasExplicitName`, and writing a title sets it. Everything here is
+ * best-effort — the list already shows a title derived from the first message, so
+ * a failed or skipped generation leaves the sidebar correct, just less concise.
+ *
+ * @param mainWindow - The window to notify
+ */
+async function onTurnComplete(mainWindow: BrowserWindow): Promise<void> {
+  const appId = activeAppId
+  const sessionId = activeSessionId
+  if (!appId) return
+
+  const sessions = await broadcastSessions(mainWindow, appId)
+
+  const config = getConfig()
+  if (!config.autoTitleChats || !config.ollamaModel || !sessionId || !sessions) return
+
+  try {
+    const session = sessions.find((candidate) => candidate.id === sessionId)
+    // An untitled session whose title is still the placeholder has no first
+    // message to summarize yet, so there is nothing to improve on.
+    if (!session || session.hasExplicitName || session.messageCount === 0) return
+
+    const firstMessage = await chatHistoryManager.getFirstUserMessage(appId, sessionId)
+    if (!firstMessage) return
+
+    const title = await summarizeSessionTitle({
+      baseUrl: config.ollamaBaseUrl,
+      modelId: config.ollamaModel,
+      firstMessage
+    })
+    if (!title) return
+
+    // The session may have been renamed or deleted while the model was thinking.
+    const current = (await chatHistoryManager.listSessions(appId)).find(
+      (candidate) => candidate.id === sessionId
+    )
+    if (!current || current.hasExplicitName) return
+
+    await chatHistoryManager.renameSession(appId, sessionId, title)
+    await broadcastSessions(mainWindow, appId)
+  } catch {
+    // The derived title stands.
+  }
+}
+
+/**
+ * Tell the renderer which session is active and hand it that session's transcript.
+ *
+ * Order matters and is the whole point of this helper. The renderer clears its
+ * messages when the active session changes, so a transcript sent *before* the
+ * change is wiped by it — which is what made opening a chat take two clicks: the
+ * first click loaded the history and then threw it away, the second changed
+ * nothing and let it stand. The payload is tagged as well, so the renderer stays
+ * correct even if these ever arrive out of order.
+ *
+ * @param mainWindow - The window to notify
+ * @param sessionId - The session now active, or null when there is none
+ * @param messages - That session's transcript
+ */
+function sendSessionChanged(
+  mainWindow: BrowserWindow,
+  sessionId: string | null,
+  messages: PersistedMessage[]
+): void {
+  if (mainWindow.isDestroyed()) return
+  mainWindow.webContents.send('chat:session-changed', sessionId)
+  mainWindow.webContents.send('chat:history-loaded', { sessionId, messages })
+}
+
+/**
+ * Recompute an app's chat session list and push it to the renderer.
+ *
+ * The sidebar is a pure subscriber to this event, so every path that changes a
+ * session — creating, deleting, renaming, or finishing a turn — has to call it.
+ * Without it the list keeps whatever it was given when the app was focused: a new
+ * chat never appears, a title derived from the first message never updates, and
+ * `updatedAt` never advances, which freezes the sort order at app-open time.
+ *
+ * Listing is not cheap — Pi reads every transcript in the app end to end to build
+ * it — so the list is returned as well as sent, for callers that need to look at
+ * it and would otherwise ask for it twice.
+ *
+ * @param mainWindow - The window to notify
+ * @param appId - The sub-app whose sessions changed, or null to do nothing
+ * @returns The sessions that were sent, or null when none could be read
+ */
+async function broadcastSessions(
+  mainWindow: BrowserWindow,
+  appId: string | null
+): Promise<ChatSession[] | null> {
+  if (!appId || mainWindow.isDestroyed()) return null
+  try {
+    const sessions = await chatHistoryManager.listSessions(appId)
+    if (mainWindow.isDestroyed()) return null
+    mainWindow.webContents.send('sessions:list-updated', sessions)
+    return sessions
+  } catch {
+    // A list that could not be read is not worth failing the operation that
+    // triggered it — the sidebar keeps what it has until the next change.
+    return null
+  }
+}
+
 /** Path to config file. */
 const configPath = join(configDir, 'config.json')
 
@@ -137,6 +245,14 @@ interface AppConfig {
   theme: 'light' | 'dark' | 'system'
   /** Whether agent file writes auto-commit to git. */
   autoCommit: boolean
+  /**
+   * Whether a new chat is named by the local model after its first turn.
+   *
+   * Off, the sidebar still names a chat after its first message, truncated. On,
+   * that name is replaced once by a short summary. Either way nothing overwrites a
+   * name the user typed.
+   */
+  autoTitleChats: boolean
   /**
    * Context window to configure for the selected model, or null to discover it.
    *
@@ -166,6 +282,7 @@ const defaultConfig: AppConfig = {
   ollamaModel: null,
   theme: 'dark',
   autoCommit: true,
+  autoTitleChats: true,
   contextWindow: null,
   toolProfile: 'auto',
   trimContext: true,
@@ -585,6 +702,14 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
       onStream: (chunk: StreamChunk): void => {
         if (mainWindow.isDestroyed()) return
         mainWindow.webContents.send('agent:stream', chunk)
+
+        // A finished turn is the only moment the session list is known to have
+        // changed — a new message moves `updatedAt`, and the first one gives an
+        // untitled chat a name. Deliberately after the turn, never during it: a
+        // concurrent generate contends with the model the turn just loaded.
+        if (chunk.type === 'complete') {
+          void onTurnComplete(mainWindow)
+        }
       }
     }
   })
@@ -816,26 +941,24 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (id) {
       // Load manifest (triggers migration if needed)
       const manifest = await chatHistoryManager.loadManifest(id)
-      
-      // Auto-create first session if none exist
+
+      // Auto-create the first session if none exist. It is deliberately created
+      // with no title, so its name is derived from the first message rather than
+      // frozen at 'Chat' forever.
       if (manifest.sessions.length === 0) {
-        const session = await chatHistoryManager.createSession(id, { title: 'Chat' })
+        const session = await chatHistoryManager.createSession(id)
         activeSessionId = session.id
-        mainWindow.webContents.send('sessions:list-updated', [session])
-        mainWindow.webContents.send('chat:session-changed', session.id)
-        mainWindow.webContents.send('chat:history-loaded', [])
+        sendSessionChanged(mainWindow, session.id, [])
       } else {
         activeSessionId = manifest.activeSessionId
-        
-        if (activeSessionId) {
-          const history = await chatHistoryManager.loadHistory(id, activeSessionId)
-          mainWindow.webContents.send('chat:history-loaded', history)
-        }
-        
-        // Send sessions list to renderer
-        mainWindow.webContents.send('sessions:list-updated', manifest.sessions)
-        mainWindow.webContents.send('chat:session-changed', activeSessionId)
+
+        const history = activeSessionId
+          ? await chatHistoryManager.loadHistory(id, activeSessionId)
+          : []
+        sendSessionChanged(mainWindow, activeSessionId, history)
       }
+
+      await broadcastSessions(mainWindow, id)
     }
     
     return activeAppId
@@ -947,6 +1070,9 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (typeof config.autoCommit !== 'boolean') {
       throw new Error('Invalid autoCommit')
     }
+    if (typeof config.autoTitleChats !== 'boolean') {
+      throw new Error('Invalid autoTitleChats')
+    }
     // Bounded by the same numbers the derivation clamps to. A wider bound here is
     // not more permissive, only less honest: the value is accepted, persisted, shown
     // back in Settings, and then silently clamped on the way to the model.
@@ -1003,9 +1129,12 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   })
 
   // Chat history IPC handlers (session-aware)
-  ipcMain.handle('chat:load-history', async () => {
-    if (!activeAppId || !activeSessionId) return []
-    return chatHistoryManager.loadHistory(activeAppId, activeSessionId)
+  ipcMain.handle('chat:load-history', async (): Promise<ChatHistoryPayload> => {
+    if (!activeAppId || !activeSessionId) return { sessionId: null, messages: [] }
+    return {
+      sessionId: activeSessionId,
+      messages: await chatHistoryManager.loadHistory(activeAppId, activeSessionId)
+    }
   })
 
   ipcMain.handle('chat:clear-history', async () => {
@@ -1032,8 +1161,8 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     await disposeAgentHost()
 
     // Notify renderer
-    mainWindow.webContents.send('chat:history-loaded', [])
-    mainWindow.webContents.send('chat:session-changed', session.id)
+    sendSessionChanged(mainWindow, session.id, [])
+    await broadcastSessions(mainWindow, activeAppId)
 
     return session
   })
@@ -1052,14 +1181,13 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       activeSessionId = newActiveId
       await disposeAgentHost()
 
-      if (newActiveId) {
-        const history = await chatHistoryManager.loadHistory(activeAppId, newActiveId)
-        mainWindow.webContents.send('chat:history-loaded', history)
-      } else {
-        mainWindow.webContents.send('chat:history-loaded', [])
-      }
-      mainWindow.webContents.send('chat:session-changed', newActiveId)
+      const history = newActiveId
+        ? await chatHistoryManager.loadHistory(activeAppId, newActiveId)
+        : []
+      sendSessionChanged(mainWindow, newActiveId, history)
     }
+
+    await broadcastSessions(mainWindow, activeAppId)
   })
 
   ipcMain.handle('sessions:rename', async (_, sessionId: string, title: string) => {
@@ -1070,7 +1198,9 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (typeof title !== 'string' || title.length === 0) {
       throw new Error('Invalid title')
     }
-    return chatHistoryManager.renameSession(activeAppId, sessionId, title)
+    const renamed = await chatHistoryManager.renameSession(activeAppId, sessionId, title)
+    await broadcastSessions(mainWindow, activeAppId)
+    return renamed
   })
 
   ipcMain.handle('sessions:set-active', async (_, sessionId: string) => {
@@ -1085,8 +1215,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
     // Load history for the new session
     const history = await chatHistoryManager.loadHistory(activeAppId, sessionId)
-    mainWindow.webContents.send('chat:history-loaded', history)
-    mainWindow.webContents.send('chat:session-changed', sessionId)
+    sendSessionChanged(mainWindow, sessionId, history)
   })
 
   ipcMain.handle('sessions:get-active', async () => {

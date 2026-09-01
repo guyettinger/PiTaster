@@ -136,6 +136,7 @@ interface AppConfig {
   theme: 'light' | 'dark' | 'system'
   /** Whether agent file writes auto-commit to git. */
   autoCommit: boolean
+  autoTitleChats: boolean
   /** Context window to configure for the selected model, or null to discover it. */
   contextWindow: number | null
   /** Which tools the agent exposes; 'auto' picks from the context window. */
@@ -291,6 +292,12 @@ interface PersistedMessage {
   timestamp: string
 }
 
+/** A session's transcript, tagged with the session it belongs to. */
+interface ChatHistoryPayload {
+  sessionId: string | null
+  messages: PersistedMessage[]
+}
+
 /** A chat session within an app. */
 interface ChatSession {
   id: string
@@ -298,6 +305,7 @@ interface ChatSession {
   createdAt: string
   updatedAt: string
   messageCount: number
+  hasExplicitName: boolean
 }
 
 /** Parameters for creating a new chat session. */
@@ -576,9 +584,9 @@ const electronAPI = {
   // Chat history methods
 
   /**
-   * Load chat history for the active app.
+   * Load chat history for the active app, tagged with the session it belongs to.
    */
-  loadChatHistory: (): Promise<PersistedMessage[]> => {
+  loadChatHistory: (): Promise<ChatHistoryPayload> => {
     return ipcRenderer.invoke('chat:load-history')
   },
 
@@ -591,10 +599,10 @@ const electronAPI = {
 
   /**
    * Listen for chat history loaded events.
-   * @param callback - Function called with the loaded messages
+   * @param callback - Function called with the transcript and the session it is for
    */
-  onChatHistoryLoaded: (callback: (messages: PersistedMessage[]) => void): void => {
-    ipcRenderer.on('chat:history-loaded', (_event, messages) => callback(messages))
+  onChatHistoryLoaded: (callback: (payload: ChatHistoryPayload) => void): void => {
+    ipcRenderer.on('chat:history-loaded', (_event, payload) => callback(payload))
   },
 
   /**

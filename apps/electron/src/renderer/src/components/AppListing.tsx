@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { PlayIcon, StopIcon, TrashIcon, BranchIcon, PlusIcon, AppsIcon, CloseIcon } from './icons'
 import type { SubApp, AppTemplate } from '@anyapp/core'
 import { useRunningApps } from '../context/RunningAppsContext'
+import { formatRelativeTime } from '../lib/relativeTime'
 
 /**
  * Props for the AppListing component.
@@ -411,19 +412,4 @@ function EmptyState({ onCreateClick }: { onCreateClick: () => void }) {
       </button>
     </div>
   )
-}
-
-/**
- * Format a timestamp as relative time.
- */
-function formatRelativeTime(iso: string): string {
-  const date = new Date(iso)
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
-  
-  if (diff < 60000) return 'just now'
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
-  if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`
-  return date.toLocaleDateString()
 }

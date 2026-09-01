@@ -2,7 +2,7 @@
  * Type definitions for the Electron API exposed via preload script.
  */
 
-import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatSession, CreateChatSessionParams, ElementContext, SerializedContentBlock } from '@anyapp/core'
+import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, ElementContext, SerializedContentBlock } from '@anyapp/core'
 
 /** Permission mode type for tool execution. */
 type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
@@ -140,6 +140,8 @@ interface AppConfig {
   theme: 'light' | 'dark' | 'system'
   /** Whether agent file writes auto-commit to git. */
   autoCommit: boolean
+  /** Whether a new chat is named by the local model after its first turn. */
+  autoTitleChats: boolean
   /** Context window to configure for the selected model, or null to discover it. */
   contextWindow: number | null
   /** Which tools the agent exposes; 'auto' picks from the context window. */
@@ -312,12 +314,12 @@ interface ElectronAPI {
   checkModelConnection: (baseUrl?: string) => Promise<boolean>
 
   // Chat history methods
-  /** Load chat history for the active app. */
-  loadChatHistory: () => Promise<PersistedMessage[]>
+  /** Load chat history for the active app, tagged with the session it belongs to. */
+  loadChatHistory: () => Promise<ChatHistoryPayload>
   /** Clear chat history for the active app. */
   clearChatHistory: () => Promise<void>
   /** Listen for chat history loaded events. */
-  onChatHistoryLoaded: (callback: (messages: PersistedMessage[]) => void) => void
+  onChatHistoryLoaded: (callback: (payload: ChatHistoryPayload) => void) => void
   /** Remove chat history loaded listener. */
   offChatHistoryLoaded: () => void
 

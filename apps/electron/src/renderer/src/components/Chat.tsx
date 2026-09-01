@@ -17,7 +17,12 @@ import type {
   ToolApprovalRequest,
   PersistedMessage
 } from '../types/electron'
-import type { SubApp, SerializedContentBlock, ElementContext } from '@anyapp/core'
+import type {
+  SubApp,
+  SerializedContentBlock,
+  ElementContext,
+  ChatHistoryPayload
+} from '@anyapp/core'
 
 /**
  * Skill definition for @mention insertion.
@@ -120,6 +125,19 @@ function convertToSerializedBlocks(blocks: ContentBlock[]): SerializedContentBlo
     // Fallback for unknown types
     return { type: 'text', content: '' }
   })
+}
+
+/**
+ * Convert a persisted transcript into the messages the transcript view renders.
+ * @param history - The persisted messages, in order
+ * @returns The same messages as UI messages
+ */
+function toUIMessages(history: PersistedMessage[]): Message[] {
+  return history.map((msg) => ({
+    id: msg.id,
+    role: msg.role,
+    blocks: convertToUIBlocks(msg.blocks)
+  }))
 }
 
 /**
@@ -233,7 +251,18 @@ export function Chat({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, pendingApproval])
 
-  // Reset messages when active session changes
+  // The session this component is currently showing, readable from the IPC
+  // listener below without making it re-subscribe on every switch.
+  const activeSessionIdRef = useRef<string | null>(activeSessionId)
+  activeSessionIdRef.current = activeSessionId
+
+  // Reset messages when active session changes, then load that session's own.
+  //
+  // The reset and the load have to live together. Main sends the session change and
+  // the transcript as two events, and this effect used to only clear — so a
+  // transcript that arrived first was wiped by the clear that followed it, and
+  // opening a chat took two clicks: the first showed an empty transcript, the
+  // second changed no session id and so left the history alone.
   useEffect(() => {
     setMessages([])
     setIsStreaming(false)
@@ -241,6 +270,24 @@ export function Chat({
     // Cleared with the rest, or the meter shows the previous session's numbers until
     // a turn in this one happens to finish.
     setContextUsage(null)
+
+    if (!activeSessionId) return
+    let cancelled = false
+
+    window.electronAPI
+      .loadChatHistory()
+      .then((payload) => {
+        // A transcript for a session we have since switched away from is not ours.
+        if (cancelled || payload.sessionId !== activeSessionId) return
+        setMessages(toUIMessages(payload.messages))
+      })
+      .catch(() => {
+        // No active app yet is the normal case, not an error worth surfacing.
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [activeSessionId])
 
   // Seed the context meter from the live session.
@@ -267,30 +314,20 @@ export function Chat({
     }
   }, [activeSessionId])
 
-  // Listen for chat history loaded on app switch
+  // Listen for transcripts pushed from main — on app switch, session switch, and
+  // after a delete resolves to a different session.
+  //
+  // The effect below owns the mount-time load, so this only handles the push. The
+  // session tag is what makes it safe: a payload for a session that is no longer
+  // active belongs to a switch this component has already moved past.
   useEffect(() => {
-    const handleHistoryLoaded = (history: PersistedMessage[]) => {
-      // Convert PersistedMessage[] to Message[] for UI
-      const uiMessages: Message[] = history.map(msg => ({
-        id: msg.id,
-        role: msg.role,
-        blocks: convertToUIBlocks(msg.blocks)
-      }))
-      setMessages(uiMessages)
+    const handleHistoryLoaded = (payload: ChatHistoryPayload) => {
+      if (payload.sessionId !== activeSessionIdRef.current) return
+      setMessages(toUIMessages(payload.messages))
     }
-    
+
     window.electronAPI.onChatHistoryLoaded(handleHistoryLoaded)
-    
-    // Also load history on mount in case event was missed
-    // (happens when Chat component mounts after setActiveApp completes)
-    window.electronAPI.loadChatHistory().then(history => {
-      if (history.length > 0) {
-        handleHistoryLoaded(history)
-      }
-    }).catch(() => {
-      // Ignore errors (e.g., no active app)
-    })
-    
+
     return () => {
       window.electronAPI.offChatHistoryLoaded()
     }

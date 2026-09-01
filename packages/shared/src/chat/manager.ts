@@ -33,6 +33,37 @@ const UNTITLED_SESSION = 'New Chat'
 const TITLE_MAX_CHARS = 60
 
 /**
+ * What Pi's `buildSessionInfo` puts in `firstMessage` when a session has none.
+ *
+ * It is a display string, not an absence, so it has to be recognised — otherwise
+ * a session that has never been used is titled "(no messages)".
+ */
+const PI_NO_MESSAGES = '(no messages)'
+
+/**
+ * Names that were written by the bug rather than chosen by anyone.
+ *
+ * Every session created before this was fixed had one of these stamped into its
+ * transcript, which is what made the whole sidebar read "New Chat". They are
+ * treated as no name at all, so those sessions get a derived title and become
+ * eligible for a generated one — otherwise the fix would only ever reach chats
+ * created after it, and an existing install would look unchanged.
+ *
+ * The cost is that someone who deliberately renamed a chat to exactly "New Chat"
+ * loses that name. Against a sidebar of identical rows, that is the right trade.
+ */
+const LEGACY_PLACEHOLDER_NAMES: readonly string[] = ['New Chat', 'Chat']
+
+/**
+ * Whether a stored session name is one the old `createSession` stamped on.
+ * @param name - The trimmed name read from the transcript
+ * @returns True when the name should be treated as no name at all
+ */
+export function isLegacyPlaceholderName(name: string): boolean {
+  return LEGACY_PLACEHOLDER_NAMES.includes(name)
+}
+
+/**
  * The per-app state anyapp persists alongside Pi's transcripts.
  */
 interface ActiveSessionPointer {
@@ -163,14 +194,36 @@ export class ChatHistoryManager {
     const infos = await SessionManager.list(getAppPath(appId), this.sessionDir(appId))
 
     return infos
-      .map((info) => ({
-        id: info.id,
-        title: info.name?.trim() || deriveTitle(info.firstMessage),
-        createdAt: info.created.toISOString(),
-        updatedAt: info.modified.toISOString(),
-        messageCount: info.messageCount
-      }))
+      .map((info) => {
+        const stored = info.name?.trim()
+        const name = stored && !isLegacyPlaceholderName(stored) ? stored : undefined
+        return {
+          id: info.id,
+          title: name || deriveTitle(info.firstMessage),
+          createdAt: info.created.toISOString(),
+          updatedAt: info.modified.toISOString(),
+          messageCount: info.messageCount,
+          hasExplicitName: Boolean(name)
+        }
+      })
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  }
+
+  /**
+   * Read a session's first user message.
+   *
+   * This is the text a title is derived or generated from. Pi reports it as part of
+   * its session listing, so nothing needs to parse the transcript for it.
+   *
+   * @param appId - The sub-app identifier
+   * @param sessionId - The session to read
+   * @returns The first user message, or null when the session has none
+   */
+  async getFirstUserMessage(appId: string, sessionId: string): Promise<string | null> {
+    const infos = await SessionManager.list(getAppPath(appId), this.sessionDir(appId))
+    const first = infos.find((info) => info.id === sessionId)?.firstMessage?.trim()
+    if (!first || first === PI_NO_MESSAGES) return null
+    return first
   }
 
   /**
@@ -230,12 +283,25 @@ export class ChatHistoryManager {
     }
     await fs.writeFile(file, `${JSON.stringify(header)}\n`, 'utf-8')
 
-    const title = params?.title?.trim() || UNTITLED_SESSION
-    SessionManager.open(file, sessionDir).appendSessionInfo(title)
+    // Only write a name when the caller actually supplied one. Stamping every new
+    // session with "New Chat" sets Pi's `SessionInfo.name`, which makes the
+    // `deriveTitle` fallback in listSessions() unreachable — so every chat in the
+    // sidebar kept that placeholder for the rest of its life.
+    const explicitTitle = params?.title?.trim()
+    if (explicitTitle) {
+      SessionManager.open(file, sessionDir).appendSessionInfo(explicitTitle)
+    }
 
     await this.writePointer(appId, { activeSessionId: id })
 
-    return { id, title, createdAt, updatedAt: createdAt, messageCount: 0 }
+    return {
+      id,
+      title: explicitTitle || UNTITLED_SESSION,
+      createdAt,
+      updatedAt: createdAt,
+      messageCount: 0,
+      hasExplicitName: Boolean(explicitTitle)
+    }
   }
 
   /**
@@ -343,12 +409,17 @@ export class ChatHistoryManager {
 
 /**
  * Derive a display title from a session's first user message.
+ *
+ * Exported for its tests: it is the only title a chat has until the model names
+ * one, and it reads a value Pi fills in with a display string rather than leaving
+ * empty, which is exactly the kind of thing that regresses silently.
+ *
  * @param firstMessage - The first message text, possibly empty
  * @returns A short title
  */
-function deriveTitle(firstMessage: string): string {
+export function deriveTitle(firstMessage: string): string {
   const trimmed = firstMessage.trim().split('\n')[0] ?? ''
-  if (trimmed.length === 0) return UNTITLED_SESSION
+  if (trimmed.length === 0 || trimmed === PI_NO_MESSAGES) return UNTITLED_SESSION
   return trimmed.length > TITLE_MAX_CHARS
     ? `${trimmed.slice(0, TITLE_MAX_CHARS)}...`
     : trimmed

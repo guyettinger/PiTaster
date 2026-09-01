@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { RefreshIcon, PlusIcon } from './icons'
+import { formatRelativeTime } from '../lib/relativeTime'
 import type { Branch, Commit, VersionState } from '../types/electron'
 
 /**
@@ -14,20 +15,6 @@ interface VersionControlProps {
   onBranchSwitch: (branchName: string) => void
   /** Callback when new branch is created. */
   onBranchCreate: (name: string) => void
-}
-
-/**
- * Format a timestamp to relative time.
- */
-function formatTime(iso: string): string {
-  const date = new Date(iso)
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
-
-  if (diff < 60000) return 'just now'
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
-  return date.toLocaleDateString()
 }
 
 /**
@@ -249,7 +236,7 @@ export function VersionControl({
                         {commit.message}
                       </p>
                       <p className="font-mono text-[11px] text-ash">
-                        {commit.oid.slice(0, 7)} · {formatTime(commit.timestamp)}
+                        {commit.oid.slice(0, 7)} · {formatRelativeTime(commit.timestamp)}
                       </p>
                     </div>
                     {i > 0 && (
