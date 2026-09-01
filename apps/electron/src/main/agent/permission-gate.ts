@@ -170,6 +170,43 @@ const FILE_WRITING_COMMANDS = [
 const PATH_TOOLS = new Set(['read', 'write', 'edit', 'replace_lines', 'grep', 'find', 'ls'])
 
 /**
+ * Tools allowed in `plan` mode: they inspect, and cannot change anything.
+ *
+ * `plan` promises "no side effects", not "no activity" — and the mode is called
+ * *Explore* in the UI, whose hint has always read "Reads files. Changes nothing." The
+ * code did not agree: `plan` denied every tool but `web_fetch`, so the one mode meant for
+ * reading a codebase was the only one that could not read it.
+ *
+ * Each entry is argued individually, not assumed from its name. These read a file inside
+ * the app root (`read`, `grep`, `find`, `ls`), read a skill the user already put in their
+ * own library (`load_skill`), or read git state without touching the working tree
+ * (`git_status`, `get_history`, `list_branches`). `create_branch`, `switch_branch` and
+ * `rollback` are deliberately absent: they move HEAD, which changes the app even though
+ * nothing is "written". `bash` is absent for the obvious reason — it is not a read tool
+ * however read-only the command looks, because the scan that would decide that is
+ * best-effort.
+ *
+ * **Reads compose with `web_fetch` into an unprompted egress path.** Both are allowed
+ * here without a prompt, the model controls the whole URL, and there is no host policy —
+ * so in `plan` the agent can read a file and put its contents in a query string, with the
+ * user seeing two ordinary-looking tool calls. That risk was already accepted and
+ * documented for `web_fetch`; this widens what is reachable through it from "whatever is
+ * already in context" to "any file in the app root". It stays bounded by the app root and
+ * visible in the transcript, which is the whole mitigation. A host allowlist on
+ * `web_fetch` is the thing that would close it.
+ */
+const PLAN_READ_TOOLS = [
+  'read',
+  'grep',
+  'find',
+  'ls',
+  'load_skill',
+  'git_status',
+  'get_history',
+  'list_branches'
+]
+
+/**
  * Tools auto-approved in `acceptEdits` mode: reads and writes within the app root.
  *
  * `load_skill` is here rather than in {@link PATH_TOOLS} because it takes a skill
@@ -260,12 +297,12 @@ export interface ToolCallDescriptor {
  * Anything unclassified falls through to `ask` rather than `allow`, so a tool added
  * later cannot silently gain auto-approval.
  *
- * `plan` denies everything with exactly one exception: {@link NETWORK_TOOLS}. A
- * `web_fetch` is a GET with no request body — it cannot write a file, run a
- * command, or modify the app — so it leaves the machine and the app as it found
- * them, which is what `plan` promises. Letting the agent read documentation while
- * planning is the point. The exception is checked before the `plan` branch, and is
- * sound only while the tool stays GET-only.
+ * `plan` allows {@link NETWORK_TOOLS} and {@link PLAN_READ_TOOLS}, and denies everything
+ * else. None of them can write a file, run a command, or modify the app, so they leave
+ * the machine and the app as they found them, which is what `plan` promises. Letting the
+ * agent read the code and the docs while planning is the point — a mode that could not
+ * do that was useless for the one job it has. The `web_fetch` exception is checked before
+ * the `plan` branch and is sound only while that tool stays GET-only.
  *
  * It does *not* mean the call sends nothing: a model-chosen URL is an egress
  * channel. See the note at the top of this module.
@@ -278,15 +315,22 @@ export function checkPermission(
   permissionMode: PermissionMode,
   toolName: string
 ): PermissionResult {
-  // The one `plan` exception: a GET changes nothing, so it is treated like `read`
-  // and runs free everywhere except `default`, which prompts for every tool by
+  // Checked before the `plan` branch: a GET changes nothing, so it is treated like
+  // `read` and runs free everywhere except `default`, which prompts for every tool by
   // design. Note this is not the same as sending nothing — see the module note.
   if (NETWORK_TOOLS.includes(toolName)) {
     return permissionMode === 'default' ? { behavior: 'ask' } : { behavior: 'allow' }
   }
 
   if (permissionMode === 'plan') {
-    return { behavior: 'deny', message: 'Read-only mode active' }
+    if (PLAN_READ_TOOLS.includes(toolName)) {
+      return { behavior: 'allow' }
+    }
+    return {
+      behavior: 'deny',
+      message:
+        'Explore mode is active. You can read files, search, inspect git history and fetch URLs, but nothing may change. Say what you would do instead, and let the user switch modes.'
+    }
   }
 
   if (permissionMode === 'bypassPermissions') {

