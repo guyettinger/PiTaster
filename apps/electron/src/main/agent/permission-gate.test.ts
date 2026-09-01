@@ -199,10 +199,45 @@ describe('checkConfinement', () => {
 })
 
 describe('checkPermission', () => {
-  test('plan denies everything except web_fetch', () => {
-    expect(checkPermission('plan', 'read').behavior).toBe('deny')
-    expect(checkPermission('plan', 'bash').behavior).toBe('deny')
-    expect(checkPermission('plan', 'web_fetch').behavior).toBe('allow')
+  test('plan allows the tools that only inspect', () => {
+    for (const tool of [
+      'read',
+      'grep',
+      'find',
+      'ls',
+      'load_skill',
+      'git_status',
+      'get_history',
+      'list_branches',
+      'web_fetch'
+    ]) {
+      expect(checkPermission('plan', tool).behavior).toBe('allow')
+    }
+  })
+
+  test('plan denies anything that can change the app or the machine', () => {
+    // `create_branch`, `switch_branch` and `rollback` move HEAD, which is a change even
+    // though nothing is written. `bash` is not a read tool however read-only it looks.
+    for (const tool of [
+      'write',
+      'edit',
+      'replace_lines',
+      'bash',
+      'install_deps',
+      'create_branch',
+      'switch_branch',
+      'rollback'
+    ]) {
+      expect(checkPermission('plan', tool).behavior).toBe('deny')
+    }
+  })
+
+  test('plan denies MCP tools, which act in a process anyapp does not control', () => {
+    expect(checkPermission('plan', 'mcp__github__create_issue').behavior).toBe('deny')
+  })
+
+  test('plan denies an unknown tool, so a new one cannot inherit read access', () => {
+    expect(checkPermission('plan', 'some_future_tool').behavior).toBe('deny')
   })
 
   test('default prompts for every tool, web_fetch included', () => {

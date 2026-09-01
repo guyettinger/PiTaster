@@ -356,24 +356,39 @@ annotation is legibility, not enforcement: it refuses nothing, and under
 
 | Mode | Behavior |
 |------|----------|
-| `plan` | No side effects. Reads and `web_fetch` only; nothing may change. |
+| `plan` | No side effects. Reads, searches, git inspection and `web_fetch`; nothing may change. |
 | `default` | Prompt the user for approval on each tool use. |
 | `acceptEdits` | Auto-approve file operations and version tools. |
 | `bypassPermissions` | Auto-approve everything. Use with caution. |
 
-Three tools sit outside that table:
+**What `plan` allows** is `PLAN_READ_TOOLS` — `read`, `grep`, `find`, `ls`,
+`load_skill`, `git_status`, `get_history`, `list_branches` — plus `web_fetch`. None of
+them can write a file, run a command, or move HEAD. `create_branch`, `switch_branch` and
+`rollback` are deliberately absent: they change the app even though nothing is written.
+`bash` is absent because it is not a read tool however read-only the command looks — the
+scan that would decide that is best-effort.
 
-**`web_fetch` is the one `plan` exception.** It issues a GET with no request
-body, so it cannot write a file, run a command, or modify the app — which is what
-`plan` promises — and it is allowed wherever `read` is. This holds only while the
-tool stays GET-only; a `method` or `body` parameter would have to change
+The mode denied *everything* but `web_fetch` for a long time, while the UI called it
+**Explore** and promised "Reads files. Changes nothing." The code was the thing that was
+wrong; a planning mode that cannot read the code it is planning against has no use.
+
+Anything unclassified still falls through to a denial, so a tool added later cannot
+inherit read access by accident.
+
+Four tools need more than the table says:
+
+**`web_fetch` runs in `plan` and never prompts outside `default`.** It issues a GET with
+no request body, so it cannot write a file, run a command, or modify the app. This holds
+only while the tool stays GET-only; a `method` or `body` parameter would have to change
 `checkPermission` with it.
 
 That is narrower than "it only reads". The model controls the whole URL, so a
 GET's query string carries data *out*: with no host policy and no prompt in
-`plan` or `acceptEdits`, a fetch can exfiltrate anything already in context. That
-is an accepted residual risk, mitigated only by every call and its URL being
-visible in the transcript.
+`plan` or `acceptEdits`, a fetch can exfiltrate anything already in context — and
+since `plan` now reads files, "in context" reaches any file in the app root. That
+is an accepted residual risk and allowing reads widened it, mitigated only by
+every call and its URL being visible in the transcript. A host allowlist on
+`web_fetch` is the thing that would close it.
 
 `load_skill` is classified with the file tools rather than given an entry of its own:
 it opens one file the user placed in their own skills directory, which is what `read`
@@ -381,8 +396,9 @@ does. It is the tool that *replaced* pointing the model at that file's path and 
 the gate refuse it, so treating it more strictly would restore the original bug.
 
 **MCP source tools are the exception to `acceptEdits`**: they always prompt
-outside `bypassPermissions`. Path confinement cannot reach inside a separate
-server process, so approval is their only boundary.
+outside `bypassPermissions`, and `plan` denies them outright. Path confinement
+cannot reach inside a separate server process, so approval is their only
+boundary — and a tool anyapp cannot inspect cannot be called read-only.
 
 **`install_deps` is the other**, for the same reason `bash` is. Its command is
 fixed (`bun install`), which looks safe but is not: `bun` runs the project's own
