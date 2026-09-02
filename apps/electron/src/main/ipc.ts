@@ -34,6 +34,7 @@ import {
   extractSkillMentions,
   isValidSkillName,
   AppManager,
+  isValidAppId,
   AppRunner,
   ChatHistoryManager,
   installDependencies
@@ -1374,7 +1375,9 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   })
 
   ipcMain.handle('apps:delete', async (_, id: string) => {
-    if (typeof id !== 'string' || id.length === 0) {
+    // `isValidAppId`, not just a non-empty string: this id reaches `getAppPath` through
+    // `listSessions` below, and `deleteApp` turns it into the path of a recursive `rm`.
+    if (typeof id !== 'string' || !isValidAppId(id)) {
       throw new Error('Invalid app ID')
     }
     // The app's chats go with it, so their skill-load counts are dead keys. Best-effort:
@@ -1393,7 +1396,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   })
 
   ipcMain.handle('apps:update', async (_, id: string, updates: { name?: string; description?: string }) => {
-    if (typeof id !== 'string' || id.length === 0) {
+    if (typeof id !== 'string' || !isValidAppId(id)) {
       throw new Error('Invalid app ID')
     }
     if (!updates || typeof updates !== 'object') {
@@ -1403,8 +1406,18 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   })
 
   ipcMain.handle('apps:set-active', async (_, id: string | null) => {
-    if (id !== null && (typeof id !== 'string' || id.length === 0)) {
-      throw new Error('Invalid app ID')
+    // `activeAppId` becomes the root every path check is performed *against*, so this
+    // is the same class of input as `resolveAppRoot`'s `appPath` and gets the same
+    // treatment: not "is it a non-empty string", but "is it an app that exists".
+    // `AppManager` refuses a traversing id on its own now; this is what turns that
+    // refusal into an error the user sees rather than an app that silently will not open.
+    if (id !== null) {
+      if (typeof id !== 'string' || !isValidAppId(id)) {
+        throw new Error('Invalid app ID')
+      }
+      if (!(await appManager.getApp(id))) {
+        throw new Error('Unknown app ID')
+      }
     }
     
     // Switching app discards the agent session; the next message builds a new one.

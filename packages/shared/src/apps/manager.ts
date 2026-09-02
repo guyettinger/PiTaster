@@ -1,5 +1,5 @@
 import { mkdir, readdir, readFile, writeFile, rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import * as git from 'isomorphic-git'
 import fs from 'node:fs'
@@ -8,6 +8,42 @@ import { DEFAULT_GITIGNORE, getTemplate } from './templates.js'
 
 const APPS_DIR = join(homedir(), '.anyapp', 'apps')
 const AUTHOR = { name: 'anyapp Agent', email: 'agent@anyapp.local' }
+
+/**
+ * Whether a string can name a sub-app directory.
+ *
+ * An app id is a single directory name under {@link APPS_DIR}, and *every* path that
+ * confines the agent is built by joining it — `SubApp.path` is the root
+ * `permission-gate.ts` measures every tool argument against, and the path `deleteApp`
+ * hands to a recursive `rm`. So an id that is not a single segment escapes everywhere
+ * at once, and `join` is happy to help: `join(APPS_DIR, '../../../tmp')` resolves
+ * outside the apps directory without complaint.
+ *
+ * The empty string is refused for a sharper reason than traversal. `generateId` strips
+ * everything but `[a-z0-9-]`, so a name of `!!!` or `...` reduces to `''` — and
+ * `join(APPS_DIR, '')` *is* `APPS_DIR`. An app created that way has the whole apps
+ * directory as its root, and deleting it would take every other app with it. That needs
+ * no attacker, only a user naming an app with punctuation.
+ *
+ * Deliberately not an allowlist mirroring `generateId`. Ids already on disk were written
+ * by earlier versions of it, and a stricter rule would make a user's existing app vanish
+ * from the listing rather than close a hole. Refusing non-segments is what closes it,
+ * and {@link AppManager.appDir} re-checks the resolved path anyway.
+ *
+ * @param id - The candidate id, from anywhere
+ * @returns Whether it names one directory inside the apps root
+ */
+export function isValidAppId(id: string): boolean {
+  if (typeof id !== 'string') return false
+  if (id.length === 0 || id.length > 255) return false
+  if (id === '.' || id === '..') return false
+
+  // `:` is refused for Windows, where `apps/cache:bin` addresses the `bin` alternate
+  // data stream of a sibling `cache` entry rather than a directory. It stays inside the
+  // apps root either way, so this is not the traversal rule — it is refusing an
+  // addressing mode nothing here wants. `generateId` never produces one.
+  return !/[/\\:\0]/.test(id)
+}
 
 /**
  * Manages sub-app lifecycle: creation, listing, deletion, and metadata.
@@ -49,10 +85,41 @@ export class AppManager {
   }
 
   /**
+   * Resolve one sub-app's directory, or null if the id does not name one.
+   *
+   * The single place an id becomes a path. The resolved path is re-checked against the
+   * apps root rather than trusted from {@link isValidAppId} alone: the character rule
+   * and the containment rule can drift apart, and only the second one is the thing
+   * actually being promised.
+   *
+   * @param id - The app id
+   * @returns The absolute directory, or null when the id does not name one
+   */
+  private appDir(id: string): string | null {
+    if (!isValidAppId(id)) return null
+
+    const root = resolve(APPS_DIR)
+    const appPath = resolve(root, id)
+
+    // A direct child, not merely a descendant. Sub-apps are never nested.
+    return dirname(appPath) === root ? appPath : null
+  }
+
+  /**
    * Get a single sub-app by ID.
+   *
+   * An id that does not name a directory inside the apps root reads as "not found"
+   * rather than throwing, which is the answer callers already handle — and it is
+   * true. Every mutating method goes through here first, so this is also what keeps
+   * `deleteApp` from being pointed at somewhere else.
+   *
+   * @param id - The app id
+   * @returns The app, or null when there is no such app
    */
   async getApp(id: string): Promise<SubApp | null> {
-    const appPath = join(APPS_DIR, id)
+    const appPath = this.appDir(id)
+    if (!appPath) return null
+
     const metaPath = join(appPath, '.anyapp-meta.json')
 
     try {
@@ -103,7 +170,15 @@ export class AppManager {
     await this.ensureAppsDir()
 
     const id = this.generateId(params.name)
-    const appPath = join(APPS_DIR, id)
+    const appPath = this.appDir(id)
+    if (!appPath) {
+      // Reached by a name with no alphanumerics at all — `!!!`, `...`, whitespace —
+      // which `generateId` reduces to an empty id. Refusing it here is what stops an
+      // app being created with the whole apps directory as its root.
+      throw new Error(
+        `App name "${params.name}" does not contain enough letters or digits to name a folder.`
+      )
+    }
 
     // Check if already exists
     const existing = await this.getApp(id)

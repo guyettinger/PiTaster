@@ -37,7 +37,7 @@ export { SUPERSEDED_SEEDS, isSupersededSeed } from './skills/superseded-seeds.js
 export type { SupersededSeed } from './skills/superseded-seeds.js'
 
 // Apps
-export { AppManager } from './apps/manager.js'
+export { AppManager, isValidAppId } from './apps/manager.js'
 export { AppRunner } from './apps/runner.js'
 export { getTemplate, getTemplates } from './apps/templates.js'
 export { installDependencies } from './apps/install.js'
