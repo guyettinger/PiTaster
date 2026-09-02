@@ -10,11 +10,14 @@ import { fileURLToPath } from 'node:url'
 import { promises as fs } from 'node:fs'
 import {
   createAgentHost,
+  resolveToolNames,
   DEFAULT_SAMPLING_TEMPERATURE,
   MAX_SAMPLING_TEMPERATURE,
   MIN_SAMPLING_TEMPERATURE,
+  PI_BUILTIN_TOOL_NAMES,
   type AgentHost
 } from './agent/session'
+import { buildContextReport } from './agent/context-report'
 import { describeNetworkUse } from './agent/permission-gate'
 import { previewPatch } from './agent/patch'
 import { listAppFiles, readAppFile } from './files'
@@ -35,7 +38,7 @@ import {
   ChatHistoryManager,
   installDependencies
 } from '@anyapp/shared'
-import type { AgentStatus, ContextUsage, PermissionMode, StreamChunk, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
+import type { AgentStatus, ContextReport, PermissionMode, StreamChunk, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
 import {
   DEFAULT_OLLAMA_BASE_URL,
   isOllamaReachable,
@@ -46,6 +49,7 @@ import {
 } from './agent/ollama'
 import { summarizeSessionTitle } from './agent/session-title'
 import {
+  deriveContextBudget,
   MAX_CONTEXT_WINDOW,
   MIN_CONTEXT_WINDOW,
   type ContextBudget
@@ -89,6 +93,46 @@ let currentPermissionMode: PermissionMode = 'default'
  * Pi owns the transcript, so there is no separate in-memory history to keep.
  */
 let agentHost: AgentHost | null = null
+
+/**
+ * The budget the live host was built with, kept after that host is gone.
+ *
+ * Deriving it again means asking Ollama, and `prepareModelForSession` warms the model
+ * to do it — tens of seconds, and the longest wait in the app. A context report is not
+ * worth paging a 20GB model into memory, so the last real answer is remembered and a
+ * conservative default stands in until there has been one.
+ */
+let lastBudget: ContextBudget | null = null
+
+/**
+ * The last report built from a live session.
+ *
+ * `disposeAgentHost` runs on an app switch, a session switch, and every skills, sources
+ * or config save. Without this the meter would drop back to the fixed floor several
+ * times a minute during ordinary use and look broken. Holding the last answer lets it
+ * say `as of last turn` instead of forgetting the conversation exists.
+ */
+let cachedReport: ContextReport | null = null
+
+/**
+ * Drop the remembered conversation.
+ *
+ * Called only where the conversation itself changes — an app switch, a cleared chat, a
+ * different session. A skills or sources save also disposes the host, but the
+ * conversation it was holding is still the one on screen, and forgetting it there is
+ * what would make the meter look broken.
+ */
+function forgetCachedReport(): void {
+  cachedReport = null
+}
+
+/**
+ * Whether a turn is in flight.
+ *
+ * Only `agent:compact` reads it. Compacting mid-run would summarize a conversation Pi
+ * is still appending to.
+ */
+let agentRunActive = false
 
 /** Maximum accepted prompt length, in characters. */
 const MAX_PROMPT_CHARS = 100000
@@ -955,6 +999,7 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
   } finally {
     sendStatus(null)
   }
+  lastBudget = budget
 
   // Sessions are materialized on creation, so there is always a transcript to
   // resume. Create one only if the app has never had a session at all.
@@ -1065,6 +1110,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   // Start a fresh agent session, discarding the current transcript
   ipcMain.handle('agent:clear-history', async (): Promise<void> => {
     await disposeAgentHost()
+    forgetCachedReport()
   })
 
   // Send message to agent
@@ -1109,7 +1155,12 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
         throw new Error('Prompt too long')
       }
 
-      await host.sendPrompt({ text: await withSkillDirectives(text), elements })
+      agentRunActive = true
+      try {
+        await host.sendPrompt({ text: await withSkillDirectives(text), elements })
+      } finally {
+        agentRunActive = false
+      }
     } catch (error) {
       const err = error as Error
       onStream({ type: 'error', error: err.message })
@@ -1126,12 +1177,66 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     await agentHost?.abort()
   })
 
-  // Report how full the context window is, for a chat panel that has just mounted
-  ipcMain.handle('agent:get-context-usage', async (): Promise<ContextUsage | null> => {
-    // Null covers three cases the renderer treats alike: no session yet, a model
-    // whose window Pi does not know, and the gap right after a compaction where Pi
-    // reports null tokens. There is nothing honest to show in any of them.
-    return agentHost?.getContextUsage() ?? null
+  // What the context window holds, attributed to blocks the user can act on
+  ipcMain.handle('agent:get-context-report', async (): Promise<ContextReport | null> => {
+    const app = await getActiveApp()
+    if (!app) return null
+
+    // Deliberately not `ensureAgentHost`. Building a host warms the model, and this
+    // handler runs whenever the chat panel mounts — including on the panel switch the
+    // user made precisely because they did not want to wait for the agent.
+    //
+    // The app id is checked too, not just the host's existence. Every site that changes
+    // which app is active disposes the host first, so today this can only match or be
+    // null — but that invariant is held by convention across ten call sites, and one
+    // (`apps:delete`) already clears `activeAppId` without disposing. A report read off
+    // a host bound to another app would answer with that app's conversation.
+    if (agentHost && agentHost.appId === app.id) {
+      const report = await agentHost.getContextReport()
+      cachedReport = report
+      return report
+    }
+
+    const config = getConfig()
+    const budget = lastBudget ?? deriveContextBudget({ userOverride: config.contextWindow })
+
+    const floor = await buildContextReport({
+      app,
+      budget,
+      toolNames: resolveToolNames({
+        profile: config.toolProfile,
+        contextWindow: budget.window
+      }),
+      builtinToolNames: PI_BUILTIN_TOOL_NAMES,
+      mcpSources: sourceManager.getConnectedSources().filter((source) => source.connected)
+    })
+
+    // A remembered conversation is still the best answer available, but its fixed half
+    // is stale by exactly the change that disposed the host — a skill toggled off, a
+    // source disconnected. So the fixed blocks are taken fresh and only the
+    // conversation is carried over, and the state says the number is not current.
+    if (!cachedReport) return floor
+
+    const carried = cachedReport.blocks.filter((block) => block.group === 'conversation')
+    if (carried.length === 0) return floor
+
+    const blocks = [...floor.blocks, ...carried]
+
+    return {
+      ...floor,
+      state: 'stale',
+      measured: cachedReport.measured,
+      estimated: blocks.reduce((sum, block) => sum + block.tokens, 0),
+      blocks,
+      hotspots: cachedReport.hotspots
+    }
+  })
+
+  // Summarize the conversation now rather than at the threshold
+  ipcMain.handle('agent:compact', async (): Promise<void> => {
+    if (!agentHost) throw new Error('No conversation to compact yet.')
+    if (agentRunActive) throw new Error('Wait for the current turn to finish.')
+    await agentHost.compact()
   })
 
   // Handle tool approval response from renderer
@@ -1304,6 +1409,11 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     
     // Switching app discards the agent session; the next message builds a new one.
     await disposeAgentHost()
+    // Only when the app actually changes. Re-selecting the open app is an ordinary
+    // navigation — the Apps page is how a user gets back to a chat — and forgetting the
+    // conversation there would drop the context meter to its fixed floor for a trip the
+    // user made to return to the very conversation it describes.
+    if (id !== activeAppId) forgetCachedReport()
     activeAppId = id
     activeSessionId = null
     
@@ -1530,6 +1640,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     }
     await chatHistoryManager.clearHistory(activeAppId, activeSessionId)
     await disposeAgentHost()
+    forgetCachedReport()
   })
 
   // Chat session IPC handlers
@@ -1546,6 +1657,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     // Switch to the new session
     activeSessionId = session.id
     await disposeAgentHost()
+    forgetCachedReport()
 
     // Notify renderer
     sendSessionChanged(mainWindow, session.id, [])
@@ -1568,6 +1680,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       const newActiveId = await chatHistoryManager.getActiveSessionId(activeAppId)
       activeSessionId = newActiveId
       await disposeAgentHost()
+      forgetCachedReport()
 
       const history = newActiveId
         ? await chatHistoryManager.loadHistory(activeAppId, newActiveId)
@@ -1600,6 +1713,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     await chatHistoryManager.setActiveSession(activeAppId, sessionId)
     activeSessionId = sessionId
     await disposeAgentHost()
+    forgetCachedReport()
 
     // Load history for the new session
     const history = await chatHistoryManager.loadHistory(activeAppId, sessionId)
@@ -1768,7 +1882,8 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('agent:clear-history')
   ipcMain.removeHandler('agent:message')
   ipcMain.removeHandler('agent:abort')
-  ipcMain.removeHandler('agent:get-context-usage')
+  ipcMain.removeHandler('agent:get-context-report')
+  ipcMain.removeHandler('agent:compact')
   ipcMain.removeHandler('models:list')
   ipcMain.removeHandler('models:check-connection')
   ipcMain.removeAllListeners('agent:tool-response')

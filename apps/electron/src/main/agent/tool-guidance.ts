@@ -41,6 +41,10 @@ interface GuidanceSource {
   promptSnippet?: string
   /** Usage rules for the tool, as Pi words them. */
   promptGuidelines?: string[]
+  /** The tool's own description, as sent to the model. */
+  description?: string
+  /** The JSON schema for the tool's arguments, as sent to the model. */
+  parameters?: unknown
 }
 
 /**
@@ -52,10 +56,15 @@ interface GuidanceSource {
  *
  * `powershell` is deliberately absent: anyapp never enables it.
  *
+ * Exported for `context-report.ts`, which sizes the same definitions' schemas. Building
+ * them is the only way to know what a tool costs without a live session, and reading
+ * them back off Pi is the same reason this module exists: a number anyapp maintained by
+ * hand would drift the first time Pi revised a description.
+ *
  * @param rootPath - The sub-app root the session operates on
  * @returns Guidance sources by tool name
  */
-function builtinDefinitions(rootPath: string): Record<string, GuidanceSource> {
+export function builtinDefinitions(rootPath: string): Record<string, GuidanceSource> {
   return {
     read: createReadToolDefinition(rootPath),
     write: createWriteToolDefinition(rootPath),

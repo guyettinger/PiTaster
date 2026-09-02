@@ -21,6 +21,7 @@ import {
 } from '@earendil-works/pi-coding-agent'
 import type {
   ConnectedSource,
+  ContextReport,
   ContextUsage,
   ElementContext,
   PermissionMode,
@@ -38,6 +39,7 @@ import {
   type ContextBudget
 } from './context-budget'
 import { confineContextFiles } from './context-files'
+import { buildContextReport } from './context-report'
 import { trimContext } from './context-trim'
 import { createEditRepair } from './edit-repair'
 import { createFileTools, FILE_TOOL_NAMES } from './file-tools'
@@ -93,7 +95,7 @@ export const AGENT_TOOL_NAMES = [
  * `promptGuidelines` contribution to recover — anyapp's custom tools carry their
  * guidance in their own descriptions.
  */
-const PI_BUILTIN_TOOL_NAMES = ['read', 'write', 'edit', 'bash', 'grep', 'find', 'ls']
+export const PI_BUILTIN_TOOL_NAMES = ['read', 'write', 'edit', 'bash', 'grep', 'find', 'ls']
 
 /**
  * Tools whose successful result carries the compiler's opinion of what they wrote.
@@ -238,14 +240,22 @@ export interface AgentHost {
   /** The sub-app this host is bound to. */
   appId: string
   /**
-   * How full the context window is right now, or null when it is not yet known.
+   * What the window is holding, attributed to blocks the user can act on.
    *
-   * Usage also rides the `complete` chunk, which is the only moment it changes. This
-   * is the pull for everything else: the renderer unmounts the chat panel whenever
-   * the user looks at anything else, and without a way to ask, the meter stays empty
-   * until the next turn happens to finish while the panel is open.
+   * This replaced a `getContextUsage` that returned Pi's number alone. It carries that
+   * same measured total, plus the fixed cost of the prompt, the tool schemas and the
+   * skill manifest — none of which needs a session to compute. That fixed half is why
+   * the meter can show a number before the first turn of a session, which the number
+   * it replaced never could. See `agent/context-report.ts`.
    */
-  getContextUsage: () => ContextUsage | null
+  getContextReport: () => Promise<ContextReport>
+  /**
+   * Summarize the conversation now, rather than waiting for the threshold.
+   *
+   * Pi emits its own `compaction_start` / `compaction_end` events, which `events.ts`
+   * already maps to status chunks, so the UI narrates this without further wiring.
+   */
+  compact: () => Promise<void>
   /** Release the session and its listeners. */
   dispose: () => void
 }
@@ -780,7 +790,20 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
       await session.abort()
     },
 
-    getContextUsage: () => readContextUsage(session).contextUsage ?? null,
+    getContextReport: () =>
+      buildContextReport({
+        app,
+        budget,
+        toolNames,
+        builtinToolNames: PI_BUILTIN_TOOL_NAMES,
+        mcpSources,
+        messages: session.state.messages,
+        measured: readContextUsage(session).contextUsage?.used ?? null
+      }),
+
+    compact: async () => {
+      await session.compact()
+    },
 
     dispose: () => {
       stall.clear()
