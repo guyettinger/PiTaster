@@ -1,19 +1,16 @@
 /**
  * Shell navigation state.
  *
- * The shell distinguishes two kinds of nav, because they behave differently and
- * the old rail's habit of drawing them identically is what made it unreadable:
+ * There is only one kind of navigation left. Docked panels used to be the other
+ * kind — a fixed right rail and a bottom drawer, toggled from the app's column —
+ * and they are now panels in the workspace's dock, arranged by dragging rather
+ * than named by a type. What remains is the set of places the nav rail can take
+ * you.
  *
- * - A **main panel** is a destination. Picking one replaces the view.
- * - A **docked panel** is an inspector on the workspace. Toggling one adds to
- *   the view without leaving it.
+ * `workspace` is the focused app itself. The others exist without an app, which
+ * is why none of them is ever disabled; `workspace` with no app focused shows
+ * the empty state rather than being unreachable.
  */
 
-/** A destination in the global nav rail. `chat` is the focused app's workspace. */
-export type MainPanel = 'apps' | 'chat' | 'code' | 'skills' | 'help' | 'settings'
-
-/** A panel docked to the right of the workspace. */
-export type RightPanel = 'versions' | null
-
-/** A panel docked below the workspace. */
-export type BottomPanel = 'terminal' | 'preview' | null
+/** A destination in the global nav rail. */
+export type Destination = 'apps' | 'workspace' | 'skills' | 'help' | 'settings'

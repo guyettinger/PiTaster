@@ -741,6 +741,32 @@ const electronAPI = {
     ipcRenderer.removeAllListeners('skills:changed')
   },
 
+  // Workspace layout methods
+
+  /**
+   * Read a sub-app's saved dock layout.
+   * @param appId - The app whose layout to read
+   * @param version - The layout schema version the renderer understands
+   * @returns dockview's serialized tree, or null when there is nothing usable
+   */
+  getWorkspaceLayout: (appId: string, version: number): Promise<unknown | null> => {
+    return ipcRenderer.invoke('layout:get', appId, version)
+  },
+
+  /**
+   * Save a sub-app's dock layout.
+   * @param appId - The app whose layout to save
+   * @param version - The layout schema version being written
+   * @param layout - dockview's serialized tree
+   */
+  saveWorkspaceLayout: (
+    appId: string,
+    version: number,
+    layout: unknown
+  ): Promise<void> => {
+    return ipcRenderer.invoke('layout:save', appId, version, layout)
+  },
+
   // Config methods
 
   /**

@@ -412,6 +412,12 @@ interface ElectronAPI {
   /** Remove the skills-changed listener. */
   offSkillsChanged: () => void
 
+  // Workspace layout methods
+  /** Read a sub-app's saved dock layout, or null when there is nothing usable. */
+  getWorkspaceLayout: (appId: string, version: number) => Promise<unknown | null>
+  /** Save a sub-app's dock layout. */
+  saveWorkspaceLayout: (appId: string, version: number, layout: unknown) => Promise<void>
+
   // Config methods
   /** Get the application configuration. */
   getConfig: () => Promise<AppConfig>

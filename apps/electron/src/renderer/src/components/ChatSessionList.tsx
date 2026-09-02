@@ -29,7 +29,7 @@ interface SessionGroup {
 }
 
 /**
- * The focused app's chats, rendered inside `AppContextColumn`.
+ * The focused app's chats, rendered as a panel in the workspace dock.
  *
  * The column owns the frame — width, background, and borders — so this
  * component contributes only its own content and scroll area.

@@ -229,40 +229,81 @@ const COMMANDS = {
     await new Promise((r) => setTimeout(r, 2500))
   },
 
-  /** Switch the main destination: Apps | Skills | Help | Settings. */
+  /** Switch the main destination: Apps | Workspace | Skills | Help | Settings. */
   async nav(dest) {
     need()
     await COMMANDS['click-text'](dest)
     await new Promise((r) => setTimeout(r, 1500))
   },
 
-  /** Toggle a docked panel: History | Terminal | Preview. */
+  /**
+   * Activate a dock tab by its label.
+   *
+   * dockview's tabs respond to `mousedown`, not `click` — a plain `.click()`
+   * resolves and changes nothing, which looks exactly like a missing tab.
+   */
+  async tab(name) {
+    need()
+    const r = await page.evaluate((label) => {
+      const tab = [...document.querySelectorAll('.dv-tab')].find((t) =>
+        t.textContent.trim().startsWith(label)
+      )
+      if (!tab) return 'NOT_FOUND'
+      const box = tab.getBoundingClientRect()
+      const init = {
+        bubbles: true,
+        cancelable: true,
+        clientX: box.x + box.width / 2,
+        clientY: box.y + box.height / 2,
+        button: 0
+      }
+      tab.dispatchEvent(new PointerEvent('pointerdown', init))
+      tab.dispatchEvent(new MouseEvent('mousedown', init))
+      tab.dispatchEvent(new PointerEvent('pointerup', init))
+      tab.dispatchEvent(new MouseEvent('mouseup', init))
+      tab.dispatchEvent(new MouseEvent('click', init))
+      return 'OK'
+    }, name)
+    console.log('tab', JSON.stringify(name), '->', r)
+    await new Promise((r) => setTimeout(r, 1200))
+  },
+
+  /** Open or close a dock panel through the Panels menu. */
   async panel(which) {
     need()
+    await COMMANDS['click-text']('Panels')
+    await new Promise((r) => setTimeout(r, 400))
     await COMMANDS['click-text'](which)
-    await new Promise((r) => setTimeout(r, 2000))
+    await new Promise((r) => setTimeout(r, 1500))
+  },
+
+  /** Rebuild the default layout through the Panels menu. */
+  async 'reset-layout'() {
+    need()
+    await COMMANDS['click-text']('Panels')
+    await new Promise((r) => setTimeout(r, 400))
+    await COMMANDS['click-text']('Reset layout')
+    await new Promise((r) => setTimeout(r, 1500))
   },
 
   /**
-   * Resize the bottom dock. The handle is drag-only — there is no keyboard or
-   * click affordance — so synthesise the drag against its mousemove listener.
+   * Dump the dock: every tab, which are active, and each group's size.
+   *
+   * Panel content is *not* inside `.dv-groupview` — every panel is rendered
+   * with dockview's `always` renderer, so its element lives in a positioned
+   * `.dv-render-overlay` instead. Query panel content under that.
    */
-  async 'panel-height'(px) {
+  async panels() {
     need()
-    const target = Number(px) || 450
-    const r = await page.evaluate((t) => {
-      const s = document.querySelector('[aria-label="Resize panel"]')
-      if (!s) return 'NOT_FOUND (is a bottom panel open?)'
-      const rect = s.getBoundingClientRect()
-      const y = rect.top + 3
-      const current = s.parentElement.getBoundingClientRect().height
-      s.dispatchEvent(new MouseEvent('mousedown', { clientY: y, bubbles: true }))
-      document.dispatchEvent(new MouseEvent('mousemove', { clientY: y - (t - current), bubbles: true }))
-      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
-      return 'OK'
-    }, target)
-    console.log('panel-height', target, '->', r)
-    await new Promise((r) => setTimeout(r, 800))
+    const state = await page.evaluate(() => ({
+      tabs: [...document.querySelectorAll('.dv-tab')].map((t) => t.textContent.trim()),
+      active: [...document.querySelectorAll('.dv-active-tab')].map((t) => t.textContent.trim()),
+      groups: [...document.querySelectorAll('.dv-groupview')].map((g) => {
+        const box = g.getBoundingClientRect()
+        return { w: Math.round(box.width), h: Math.round(box.height) }
+      })
+    }))
+    console.log(JSON.stringify(state, null, 2))
   },
 
   async 'new-chat'() {

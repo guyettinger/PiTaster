@@ -5,13 +5,16 @@ agent that never leaves your machine.**
 
 anyapp is an Electron app with a coding agent living inside it. Describe what you
 want in the chat panel; the agent writes real source files to disk, runs the dev
-server, and shows you the result in a preview pane docked under the conversation.
-Every file it writes becomes a git commit, so anything it does can be undone.
+server, and shows you the result running in a preview panel. Every file it writes
+becomes a git commit, so anything it does can be undone.
+
+The workspace is a dock: chats, files, history, a terminal and a live preview,
+dragged into whatever splits and tabs suit the work, and remembered per app.
 
 The agent is [Pi](https://pi.dev/) running on [Ollama](https://ollama.com). No
 API key, no account, and no inference request that leaves your machine.
 
-![The anyapp workspace: the agent's transcript above, the app it is editing running live below](docs/images/workspace.png)
+![The anyapp workspace: chats and history docked to the left, the agent's transcript above, and the app it is editing running live below](docs/images/workspace.png)
 
 ## Try it
 

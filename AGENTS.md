@@ -391,6 +391,80 @@ retry count would give up the cheap retries that are the point of the policy, so
 `agent/retry-budget.ts` bounds the wall clock instead: fast failures never come
 near it, a hung request exhausts it on the first retry.
 
+## The workspace is a dock, and two things hold it up
+
+The shell used to be three hard-coded regions: one main slot showing one of six views, a
+`w-72` History rail nobody could resize, and a drawer where Terminal and Preview took turns.
+None of it survived a restart. It is now a **dockview** dock — panels dragged into splits and
+tabs, remembered per sub-app — and `App.tsx` holds no panel state at all.
+
+**`renderer: 'always'` is not a preference, it is the reason this library was chosen.** Every
+panel is added with it, and dockview then keeps that panel's element attached to its own
+`.dv-render-overlay` — absolutely positioned, `contain: layout paint` — and *repositions* the
+overlay over whichever group owns the panel. Docking never re-parents the DOM. Three things
+depend on that and would break silently without it:
+
+- `PreviewPanel` hosts an Electron `<webview>`. Re-parenting one destroys and recreates its
+  `WebContents`, so under any library that re-renders children into a new parent the running
+  app reloads on every drag and the injected `window.__anyappInspector` is lost.
+- `Chat` keeps its transcript, `isStreaming` and `pendingApproval` in component-local state and
+  auto-scrolls off `scrollHeight`. Hidden panels are hidden with `visibility`, not
+  `display: none`, so the box survives and auto-scroll keeps working in a background tab.
+- `CodeViewer` disposes its Monaco editor *and* model on unmount, deliberately. Staying mounted
+  is what keeps the undo stack, folds and scroll position.
+
+**The dock is never unmounted while an app is focused.** The nav rail's other destinations —
+Apps, Skills, Help, Settings — render as an opaque overlay *over* the workspace rather than in
+place of it. Swapping it out instead would destroy the webview and drop whatever the transcript
+had in flight, which is the bug the dock exists to fix: `Chat.tsx` tears down its `agent:stream`
+subscription on unmount, and `ipc.ts` still carries a workaround that counts skill loads in main
+because navigating to Skills used to stop the renderer receiving chunks mid-turn. That
+workaround is now belt-and-braces rather than load-bearing. The dock wrapper carries `isolate`
+so dockview's internal z-indexes stay under the overlay.
+
+**The dock's box must `clip`, and `overflow-hidden` is not good enough.** A panel dockview has
+not positioned yet keeps `.dv-render-overlay`'s default 100%/100% at the end of the flow, so an
+unclipped wrapper counted the overlays twice over: 1436px of content in a 718px box. Nothing
+draws a scrollbar for that, and the only symptom was `Chat`'s `scrollIntoView` silently
+scrolling the *shell* on load — the workspace bar slid off the top of the window and the dock
+under-filled it by exactly the scroll offset. Switching the wrapper to `overflow-hidden` only
+moved the scroll from `main` into the wrapper, because a hidden box is still a scroll container.
+Both are `overflow-clip` now, which cannot scroll at all. The shell's regions never scroll;
+panels scroll inside themselves. This only reproduces at the window's launch size — any resize
+re-lays out the grid and hides it — so a fix verified after a `size` command is not verified.
+
+**Closing the last panel has to leave a way back.** `EmptyDock` is dockview's `watermarkComponent`:
+it names the Panels menu and carries a Restore default layout button. Without it an emptied dock
+is a black rectangle, and a dock you can empty into a dead end is one people are right not to
+rearrange.
+
+**`params` are serialized into the saved layout**, so nothing that is not a plain, stable value
+can travel in them — the only one in the app is a Code panel's `path`. Everything else reaches
+panels through `WorkspaceContext`, whose value must stay memoized: panels render inside
+dockview's tree, not as children of whoever owns the state, so an object rebuilt each render
+re-renders all of them including the transcript.
+
+**Layouts are per app and deliberately not in the app.** `.anyapp-meta.json` is the obvious home
+and the wrong one — it is absent from `DEFAULT_GITIGNORE` and `initGitRepo` adds every file, so
+it is tracked and committed. In a repo where every agent write auto-commits, a layout rewritten
+on each drag would mean a permanently dirty tree, commit noise, and a rollback of the *code*
+also rolling back the *layout*. So `main/layout-store.ts` keeps them in `~/.anyapp/layouts.json`
+beside `config.json`, keyed by app id, size-capped because the renderer is untrusted, and pruned
+of dead apps whenever anything is written. A layout that is missing, corrupt, or written against
+a different `LAYOUT_VERSION` falls back to the default — nobody can hand-repair that file, and a
+dock that fails to build leaves the app with no UI at all.
+
+**Every panel but Code is a singleton, and that is a constraint rather than a taste.** Each
+`off*` in the preload bridge is `removeAllListeners(channel)`, so two panels subscribed to one
+channel would tear down each other's stream on unmount. Code duplicates safely because it
+subscribes to nothing — it fetches. Making any other panel duplicable means fixing the bridge
+first. `catalog.ts` records which is which, and is kept free of React so the tests, which have no
+DOM, can import it without pulling Monaco in.
+
+One rough edge worth knowing: closing a panel makes dockview redistribute the freed space evenly
+across the remaining columns, so a 260px sidebar can jump. That is `gridview.removeView`
+defaulting to distribute, with no option on the public API. Drag it back, or use Reset layout.
+
 ## Skills
 
 There are three populations, and they used to fail in complementary ways.
