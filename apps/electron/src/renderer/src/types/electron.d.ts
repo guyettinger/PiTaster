@@ -29,6 +29,22 @@ interface StreamChunk {
   status?: AgentStatus
   /** Context consumed after this turn, when Pi has reported usage. */
   contextUsage?: ContextUsage
+  /** What a write actually changed (for 'tool_end' on a file-modifying tool). */
+  patches?: FilePatch[]
+}
+
+/** What one write changed, as a diff the UI can render. */
+interface FilePatch {
+  /** Path to the changed file, relative to the app root. */
+  path: string
+  /** The change as a unified diff, ready to render. */
+  patch: string
+  /** Lines added. */
+  added: number
+  /** Lines removed. */
+  removed: number
+  /** Whether the diff was cut short to keep it renderable. */
+  truncated: boolean
 }
 
 /** What the agent is doing when it is not producing tokens. */
@@ -56,8 +72,46 @@ interface ToolApprovalRequest {
   id: string
   tool: string
   input: Record<string, unknown>
+  /** What the write would change, where that can be known exactly. */
+  patches?: FilePatch[]
   /** Advisory note about what the call does, e.g. that it reaches the network. */
   notice?: string
+}
+
+/** One entry in a sub-app's file tree. */
+export interface FileNode {
+  /** Path relative to the app root, with forward slashes. */
+  path: string
+  /** The file or directory name alone. */
+  name: string
+  /** What it is. */
+  kind: 'file' | 'directory'
+  /** Children, for a directory. */
+  children?: FileNode[]
+}
+
+/** One compiler error, as the viewer draws it. */
+export interface FileDiagnostic {
+  /** Path relative to the app root. */
+  path: string
+  /** 1-indexed line. */
+  line: number
+  /** 1-indexed column. */
+  column: number
+  /** The TypeScript error number. */
+  code: number
+  /** The flattened message. */
+  message: string
+  /** How serious the compiler considers it. */
+  category: 'error' | 'warning'
+}
+
+/** A file's contents, as the viewer needs them. */
+export interface FileContents {
+  /** Path relative to the app root. */
+  path: string
+  /** The file's text. */
+  text: string
 }
 
 /** Tool approval response from renderer. */
@@ -268,6 +322,13 @@ interface ElectronAPI {
   rollback: (oid: string, appPath?: string) => Promise<void>
   /** Get diff between two commits. */
   getDiff: (from: string, to: string, appPath?: string) => Promise<FileDiff[]>
+
+  /** List the sub-app's source files as a tree. */
+  getFileTree: (appPath?: string) => Promise<FileNode[]>
+  /** Read one file from inside the sub-app. */
+  readFile: (filePath: string, appPath?: string) => Promise<FileContents>
+  /** Compiler errors for one file, from the agent's own language service. */
+  getFileDiagnostics: (filePath: string, appPath?: string) => Promise<FileDiagnostic[]>
 
   // Sources methods
   /** Get all connected sources with their state. */

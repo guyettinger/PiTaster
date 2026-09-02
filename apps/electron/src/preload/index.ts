@@ -25,6 +25,22 @@ interface StreamChunk {
   status?: AgentStatus
   /** Context consumed after this turn, when Pi has reported usage. */
   contextUsage?: ContextUsage
+  /** What a write actually changed (for 'tool_end' on a file-modifying tool). */
+  patches?: FilePatch[]
+}
+
+/** What one write changed, as a diff the UI can render. */
+interface FilePatch {
+  /** Path to the changed file, relative to the app root. */
+  path: string
+  /** The change as a unified diff, ready to render. */
+  patch: string
+  /** Lines added. */
+  added: number
+  /** Lines removed. */
+  removed: number
+  /** Whether the diff was cut short to keep it renderable. */
+  truncated: boolean
 }
 
 /** What the agent is doing when it is not producing tokens. */
@@ -52,8 +68,47 @@ interface ToolApprovalRequest {
   id: string
   tool: string
   input: Record<string, unknown>
+  /** What the write would change, where that can be known exactly. */
+  patches?: FilePatch[]
   /** Advisory note about what the call does, e.g. that it reaches the network. */
   notice?: string
+}
+
+
+/** One entry in a sub-app's file tree. */
+interface FileNode {
+  /** Path relative to the app root, with forward slashes. */
+  path: string
+  /** The file or directory name alone. */
+  name: string
+  /** What it is. */
+  kind: 'file' | 'directory'
+  /** Children, for a directory. */
+  children?: FileNode[]
+}
+
+/** One compiler error, as the viewer draws it. */
+interface FileDiagnostic {
+  /** Path relative to the app root. */
+  path: string
+  /** 1-indexed line. */
+  line: number
+  /** 1-indexed column. */
+  column: number
+  /** The TypeScript error number. */
+  code: number
+  /** The flattened message. */
+  message: string
+  /** How serious the compiler considers it. */
+  category: 'error' | 'warning'
+}
+
+/** A file's contents, as the viewer needs them. */
+interface FileContents {
+  /** Path relative to the app root. */
+  path: string
+  /** The file's text. */
+  text: string
 }
 
 /** Tool approval response from renderer. */
@@ -490,6 +545,39 @@ const electronAPI = {
    */
   getDiff: (from: string, to: string, appPath?: string): Promise<FileDiff[]> => {
     return ipcRenderer.invoke('version:diff', from, to, appPath)
+  },
+
+  // File reading methods
+
+  /**
+   * List the sub-app's source files as a tree.
+   *
+   * Confined in the main process by the same `isWithinRoot` the agent's permission gate
+   * uses, so this can never show a file the agent could not reach.
+   *
+   * @param appPath - Optional app path (defaults to active app)
+   */
+  getFileTree: (appPath?: string): Promise<FileNode[]> => {
+    return ipcRenderer.invoke('files:tree', appPath)
+  },
+
+  /**
+   * Read one file from inside the sub-app.
+   * @param filePath - Path relative to the app root
+   * @param appPath - Optional app path (defaults to active app)
+   */
+  readFile: (filePath: string, appPath?: string): Promise<FileContents> => {
+    return ipcRenderer.invoke('files:read', filePath, appPath)
+  },
+
+  /**
+   * Compiler errors for one file, from the same language service that checks the
+   * agent's writes.
+   * @param filePath - Path relative to the app root
+   * @param appPath - Optional app path (defaults to active app)
+   */
+  getFileDiagnostics: (filePath: string, appPath?: string): Promise<FileDiagnostic[]> => {
+    return ipcRenderer.invoke('files:diagnostics', filePath, appPath)
   },
 
   // Sources methods

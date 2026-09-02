@@ -2,6 +2,8 @@
  * Permission-related type definitions for anyapp.
  */
 
+import type { FilePatch } from './agent.js'
+
 /**
  * Permission modes for tool execution.
  *
@@ -32,6 +34,14 @@ export interface ToolApprovalRequest {
   tool: string
   /** Tool input parameters. */
   input: Record<string, unknown>
+  /**
+   * What the write would change, where that can be known exactly.
+   *
+   * Absent for `bash`, for an MCP tool, and for an `edit` whose text anyapp could not
+   * match — see `previewPatch`. A preview shown here is approved on, so it is either
+   * accurate or missing; there is no "probably".
+   */
+  patches?: FilePatch[]
   /** Suggested action. */
   suggestion?: 'allow' | 'deny'
   /**

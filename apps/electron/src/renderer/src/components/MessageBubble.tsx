@@ -6,7 +6,7 @@ import { ToolBubble } from './ToolBubble'
 import { TextBubble } from './TextBubble'
 import { ApprovalRecord } from './ApprovalRecord'
 import { ElementContextBubble } from './ElementContextBubble'
-import type { ElementContext } from '@anyapp/core'
+import type { ElementContext, FilePatch } from '@anyapp/core'
 
 /**
  * Tool block within a message.
@@ -20,6 +20,8 @@ interface ToolBlock {
   input?: Record<string, unknown>
   output?: string
   error?: string
+  /** What the write changed, when the tool changed a file. */
+  patches?: FilePatch[]
 }
 
 /**
@@ -124,6 +126,7 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
                   input={block.input}
                   output={block.output}
                   error={block.error}
+                  patches={block.patches}
                 />
               )
             case 'approval':

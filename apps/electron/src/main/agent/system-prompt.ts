@@ -117,6 +117,40 @@ const EDITING_RULES = `
 - **Use \`write\` for a new file or a full rewrite**, not for a targeted change.`
 
 /**
+ * How to use the compiler, in the prompt rather than on the tool definitions.
+ *
+ * `code_intel` and `refactor` carry no `promptGuidelines`, because `systemPromptOverride`
+ * drops every tool's contributions — the same gap `tool-guidance.ts` exists to close for
+ * Pi's built-ins. Their `description` fields say what each operation does, which does
+ * reach the model through the function-calling payload; what a description cannot say is
+ * *when to reach for one tool instead of another*, and that is what this is for.
+ *
+ * The loop is the point. A model that writes, reads the errors that come back, and fixes
+ * them is doing what a human does with a type checker open. Nothing else in the prompt
+ * tells it that those errors will arrive unasked, so it has no reason to expect them.
+ */
+const CODE_INTELLIGENCE_RULES = `
+## Using the Compiler
+
+The TypeScript compiler is watching this app. Use it instead of guessing.
+
+- **Errors come back on their own.** After every successful \`write\`, \`edit\` or
+  \`replace_lines\`, the compiler errors in that file are appended to the result. Read
+  them and fix them before moving on — you will not get another chance to notice.
+- **\`refactor\` with \`apply_fix\` takes a line number from those errors.** Where the
+  compiler knows the fix — a missing import, a misspelled property — this applies it.
+  Try it before editing by hand.
+- **Rename with \`refactor\`, never with \`edit\`.** A rename touching eight files is
+  eight chances for an exact-text edit to fail on whitespace. \`refactor\` changes every
+  use in one call, from the compiler's own list, and commits them together.
+- **Ask \`code_intel\` about identifiers, not \`grep\`.** \`grep\` matches text, so it
+  finds the name in comments, strings, and unrelated symbols that share it.
+  \`code_intel\` resolves what the name actually refers to.
+- **Outline a long file before reading it.** \`code_intel\` with \`outline\` lists every
+  declaration and its line range for a fraction of the file's size; \`read_symbol\` then
+  returns just the part you need. Those line ranges are what \`replace_lines\` takes.`
+
+/**
  * Parameters for {@link getSystemPrompt}.
  */
 export interface SystemPromptParams {
@@ -205,6 +239,7 @@ report it to the user instead.
 2. **Look it up**: fetch the official docs with \`web_fetch\` rather than guessing at an unfamiliar API
 3. **Add dependencies properly**: edit package.json, then run \`install_deps\`
 ${renderToolGuidance({ rootPath: app.path, toolNames })}${EDITING_RULES}
+${CODE_INTELLIGENCE_RULES}
 
 For a task of more than a few steps, keep a \`NOTES.md\` in the app root with the goal
 and the remaining steps, and update it as you go. Your conversation gets summarized

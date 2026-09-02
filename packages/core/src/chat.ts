@@ -5,6 +5,8 @@
  * as JSON files in each app's .chat-history/ directory.
  */
 
+import type { FilePatch } from './agent.js'
+
 /**
  * Serialized text content block.
  */
@@ -36,6 +38,14 @@ export interface SerializedToolBlock {
   status: 'pending' | 'running' | 'complete' | 'error'
   /** Error message if status is 'error'. */
   error?: string
+  /**
+   * What the write changed, when this call changed a file.
+   *
+   * Persisted because it is what the tool bubble draws. Without it a diff would be
+   * visible exactly once — until the user switched chats and came back to a transcript
+   * that had forgotten what the agent did.
+   */
+  patches?: FilePatch[]
 }
 
 /**

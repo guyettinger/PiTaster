@@ -50,6 +50,25 @@ export type AgentStatusKind =
   | 'settled'
 
 /**
+ * What one write changed, as a diff the UI can render.
+ *
+ * Travels on the tool result's `details`, which never reaches the model — so showing
+ * the user what the agent did costs nothing in the context window.
+ */
+export interface FilePatch {
+  /** Path to the changed file, relative to the app root. */
+  path: string
+  /** The change as a unified diff, ready to render. */
+  patch: string
+  /** Lines added. */
+  added: number
+  /** Lines removed. */
+  removed: number
+  /** Whether the diff was cut short to keep it renderable. */
+  truncated: boolean
+}
+
+/**
  * A single streamed update from the agent to the renderer.
  *
  * This is the canonical definition. The preload bridge and the renderer's
@@ -82,6 +101,13 @@ export interface StreamChunk {
   status?: AgentStatus
   /** Context consumed after this turn, when Pi has reported usage. */
   contextUsage?: ContextUsage
+  /**
+   * What a write actually changed (for 'tool_end' on a file-modifying tool).
+   *
+   * Carried out of the tool's `details`, which never reaches the model — so a diff in
+   * the transcript costs nothing in the context window.
+   */
+  patches?: FilePatch[]
 }
 
 /**

@@ -18,6 +18,7 @@ import type {
   ChatSession,
   ChatSessionManifest,
   CreateChatSessionParams,
+  FilePatch,
   PersistedMessage,
   SerializedContentBlock
 } from '@anyapp/core'
@@ -449,6 +450,33 @@ function extractText(content: string | PiContentBlock[]): string {
     .join('')
 }
 
+
+/**
+ * Lift the diffs a write produced out of a persisted tool result's `details`.
+ *
+ * `details` is whatever the tool chose to put there, and a transcript on disk may have
+ * been written by an older version of anyapp — so every field is checked rather than
+ * asserted. A malformed entry costs a diff, never a failed history load.
+ *
+ * @param details - The tool result's `details`, in whatever shape it was persisted
+ * @returns The patches, or an empty array
+ */
+function readPatches(details: unknown): FilePatch[] {
+  const candidates = (details as { patches?: unknown } | null | undefined)?.patches
+  if (!Array.isArray(candidates)) return []
+
+  return candidates.filter((entry): entry is FilePatch => {
+    const patch = entry as Partial<FilePatch> | null
+    return (
+      !!patch &&
+      typeof patch.path === 'string' &&
+      typeof patch.patch === 'string' &&
+      typeof patch.added === 'number' &&
+      typeof patch.removed === 'number'
+    )
+  })
+}
+
 /**
  * Convert a Pi transcript into renderer-facing messages.
  *
@@ -479,6 +507,14 @@ function toPersistedMessages(entries: PiMessageEntry[]): PersistedMessage[] {
           block.error = text
         } else {
           block.output = text
+          // The diff the tool put on its `details`, which Pi persists alongside the
+          // result. Reading it back is what lets a reloaded transcript still show what
+          // the agent changed, rather than only the session that watched it happen.
+          // Read off the message rather than a narrowed binding: `role` was destructured
+          // above, which does not narrow `entry.message` itself. `readPatches` takes
+          // `unknown` and validates, so nothing is asserted here that is not checked there.
+          const patches = readPatches((entry.message as { details?: unknown }).details)
+          if (patches.length > 0) block.patches = patches
         }
         pendingTools.delete(entry.message.toolCallId as string)
       }

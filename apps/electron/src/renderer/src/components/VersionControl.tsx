@@ -2,6 +2,19 @@ import { useState, useEffect, useCallback } from 'react'
 import { RefreshIcon, PlusIcon } from './icons'
 import { formatRelativeTime } from '../lib/relativeTime'
 import type { Branch, Commit, VersionState } from '../types/electron'
+import type { FilePatch } from '@anyapp/core'
+import { buildPatchFromDiff } from '../lib/commitPatches'
+import { PatchList } from './DiffView'
+
+/**
+ * Git's empty tree object, for diffing the root commit.
+ *
+ * The first commit in a repository has no parent, so there is nothing to diff it
+ * against. This hash is the well-known id of an empty tree and is present in every git
+ * repository, which makes "everything this commit added" expressible as an ordinary
+ * diff rather than a special case in the UI.
+ */
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 
 /**
  * Props for the VersionControl component.
@@ -32,6 +45,15 @@ export function VersionControl({
   const [state, setState] = useState<VersionState | null>(null)
   const [branches, setBranches] = useState<Branch[]>([])
   const [history, setHistory] = useState<Commit[]>([])
+  /**
+   * The commit whose contents are open, and what it changed.
+   *
+   * This panel could roll the app back to a commit but never show what that commit
+   * contained — `getDiff` has been plumbed through preload since it was written with no
+   * caller. Restoring a change you cannot see is the thing the diff fixes.
+   */
+  const [openCommit, setOpenCommit] = useState<string | null>(null)
+  const [commitPatches, setCommitPatches] = useState<FilePatch[] | null>(null)
   const [newBranchName, setNewBranchName] = useState('')
   const [isCreatingBranch, setIsCreatingBranch] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -91,6 +113,36 @@ export function VersionControl({
       setError(errorMessage)
     }
   }, [newBranchName, appPath, onBranchCreate, loadVersionData])
+
+  /**
+   * Open or close a commit's diff.
+   *
+   * A commit is diffed against its own first parent, which is what "what this commit
+   * changed" means. The root commit has no parent, so it is compared against git's empty
+   * tree — the diff is then the whole initial import, which is correct.
+   *
+   * @param commit - The commit to show
+   */
+  const toggleCommit = useCallback(
+    async (commit: Commit) => {
+      if (openCommit === commit.oid) {
+        setOpenCommit(null)
+        setCommitPatches(null)
+        return
+      }
+
+      setOpenCommit(commit.oid)
+      setCommitPatches(null)
+      try {
+        const parent = commit.parents[0] ?? EMPTY_TREE
+        const diffs = await window.electronAPI.getDiff(parent, commit.oid, appPath)
+        setCommitPatches(buildPatchFromDiff(diffs))
+      } catch {
+        setCommitPatches([])
+      }
+    },
+    [openCommit, appPath]
+  )
 
   const handleRollback = useCallback(
     async (commitOid: string) => {
@@ -232,12 +284,29 @@ export function VersionControl({
                       }`}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12.5px] text-bone" title={commit.message}>
-                        {commit.message}
-                      </p>
-                      <p className="font-mono text-[11px] text-ash">
-                        {commit.oid.slice(0, 7)} · {formatRelativeTime(commit.timestamp)}
-                      </p>
+                      <button
+                        onClick={() => toggleCommit(commit)}
+                        className="block w-full text-left"
+                        title={`Show what ${commit.oid.slice(0, 7)} changed`}
+                      >
+                        <p className="truncate text-[12.5px] text-bone" title={commit.message}>
+                          {commit.message}
+                        </p>
+                        <p className="font-mono text-[11px] text-ash">
+                          {commit.oid.slice(0, 7)} · {formatRelativeTime(commit.timestamp)}
+                        </p>
+                      </button>
+                      {openCommit === commit.oid && (
+                        <div className="mt-2">
+                          {commitPatches === null ? (
+                            <p className="text-[11px] text-ash">Loading the diff…</p>
+                          ) : commitPatches.length === 0 ? (
+                            <p className="text-[11px] text-ash">This commit changed nothing.</p>
+                          ) : (
+                            <PatchList patches={commitPatches} />
+                          )}
+                        </div>
+                      )}
                     </div>
                     {i > 0 && (
                       <button

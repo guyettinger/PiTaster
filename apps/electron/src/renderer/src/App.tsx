@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Chat } from './components/Chat'
 import { VersionControl } from './components/VersionControl'
+import { CodePanel } from './components/code/CodePanel'
 import { SkillsPanel } from './components/skills/SkillsPanel'
 import { Settings } from './components/Settings'
 import { Help } from './components/Help'
@@ -187,6 +188,8 @@ export function App() {
                   ) : (
                     <NoAppSelected onGoToApps={() => setMainPanel('apps')} />
                   ))}
+
+                {mainPanel === 'code' && <CodePanel appPath={activeApp?.path ?? null} />}
 
                 {mainPanel === 'skills' && (
                   <SkillsPanel appName={activeApp?.name ?? null} />

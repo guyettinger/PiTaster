@@ -192,3 +192,45 @@ export async function autoCommitSkillChange(params: {
     }
   }
 }
+
+/**
+ * Commit the files a compiler-driven refactor rewrote.
+ *
+ * `refactor` is the first tool anyapp has that changes more than one file in a single
+ * call, and {@link autoCommitToolResult} commits exactly one — it keys on `input.path`,
+ * which for a rename names only the file the symbol was pointed at. Routing a rename
+ * through it would commit that file and leave the other seven writes untracked, so a
+ * later `rollback` would restore the declaration and keep every updated call site: the
+ * one outcome worse than not having renamed at all.
+ *
+ * @param params - The app root, the rewritten paths, the commit subject, and the setting
+ * @returns Whether a commit was made, plus a note to surface on failure
+ */
+export async function autoCommitRefactor(params: {
+  /** Absolute path to the sub-app root. */
+  rootPath: string
+  /** Paths that were rewritten, relative to the app root. */
+  relativePaths: string[]
+  /** How to describe the change in the commit message. */
+  description: string
+  /** Whether the user has auto-commit enabled. */
+  enabled: boolean
+}): Promise<AutoCommitOutcome> {
+  const { rootPath, relativePaths, description, enabled } = params
+
+  if (!enabled) return { committed: false }
+  if (relativePaths.length === 0) return { committed: false }
+
+  try {
+    await new VersionManager(rootPath).commit({
+      message: `refactor: ${description}`,
+      files: relativePaths
+    })
+    return { committed: true }
+  } catch (error) {
+    return {
+      committed: false,
+      note: `\n[auto-commit failed for ${relativePaths.join(', ')}: ${(error as Error).message}]`
+    }
+  }
+}

@@ -1,5 +1,5 @@
 import { NavItem } from './NavItem'
-import { AppsIcon, SkillsIcon, HelpIcon, SettingsIcon } from '../icons'
+import { AppsIcon, FileIcon, SkillsIcon, HelpIcon, SettingsIcon } from '../icons'
 import type { MainPanel } from '../../types/navigation'
 
 /**
@@ -34,6 +34,12 @@ export function NavRail({ panel, onNavigate }: NavRailProps) {
           label="Apps"
           active={panel === 'apps'}
           onClick={() => onNavigate('apps')}
+        />
+        <NavItem
+          icon={<FileIcon />}
+          label="Code"
+          active={panel === 'code'}
+          onClick={() => onNavigate('code')}
         />
         <NavItem
           icon={<SkillsIcon />}

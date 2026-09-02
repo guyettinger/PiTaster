@@ -170,8 +170,18 @@ describe('inspectCommand — now allows', () => {
 })
 
 describe('checkConfinement', () => {
-  test('confines every path-bearing tool, replace_lines included', () => {
-    for (const toolName of ['read', 'write', 'edit', 'replace_lines', 'grep', 'find', 'ls']) {
+  test('confines every path-bearing tool, the code tools included', () => {
+    for (const toolName of [
+      'read',
+      'write',
+      'edit',
+      'replace_lines',
+      'grep',
+      'find',
+      'ls',
+      'code_intel',
+      'refactor'
+    ]) {
       expect(checkConfinement({ toolName, input: { path: '/etc/passwd' } }, ROOT)).not.toBeNull()
       expect(checkConfinement({ toolName, input: { path: 'src/App.tsx' } }, ROOT)).toBeNull()
     }
@@ -264,6 +274,26 @@ describe('checkPermission', () => {
   test('MCP tools always reach the user outside bypassPermissions', () => {
     expect(checkPermission('acceptEdits', 'mcp__notion__search').behavior).toBe('ask')
     expect(checkPermission('bypassPermissions', 'mcp__notion__search').behavior).toBe('allow')
+  })
+})
+
+describe('checkPermission — the code tools', () => {
+  test('plan reads with code_intel and refuses to refactor', () => {
+    // `code_intel` only asks the compiler about files `plan` already lets it read.
+    expect(checkPermission('plan', 'code_intel').behavior).toBe('allow')
+    // `refactor` writes. Absent for the same reason `create_branch` is absent: the mode
+    // promises no side effects, and "the compiler computed the edit" is not an exemption.
+    expect(checkPermission('plan', 'refactor').behavior).toBe('deny')
+  })
+
+  test('acceptEdits auto-approves both, like the other file tools', () => {
+    expect(checkPermission('acceptEdits', 'code_intel').behavior).toBe('allow')
+    expect(checkPermission('acceptEdits', 'refactor').behavior).toBe('allow')
+  })
+
+  test('default asks before either of them', () => {
+    expect(checkPermission('default', 'code_intel').behavior).toBe('ask')
+    expect(checkPermission('default', 'refactor').behavior).toBe('ask')
   })
 })
 
