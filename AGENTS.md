@@ -500,6 +500,29 @@ relative traversal. That scan is best-effort — variable expansion defeats it �
 which is why `bash` is never auto-approved outside `bypassPermissions`. Nothing
 bypasses the permission mode.
 
+**The root itself is validated, not just the paths measured against it.** Every check
+above asks whether a path is inside `SubApp.path` — so that value is the one input the
+whole boundary rests on, and it is built by joining an app id onto `~/.anyapp/apps`. The
+id arrives from the renderer through `apps:set-active`, `apps:get`, `apps:delete` and
+`apps:update`, and `join` resolves `../../../tmp` without complaint. `isValidAppId` and
+`AppManager.appDir` (`packages/shared/src/apps/manager.ts`) are therefore part of the
+sandbox: an id must be one path segment, and the resolved path must be a direct child of
+the apps root. This is the same reasoning as `resolveAppRoot` in `ipc.ts`, pushed down to
+where the join actually happens so every caller is covered rather than one handler.
+
+There are **two** such joins, and the second is the one that writes. `getAppPath` in
+`packages/shared/src/chat/session-paths.ts` builds the same path independently, and
+`ChatHistoryManager.writePointer` and `createSession` `mkdir -p` it and write into it —
+so it carries the same guard. A third place that turns an id into a path has to as well;
+the rule is that an app id is validated where it becomes a path, never at the handler
+that happened to receive it.
+
+The empty id is refused for a sharper reason than traversal. `generateId` strips
+everything but `[a-z0-9-]`, so a name of `!!!` or `...` reduces to `''` — and
+`join(APPS_DIR, '')` *is* `APPS_DIR`. An app created that way has every other app inside
+its root, and `deleteApp` passes that path to a recursive `rm`. No attacker is needed for
+that one, only a user naming an app with punctuation.
+
 **The shell scan permits some paths outside the root.** `inspectCommand` skips a named
 set: the harmless device files (`/dev/null` and friends), the root-owned toolchain
 directories, the Homebrew prefixes, and the OS temp directory. That widens the *scan*,

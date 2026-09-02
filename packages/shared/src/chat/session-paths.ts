@@ -4,6 +4,7 @@
 
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { isValidAppId } from '../apps/manager.js'
 
 /**
  * The Pi agent directory anyapp uses.
@@ -38,9 +39,25 @@ export function getAppSessionDir(params: {
 
 /**
  * Resolve a sub-app's root directory from its id.
+ *
+ * The second place in the codebase an app id becomes a path, and it is not a read-only
+ * one: `ChatHistoryManager.writePointer` and `createSession` `mkdir -p` this path and
+ * write into it. So it needs the same guard as {@link AppManager.appDir} for the same
+ * reason — `join` resolves `../../../tmp` without complaint, and an id reaches here from
+ * `apps:delete` and from `activeAppId`.
+ *
+ * This throws rather than returning null. Every caller has already obtained the id from
+ * a validated `SubApp`, so an invalid one here is a violated invariant, not a miss — and
+ * the one caller that can pass an unvetted id (`apps:delete`, through `listSessions`)
+ * already runs inside a try/catch that treats a failure as "no sessions to forget".
+ *
  * @param appId - The sub-app identifier
  * @returns Absolute path to `~/.anyapp/apps/<appId>`
+ * @throws {Error} If the id does not name a single directory inside the apps root
  */
 export function getAppPath(appId: string): string {
+  if (!isValidAppId(appId)) {
+    throw new Error(`Invalid app ID: ${JSON.stringify(appId)}`)
+  }
   return join(homedir(), '.anyapp', 'apps', appId)
 }
