@@ -121,6 +121,94 @@ export interface ContextUsage {
 }
 
 /**
+ * Where the context window number came from.
+ *
+ * Mirrors `ContextWindowSource` in the main process's `context-budget.ts`. The two
+ * are structurally identical on purpose: that module is deliberately free of
+ * dependencies, and this one cannot import from `apps/`.
+ */
+export type ContextWindowSource = 'user' | 'daemon' | 'fallback'
+
+/**
+ * Which half of the window a block sits in.
+ *
+ * The distinction is what the block is worth doing about. `fixed` is paid on every
+ * request and shrinks only by changing configuration — turning off a skill, dropping
+ * a tool profile, trimming `AGENTS.md`. `conversation` grows with the session and is
+ * cleared by compacting or starting a new chat.
+ */
+export type ContextBlockGroup = 'fixed' | 'conversation'
+
+/**
+ * One attributable slice of the context window.
+ *
+ * Blocks are estimates. Only the total can be measured — it comes from the provider's
+ * own usage accounting — so a report's blocks will not sum to its `measured` value and
+ * the UI says so rather than scaling them to fit.
+ */
+export interface ContextBlock {
+  /** Stable identifier, used as a React key and to select the block's fill. */
+  id: string
+  /** Human label, e.g. `Tool results`. */
+  label: string
+  /** Which half of the bar this belongs to. */
+  group: ContextBlockGroup
+  /** Estimated tokens this block occupies. */
+  tokens: number
+  /** Secondary text, e.g. `23 calls` or `4 enabled`. */
+  detail?: string
+}
+
+/**
+ * A single large tool result, named so it can be recognized.
+ */
+export interface ContextHotspot {
+  /** What produced it, e.g. `read src/App.tsx`. */
+  label: string
+  /** Estimated tokens it occupies. */
+  tokens: number
+}
+
+/**
+ * How confident a {@link ContextReport} is about its own numbers.
+ *
+ * The meter renders in all four, which is the point: every one of these used to
+ * render nothing at all.
+ */
+export type ContextReportState = 'live' | 'estimated' | 'stale' | 'floor'
+
+/**
+ * What the context window is holding, and how much of it is worth acting on.
+ *
+ * Built by the main process on demand. It never requires a live agent session — the
+ * fixed half is a pure function of the app, its skills and its tool profile — which is
+ * what lets the meter show a number before the first prompt of a session.
+ */
+export interface ContextReport {
+  /** How much of this report is measured rather than estimated. */
+  state: ContextReportState
+  /**
+   * The provider's own token count for the conversation, when there is one.
+   *
+   * Null unless {@link state} is `live`: it is absent before the first assistant
+   * response and again immediately after every compaction.
+   */
+  measured: number | null
+  /** Sum of {@link blocks}. Always present, always an estimate. */
+  estimated: number
+  /** Tokens the model will actually accept. */
+  window: number
+  /** Where {@link window} came from. */
+  windowSource: ContextWindowSource
+  /** Token count at which the agent stops to summarize. */
+  compactAt: number
+  /** The attribution, largest first within each group. */
+  blocks: ContextBlock[]
+  /** The largest individual tool results, descending, at most three. */
+  hotspots: ContextHotspot[]
+}
+
+/**
  * Agent query options.
  */
 export interface QueryOptions {

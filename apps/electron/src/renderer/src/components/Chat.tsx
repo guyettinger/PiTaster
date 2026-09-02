@@ -16,10 +16,11 @@ import {
   useMentionMatches
 } from './skills/SkillMentionMenu'
 import { useSkills } from '../hooks/useSkills'
+import { useContextReport } from '../hooks/useContextReport'
+import { ContextMeter } from './ContextMeter'
 import type { Message, ContentBlock } from './MessageBubble'
 import type {
   AgentStatus,
-  ContextUsage,
   PermissionMode,
   StreamChunk,
   ToolApprovalRequest,
@@ -44,6 +45,8 @@ interface ChatProps {
   onModeChange: (mode: PermissionMode) => void
   /** Currently active session ID. */
   activeSessionId: string | null
+  /** Open the Skills page, from the context breakdown's fixed-cost blocks. */
+  onOpenSkills: () => void
 }
 
 /**
@@ -168,56 +171,29 @@ function AgentStatusStrip({ status }: AgentStatusStripProps) {
   )
 }
 
-/**
- * Props for {@link ContextMeter}.
- */
-interface ContextMeterProps {
-  /** How much of the context window the conversation occupies. */
-  usage: ContextUsage
-}
-
-/**
- * How full the context window is.
- *
- * Worth showing because on a small window it is the thing that decides when the
- * agent stops to summarize — and because a meter that never moves is the first sign
- * the configured window does not match what the daemon serves.
- */
-function ContextMeter({ usage }: ContextMeterProps) {
-  const fraction = Math.min(1, usage.used / Math.max(1, usage.window))
-  const tokens = (value: number): string =>
-    value >= 1000 ? `${Math.round(value / 1000)}k` : String(value)
-
-  return (
-    <div
-      className="flex items-center gap-2 text-[11px] text-ash"
-      title={`${usage.used.toLocaleString()} of ${usage.window.toLocaleString()} tokens used`}
-    >
-      <span className="h-1 w-16 overflow-hidden rounded-full bg-line">
-        <span
-          className={`block h-full rounded-full ${fraction > 0.85 ? 'bg-rust' : 'bg-brass'}`}
-          style={{ width: `${Math.round(fraction * 100)}%` }}
-        />
-      </span>
-      <span className="tabular-nums">
-        {tokens(usage.used)} / {tokens(usage.window)}
-      </span>
-    </div>
-  )
-}
-
 export function Chat({
   app,
   permissionMode,
   onModeChange,
-  activeSessionId
+  activeSessionId,
+  onOpenSkills
 }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [pendingApproval, setPendingApproval] = useState<ToolApprovalRequest | null>(null)
   const [status, setStatus] = useState<AgentStatus | null>(null)
-  const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null)
+  // Bumped when a turn ends, which is the only moment the conversation's share of the
+  // window changes. The fixed share changes on things this component never sees — a
+  // skill toggled off, a source connected — so the hook also refetches on mount, which
+  // is every return to the chat panel.
+  const [contextRevision, setContextRevision] = useState(0)
+  const {
+    report: contextReport,
+    compact: compactContext,
+    isCompacting,
+    error: compactError
+  } = useContextReport(activeSessionId, contextRevision)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   
@@ -272,9 +248,6 @@ export function Chat({
     setMessages([])
     setIsStreaming(false)
     setPendingApproval(null)
-    // Cleared with the rest, or the meter shows the previous session's numbers until
-    // a turn in this one happens to finish.
-    setContextUsage(null)
 
     if (!activeSessionId) return
     let cancelled = false
@@ -295,29 +268,6 @@ export function Chat({
     }
   }, [activeSessionId])
 
-  // Seed the context meter from the live session.
-  //
-  // Usage otherwise only ever arrives on a `complete` chunk, and this component is
-  // unmounted whenever the user looks at Apps, Skills or Settings — so without this
-  // the meter is empty at launch and after every trip away from the chat panel, and
-  // only reappears if a turn happens to finish while the panel is open.
-  useEffect(() => {
-    let cancelled = false
-
-    window.electronAPI
-      .getContextUsage()
-      .then((usage) => {
-        // A turn that completed while this was in flight has fresher numbers.
-        if (!cancelled && usage) setContextUsage((current) => current ?? usage)
-      })
-      .catch(() => {
-        // No session yet is the normal case, not an error worth surfacing.
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [activeSessionId])
 
   // Listen for transcripts pushed from main — on app switch, session switch, and
   // after a delete resolves to a different session.
@@ -420,7 +370,11 @@ export function Chat({
         setIsStreaming(false)
         setStatus(null)
         currentToolRef.current = null
-        if (chunk.contextUsage) setContextUsage(chunk.contextUsage)
+        // The turn is the only moment the conversation's share of the window changes,
+        // so it is the only moment worth re-reading the report. The chunk carries a
+        // usage number too, but not the attribution, and taking half the answer from
+        // one source and half from another is how the two drift apart.
+        setContextRevision((revision) => revision + 1)
         // The agent persists its own transcript; nothing to save here.
       } else if (chunk.type === 'status') {
         // Compaction, retries and long prefills are most of the wall-clock time on a
@@ -711,7 +665,13 @@ export function Chat({
             <PermissionModeControl mode={permissionMode} onModeChange={onModeChange} />
 
             <div className="flex items-center gap-3">
-              {contextUsage && <ContextMeter usage={contextUsage} />}
+              <ContextMeter
+                report={contextReport}
+                onOpenSkills={onOpenSkills}
+                onCompact={compactContext}
+                isCompacting={isCompacting}
+                error={compactError}
+              />
 
               {messages.length > 0 && (
                 <button

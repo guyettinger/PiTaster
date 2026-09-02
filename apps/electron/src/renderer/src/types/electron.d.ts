@@ -67,6 +67,57 @@ interface ContextUsage {
   window: number
 }
 
+/** Where the context window number came from. */
+type ContextWindowSource = 'user' | 'daemon' | 'fallback'
+
+/** Which half of the window a block sits in. */
+type ContextBlockGroup = 'fixed' | 'conversation'
+
+/** One attributable slice of the context window. */
+interface ContextBlock {
+  /** Stable identifier, used as a React key and to select the block's fill. */
+  id: string
+  /** Human label, e.g. `Tool results`. */
+  label: string
+  /** Which half of the bar this belongs to. */
+  group: ContextBlockGroup
+  /** Estimated tokens this block occupies. */
+  tokens: number
+  /** Secondary text, e.g. `23 calls`. */
+  detail?: string
+}
+
+/** A single large tool result, named so it can be recognized. */
+interface ContextHotspot {
+  /** What produced it, e.g. `read src/App.tsx`. */
+  label: string
+  /** Estimated tokens it occupies. */
+  tokens: number
+}
+
+/** How confident a {@link ContextReport} is about its own numbers. */
+type ContextReportState = 'live' | 'estimated' | 'stale' | 'floor'
+
+/** What the context window is holding, and how much of it is worth acting on. */
+interface ContextReport {
+  /** How much of this report is measured rather than estimated. */
+  state: ContextReportState
+  /** The provider's own token count, or null when there is not one. */
+  measured: number | null
+  /** Sum of {@link blocks}. Always an estimate. */
+  estimated: number
+  /** Tokens the model will actually accept. */
+  window: number
+  /** Where {@link window} came from. */
+  windowSource: ContextWindowSource
+  /** Token count at which the agent stops to summarize. */
+  compactAt: number
+  /** The attribution, largest first within each group. */
+  blocks: ContextBlock[]
+  /** The largest individual tool results, descending, at most three. */
+  hotspots: ContextHotspot[]
+}
+
 /** Tool approval request sent to renderer. */
 interface ToolApprovalRequest {
   id: string
@@ -304,8 +355,11 @@ interface ElectronAPI {
   /** Cancel the in-flight agent run. */
   abortAgent: () => Promise<void>
 
-  /** Read how full the context window is, without waiting for a turn to finish. */
-  getContextUsage: () => Promise<ContextUsage | null>
+  /** Read what the context window holds, broken down into attributable blocks. */
+  getContextReport: () => Promise<ContextReport | null>
+
+  /** Summarize the conversation now rather than waiting for the threshold. */
+  compactContext: () => Promise<void>
   
   // Version control methods
   /** Get current version control state. */
@@ -468,6 +522,12 @@ export type {
   StreamChunk,
   AgentStatus,
   ContextUsage, 
+  ContextBlock,
+  ContextBlockGroup,
+  ContextHotspot,
+  ContextReport,
+  ContextReportState,
+  ContextWindowSource,
   ToolApprovalRequest, 
   ToolApprovalResponse,
   Commit,

@@ -67,7 +67,7 @@ This is a blank project. Create files as needed.`
  * @param mcpTools - Bindings for the connected sources' tools
  * @returns A prompt section, or an empty string when nothing is connected
  */
-function renderMcpSection(mcpTools: McpToolBinding[]): string {
+export function renderMcpSection(mcpTools: McpToolBinding[]): string {
   if (mcpTools.length === 0) return ''
 
   const lines = mcpTools.map(

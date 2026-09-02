@@ -184,6 +184,7 @@ export function App() {
                       permissionMode={permissionMode}
                       onModeChange={handleModeChange}
                       activeSessionId={activeSessionId}
+                      onOpenSkills={() => setMainPanel('skills')}
                     />
                   ) : (
                     <NoAppSelected onGoToApps={() => setMainPanel('apps')} />

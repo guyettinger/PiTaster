@@ -131,6 +131,65 @@ Four things keep a long session coherent on a local model, all configurable:
 - **`agent/loop-guard.ts`** soft-blocks a third consecutive identical tool call,
   telling the model to change approach rather than burn the window repeating.
 
+## The budget, shown to the person paying it
+
+Everything above decides how the window is spent. The meter in the composer is where a
+person finds out — and until Session 23 it was hidden more often than it was shown.
+
+**It was not one bug, it was five.** `agent:get-context-usage` answered off `agentHost`,
+which is created lazily on the first prompt, so a session had no number until a turn
+finished with the chat panel open. `disposeAgentHost` then runs on an app switch, a
+session switch, and *every* skills, sources or config save — so the meter blinked out
+several times a minute during ordinary use. The renderer cleared it again on a session
+change, rendered it behind a truthiness guard, and Pi reports `tokens: null` right after
+a compaction, which is the moment the number matters most.
+
+**The fix is that the fixed half of a request needs no session to measure.** The system
+prompt, the tool schemas, Pi's restored tool guidance, the skill manifest and the app's
+`AGENTS.md` are pure functions of the app and its configuration. `agent/context-report.ts`
+builds them cold — no `ModelRuntime`, no model warm, no TypeScript service — which is why
+the meter can now show `6.3k / 32.8k` before a single prompt has been sent, and why the
+handler deliberately does **not** call `ensureAgentHost`: that warms the model, and this
+runs on every return to the chat panel.
+
+Four states, all of which render: `live` (Pi's provider-anchored total), `estimated` (the
+gap after a compaction), `stale` (the host is gone, the conversation is remembered), and
+`floor` (fixed cost alone). `stale` is what makes `disposeAgentHost` survivable — ipc.ts
+caches the last report and `forgetCachedReport` drops it only where the *conversation*
+changes, never on a skills or sources save, because the conversation those disposed is
+still the one on screen. The fixed blocks are always taken fresh, so toggling a skill off
+shows a smaller manifest immediately while the conversation is carried over unchanged.
+
+**The blocks are estimates and the total is not, and the card says so.** Pi anchors
+`ContextUsage.tokens` to the provider's own accounting; every block is chars/4. They will
+not agree, and the footer prints both rather than scaling the blocks to close the gap — a
+breakdown that always sums to the measured total is one that has been made to.
+
+Three things the module has to keep doing:
+
+- **Measure the prompt's parts, not the whole.** `getSystemPrompt` inlines the skill
+  manifest, the MCP section and the tool guidance. Measuring the whole prompt *and* those
+  parts charges the user twice for every skill they enable, and turning one off would
+  appear to shrink two blocks. The base block is the prompt minus the three.
+- **Price an image by difference, never by restating Pi's constant.** Pi bills an image at
+  a flat character count anyapp has no business knowing. Subtracting the image-stripped
+  estimate from the whole one recovers exactly that charge, and keeps recovering it if Pi
+  changes the number.
+- **Build tool definitions, never run them.** Sizing a schema means calling every factory —
+  `createCodeTools` included — with stubbed callbacks. Nothing calls `execute`, and
+  nothing acquires a TypeScript service: seconds of program build to measure a JSON
+  schema would be the wrong trade, and it is why the report is not simply read off a
+  live session.
+
+The bar's tick is `window - reserveTokens`, which is where compaction fires and the one
+number the old meter never showed. `Summarize now` calls Pi's `session.compact()` — the
+first thing in anyapp to do so — and is refused mid-turn, because compacting a
+conversation Pi is still appending to summarizes a moving target.
+
+Segment colors are assigned by **rank within a group**, not by block id. Keyed by id, the
+second-largest block could draw in the palest tone the ramp has, which reads as a bug in
+the measurement rather than as an identity.
+
 ## Editing is where a long task actually fails
 
 Pi's `edit` matches text. Its matcher already forgives trailing whitespace, CRLF, BOM,

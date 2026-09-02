@@ -45,6 +45,7 @@ The implementation is split into **6 independent sessions**, each resulting in a
 | [20. Editing Loop](SESSION-20-EDITING-LOOP.md) | Edit reliability | Pi's editing guidance restored, grounded edit failures, `replace_lines`, shell safe paths | Complete | [Notes](SESSION-20-NOTES.md) |
 | [21. Skills](SESSION-21-SKILLS.md) | Skills that reach the model | `load_skill`, app-scoped skills, per-app enable, authoring UI, corrected seeds | Complete | [Notes](SESSION-21-NOTES.md) |
 | [22. Code Intelligence](SESSION-22-CODE-INTELLIGENCE.md) | Compiler + editing surface | TypeScript service, diagnostics on every write, `code_intel`/`refactor`, diffs in the transcript and the approval prompt, a code panel | Complete | [Notes](SESSION-22-NOTES.md) |
+| [23. Context Report](SESSION-23-CONTEXT-REPORT.md) | An always-on context meter | Session-free context report, attributable breakdown on hover, compaction threshold shown, manual summarize | Complete | [Notes](SESSION-23-CONTEXT-REPORT.md) |
 
 ## Session 6 Sub-Sessions
 
