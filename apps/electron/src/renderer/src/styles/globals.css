@@ -215,6 +215,103 @@
   }
 }
 
+/*
+ * The dock's theme.
+ *
+ * dockview is themed entirely through CSS variables, and a `DockviewTheme` is
+ * just a name and the class those variables live on — so the dock takes its
+ * colors from the tokens above rather than carrying a second palette. Every
+ * value here is a token or a mix of one; no literal color appears in this
+ * block, which is what keeps the dock from drifting away from the shell it
+ * sits in.
+ *
+ * The surfaces follow the shell's own logic: a panel's content sits on
+ * `ground` and the tab strip above it on `panel`, so an active tab reads as
+ * continuous with what it opens and the strip reads as chrome. Brass stays the
+ * color of intent — the sash you are dragging, the target you are dropping
+ * onto — and appears nowhere at rest, so the dock is quiet until you touch it.
+ */
+.dockview-theme-anyapp {
+  /* Density. 32px sits just under the 36px workspace bar above it. */
+  --dv-tabs-and-actions-container-height: 32px;
+  --dv-tabs-and-actions-container-font-size: 12px;
+  --dv-tab-font-size: 12px;
+  --dv-spacing-padding: 0px;
+  --dv-tab-margin: 0;
+
+  /* The shell is square. */
+  --dv-border-radius: 0px;
+  --dv-tab-border-radius: 0px;
+  --dv-sash-border-radius: 0px;
+  --dv-dropdown-border-radius: 0px;
+  --dv-tab-close-icon-size: inherit;
+
+  /* Surfaces. */
+  --dv-group-view-background-color: var(--color-ground);
+  --dv-tabs-and-actions-container-background-color: var(--color-panel);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--color-ground);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--color-panel);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--color-ground);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--color-panel);
+  --dv-tab-divider-color: var(--color-line);
+  --dv-separator-border: var(--color-line);
+  --dv-paneview-header-border-color: var(--color-line);
+
+  /*
+   * Tab text carries four states, and they have to stay distinguishable at
+   * 12px: the tab you are looking at is bone, the other tabs of the focused
+   * group are ash, and an unfocused group's tabs are the same two dimmed.
+   */
+  --dv-activegroup-visiblepanel-tab-color: var(--color-bone);
+  --dv-activegroup-hiddenpanel-tab-color: var(--color-ash);
+  --dv-inactivegroup-visiblepanel-tab-color: color-mix(in oklab, var(--color-bone) 62%, transparent);
+  --dv-inactivegroup-hiddenpanel-tab-color: color-mix(in oklab, var(--color-ash) 62%, transparent);
+
+  /*
+   * Sashes are invisible until grabbed — the borders between panels are
+   * already drawn by the groups themselves, so a resting sash would be a
+   * second line in the same place.
+   */
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: var(--color-brass);
+  --dv-active-sash-transition-duration: 0.1s;
+  --dv-active-sash-transition-delay: 0.5s;
+
+  /* Drag and drop: brass, because a drop is an action. */
+  --dv-drag-over-background-color: color-mix(in oklab, var(--color-brass) 22%, transparent);
+  --dv-drag-over-border-color: var(--color-brass);
+  --dv-drag-over-border: none;
+  --dv-edge-dock-indicator-color: color-mix(in oklab, var(--color-brass) 80%, transparent);
+  --dv-dnd-compass-color: var(--color-line);
+  --dv-dnd-compass-cell-color: var(--color-raised);
+  --dv-dnd-compass-active-cell-color: var(--color-brass);
+  --dv-dnd-compass-edge-cell-color: var(--color-raised);
+  --dv-smart-guides-color: var(--color-brass);
+  --dv-smart-guides-preview-color: color-mix(in oklab, var(--color-brass) 40%, transparent);
+
+  /* Chrome details. */
+  --dv-icon-hover-background-color: var(--color-raised);
+  --dv-context-menu-background-color: var(--color-panel);
+  --dv-context-menu-color: var(--color-bone);
+  --dv-tabs-container-scrollbar-color: var(--color-line);
+  --dv-paneview-active-outline-color: var(--color-brass);
+  --dv-transition-duration: 0.1s;
+
+  /*
+   * Floating groups are disabled at the component, but the variables are set
+   * anyway: turning them on later should not also require finding out that
+   * they were never themed.
+   */
+  --dv-overlay-z-index: 999;
+  --dv-floating-group-border: none;
+  --dv-floating-border: 1px solid var(--color-line);
+  --dv-floating-box-shadow: 0 8px 32px rgb(0 0 0 / 0.45), 0 2px 8px rgb(0 0 0 / 0.3);
+  --dv-floating-group-dragging-opacity: 0.5;
+  --dv-floating-titlebar-height: 22px;
+  --dv-floating-titlebar-background-color: var(--color-panel);
+  --dv-floating-titlebar-border-bottom: var(--dv-floating-border);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

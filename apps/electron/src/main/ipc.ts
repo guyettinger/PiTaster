@@ -18,6 +18,7 @@ import {
   type AgentHost
 } from './agent/session'
 import { buildContextReport } from './agent/context-report'
+import { readWorkspaceLayout, writeWorkspaceLayout } from './layout-store'
 import { describeNetworkUse } from './agent/permission-gate'
 import { previewPatch } from './agent/patch'
 import { listAppFiles, readAppFile } from './files'
@@ -344,6 +345,14 @@ async function broadcastSessions(
 
 /** Path to config file. */
 const configPath = join(configDir, 'config.json')
+
+/**
+ * Path to the workspace layout store.
+ *
+ * Beside `config.json` rather than inside each app, because an app's directory
+ * is a git repo every agent write commits to — see `layout-store.ts`.
+ */
+const layoutPath = join(configDir, 'layouts.json')
 
 /**
  * Legacy path to the encrypted Anthropic API key.
@@ -1556,6 +1565,40 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     return loadSkillLibrary()
   })
 
+  // Workspace layout IPC handlers
+  ipcMain.handle('layout:get', async (_, appId: unknown, version: unknown) => {
+    if (typeof appId !== 'string' || !isValidAppId(appId)) {
+      throw new Error('Invalid app ID')
+    }
+    if (typeof version !== 'number' || !Number.isInteger(version) || version < 0) {
+      throw new Error('Invalid layout version')
+    }
+    return readWorkspaceLayout({ storePath: layoutPath, appId, version })
+  })
+
+  ipcMain.handle(
+    'layout:save',
+    async (_, appId: unknown, version: unknown, layout: unknown) => {
+      if (typeof appId !== 'string' || !isValidAppId(appId)) {
+        throw new Error('Invalid app ID')
+      }
+      if (typeof version !== 'number' || !Number.isInteger(version) || version < 0) {
+        throw new Error('Invalid layout version')
+      }
+      // `readdir`, not `appManager.listApps()`: listing layers git status onto
+      // every app, and this runs on every debounced save — that is a
+      // `statusMatrix` per app per drag. Pruning only needs the names.
+      const entries = await fs.readdir(appManager.getAppsDir(), { withFileTypes: true })
+      return writeWorkspaceLayout({
+        storePath: layoutPath,
+        appId,
+        version,
+        layout,
+        liveAppIds: entries.filter((e) => e.isDirectory()).map((e) => e.name)
+      })
+    }
+  )
+
   // Config IPC handlers
   ipcMain.handle('config:get', async () => {
     return loadConfig()
@@ -1950,6 +1993,10 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('skills:save')
   ipcMain.removeHandler('skills:delete')
   ipcMain.removeHandler('skills:set-enabled')
+
+  // Workspace layout handlers
+  ipcMain.removeHandler('layout:get')
+  ipcMain.removeHandler('layout:save')
 
   // Config handlers
   ipcMain.removeHandler('config:get')

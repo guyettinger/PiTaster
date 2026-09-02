@@ -69,9 +69,11 @@ anyapp-specific:
 | Command | What it does |
 |---|---|
 | `open-app [name]` | Open a sub-app from the Apps list (first one if omitted) |
-| `nav <Apps\|Skills\|Help\|Settings>` | Switch main destination |
-| `panel <History\|Terminal\|Preview>` | Toggle a docked panel |
-| `panel-height <px>` | Resize the bottom dock (150–600) |
+| `nav <Apps\|Workspace\|Skills\|Help\|Settings>` | Switch main destination |
+| `tab <name>` | Activate a dock tab (Chat, Files, Preview, a filename…) |
+| `panel <name>` | Open or close a dock panel via the Panels menu |
+| `reset-layout` | Rebuild the default layout |
+| `panels` | Dump every tab, which are active, and each group's size |
 | `new-chat` | Start a new chat session |
 | `ask <message>` | Send a message to the agent |
 | `approve` / `deny` | Answer the inline approval prompt |
@@ -111,9 +113,23 @@ every mode except `Auto — all` — that is the permission gate working, not a 
   text-left` class.
 - **Most chrome is icon-only.** Nav rail items, panel toggles, and header buttons
   carry `aria-label`/`title` and no text. Run `controls` and match on the label.
-- **The bottom dock resizes by drag only.** There is no click or keyboard
-  affordance, so `panel-height` synthesises mousedown → mousemove → mouseup
-  against the `[aria-label="Resize panel"]` handle.
+- **The workspace is a dockview dock.** Panels are dragged into splits and tabs,
+  and the arrangement is saved per app in `~/.anyapp/layouts.json`. Delete that
+  file to get a clean default layout back, or run `reset-layout`.
+- **Dock tabs need `mousedown`, not `click`.** `element.click()` resolves and
+  changes nothing, which looks identical to a tab that isn't there. Use `tab`.
+- **Docking cannot be driven reliably.** dockview's drop targets need a real
+  HTML5 drag — dragstart/dragover/drop carrying a `DataTransfer` — and a
+  synthesised sequence lands only sometimes, because with `renderer: 'always'`
+  the panel's overlay sits between the pointer and the group. A synthesised drag
+  that changes nothing looks exactly like one that worked, so don't verify
+  layout changes that way. To get a specific arrangement, either do it by hand,
+  or seed `~/.anyapp/layouts.json` before launching and check the result with
+  `panels`.
+- **Panel content is not inside `.dv-groupview`.** Every panel is rendered with
+  dockview's `always` renderer — its element lives in a positioned
+  `.dv-render-overlay` so docking never re-parents it — so query panel content
+  under `.dv-render-overlay`, not under the group.
 - **Electron steals stdin.** The driver reads `/dev/stdin` through its own fd for
   exactly this reason. Don't "simplify" it back to `process.stdin`.
 - **The sub-app dev server outlives the app.** If you press Run/`Run`, kill the

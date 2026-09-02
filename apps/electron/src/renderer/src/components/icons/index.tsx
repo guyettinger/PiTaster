@@ -331,6 +331,26 @@ export function CommandIcon(props: IconProps) {
   )
 }
 
+/** The conversation with the agent. */
+export function ChatIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M20.5 12.5c0 3.6-3.8 6.5-8.5 6.5a10 10 0 0 1-2.6-.34L4.5 20.5l1.2-3.3A6.9 6.9 0 0 1 3.5 12.5C3.5 8.9 7.3 6 12 6s8.5 2.9 8.5 6.5Z" />
+    </Icon>
+  )
+}
+
+/** The workspace: panels docked around each other. */
+export function LayoutIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <path d="M9.5 4.5v15" />
+      <path d="M9.5 13.5h11" />
+    </Icon>
+  )
+}
+
 /** Anything the icon set has no specific glyph for. */
 export function ToolIcon(props: IconProps) {
   return (

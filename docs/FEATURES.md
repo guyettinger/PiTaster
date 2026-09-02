@@ -16,8 +16,10 @@ byte outside that directory, so an experiment in one app can't disturb another.
 
 ## You watch it run
 
-Start the dev server from the app's own column and it appears in a preview panel
-right below the chat. No alt-tabbing, no separate terminal.
+Start the dev server from the Server panel and the running app appears in the
+Preview panel — a tab beside the conversation by default, or dragged below it, so
+you can watch the agent work and the result at once. No alt-tabbing, no separate
+terminal.
 
 Click **Inspect**, then click any element on the page, and that element comes
 along with your next message — its markup, its computed styles, and a screenshot
@@ -49,7 +51,7 @@ Every `write` and `edit` auto-commits. The History panel is the app's own git
 log: browse it, roll back to any commit, branch off to try something risky, and
 merge what works.
 
-![The History panel showing one commit per agent edit](images/history.png)
+![The History panel, docked beside Chats and Files, showing one commit per agent edit](images/history.png)
 
 ## The agent can check its own work
 

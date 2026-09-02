@@ -4,6 +4,7 @@ import {
   useState, 
   useEffect, 
   useCallback,
+  useMemo,
   type ReactNode 
 } from 'react'
 
@@ -175,20 +176,39 @@ export function RunningAppsProvider({ children }: { children: ReactNode }) {
     await window.electronAPI.openInBrowser(id)
   }, [])
 
-  const value: RunningAppsContextType = {
-    runningApps,
-    appStatuses,
-    logs,
-    startApp,
-    stopApp,
-    isRunning,
-    getStatus,
-    getUrl,
-    getLogs,
-    clearLogs,
-    installDeps,
-    openInBrowser
-  }
+  // Memoized because every dock panel consumes this: an object rebuilt on each
+  // render would re-render all of them, transcript and webview host included,
+  // on every log line the dev server emits.
+  const value = useMemo<RunningAppsContextType>(
+    () => ({
+      runningApps,
+      appStatuses,
+      logs,
+      startApp,
+      stopApp,
+      isRunning,
+      getStatus,
+      getUrl,
+      getLogs,
+      clearLogs,
+      installDeps,
+      openInBrowser
+    }),
+    [
+      runningApps,
+      appStatuses,
+      logs,
+      startApp,
+      stopApp,
+      isRunning,
+      getStatus,
+      getUrl,
+      getLogs,
+      clearLogs,
+      installDeps,
+      openInBrowser
+    ]
+  )
 
   return (
     <RunningAppsContext.Provider value={value}>

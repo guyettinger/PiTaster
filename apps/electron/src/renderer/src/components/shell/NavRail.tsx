@@ -1,15 +1,15 @@
 import { NavItem } from './NavItem'
-import { AppsIcon, FileIcon, SkillsIcon, HelpIcon, SettingsIcon } from '../icons'
-import type { MainPanel } from '../../types/navigation'
+import { AppsIcon, LayoutIcon, SkillsIcon, HelpIcon, SettingsIcon } from '../icons'
+import type { Destination } from '../../types/navigation'
 
 /**
  * Props for the NavRail component.
  */
 interface NavRailProps {
-  /** The main panel currently shown. */
-  panel: MainPanel
-  /** Navigate to a different main panel. */
-  onNavigate: (panel: MainPanel) => void
+  /** The destination currently shown. */
+  destination: Destination
+  /** Go to a different destination. */
+  onNavigate: (destination: Destination) => void
 }
 
 /**
@@ -20,31 +20,37 @@ interface NavRailProps {
  * disabled: skills and MCP sources are workspace-global data under `~/.anyapp`,
  * so gating them on a focused app was always wrong.
  *
- * Anything scoped to a single app lives in `AppContextColumn` instead.
+ * Workspace is the exception that proves the rule: it needs an app to show
+ * anything, but it is not disabled either — with none focused it shows the empty
+ * state, the same as picking it always did. It replaced a Code item, because
+ * code is now a panel inside the workspace rather than a place you go.
  */
-export function NavRail({ panel, onNavigate }: NavRailProps) {
+export function NavRail({ destination, onNavigate }: NavRailProps) {
   return (
+    // w-20 rather than w-16: the eyebrow renders "Workspace" at 71px, and a
+    // 64px rail clipped it. "Settings" at 57px had already been spilling into
+    // the rail's padding, so this is the width the labels always wanted.
     <nav
       aria-label="Workspace"
-      className="flex w-16 shrink-0 flex-col border-r border-line bg-panel p-2"
+      className="flex w-20 shrink-0 flex-col border-r border-line bg-panel p-2"
     >
       <div className="flex flex-col gap-0.5">
         <NavItem
           icon={<AppsIcon />}
           label="Apps"
-          active={panel === 'apps'}
+          active={destination === 'apps'}
           onClick={() => onNavigate('apps')}
         />
         <NavItem
-          icon={<FileIcon />}
-          label="Code"
-          active={panel === 'code'}
-          onClick={() => onNavigate('code')}
+          icon={<LayoutIcon />}
+          label="Workspace"
+          active={destination === 'workspace'}
+          onClick={() => onNavigate('workspace')}
         />
         <NavItem
           icon={<SkillsIcon />}
           label="Skills"
-          active={panel === 'skills'}
+          active={destination === 'skills'}
           onClick={() => onNavigate('skills')}
         />
       </div>
@@ -55,13 +61,13 @@ export function NavRail({ panel, onNavigate }: NavRailProps) {
         <NavItem
           icon={<HelpIcon />}
           label="Help"
-          active={panel === 'help'}
+          active={destination === 'help'}
           onClick={() => onNavigate('help')}
         />
         <NavItem
           icon={<SettingsIcon />}
           label="Settings"
-          active={panel === 'settings'}
+          active={destination === 'settings'}
           onClick={() => onNavigate('settings')}
         />
       </div>
