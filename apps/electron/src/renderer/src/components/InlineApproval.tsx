@@ -2,6 +2,7 @@
  * Inline tool approval request within chat.
  */
 
+import { PatchList } from './DiffView'
 import { WarningIcon } from './icons'
 import type { ToolApprovalRequest } from '../types/electron'
 import { isMcpToolName, parseMcpToolName, summarizeMcpInput } from '../lib/mcpToolDisplay'
@@ -22,7 +23,7 @@ interface InlineApprovalProps {
  * Inline approval bubble that appears in the chat flow.
  */
 export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalProps) {
-  const { tool, input, notice } = request
+  const { tool, input, notice, patches } = request
   const mcp = parseMcpToolName(tool)
 
   // Get a user-friendly summary of what the tool wants to do
@@ -113,6 +114,19 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
         <p className="mb-3 text-xs text-brass">
           This command {notice}.
         </p>
+      )}
+
+      {/*
+        What the write would actually do. This is the whole point of the prompt: without
+        it the user is asked to take responsibility for a change they have been shown
+        only the path of. Absent for `bash`, for MCP tools, and for an `edit` whose text
+        could not be matched exactly — a preview here is approved on, so an inaccurate
+        one would be worse than none.
+      */}
+      {patches && patches.length > 0 && (
+        <div className="mb-3">
+          <PatchList patches={patches} />
+        </div>
       )}
 
       {/* Input details (collapsed by default for non-sensitive tools) */}

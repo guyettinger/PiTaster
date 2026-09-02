@@ -28,6 +28,10 @@ import type {
   SubApp
 } from '@anyapp/core'
 import { autoCommitToolResult } from './auto-commit'
+import { createCodeTools, CODE_TOOL_NAMES } from './code-tools'
+import { createDiagnosticsNotifier, type DiagnosticsNotifier } from './diagnostics-note'
+import { createPatchRecorder } from './patch'
+import { acquireTsService, type TsServiceLease } from './ts-service/registry'
 import {
   deriveContextBudget,
   FALLBACK_CONTEXT_WINDOW,
@@ -76,6 +80,7 @@ export const AGENT_TOOL_NAMES = [
   'find',
   'ls',
   ...FILE_TOOL_NAMES,
+  ...CODE_TOOL_NAMES,
   ...VERSION_TOOL_NAMES,
   ...WEB_TOOL_NAMES,
   ...SKILL_TOOL_NAMES
@@ -91,6 +96,19 @@ export const AGENT_TOOL_NAMES = [
 const PI_BUILTIN_TOOL_NAMES = ['read', 'write', 'edit', 'bash', 'grep', 'find', 'ls']
 
 /**
+ * Tools whose successful result carries the compiler's opinion of what they wrote.
+ *
+ * The set of tools that change a file through a `path` argument — which is deliberately
+ * the same set `auto-commit.ts` commits, for the same reason. A file-modifying tool left
+ * out of one of them either escapes version control or ships unchecked.
+ *
+ * `refactor` is absent because its edits are the compiler's own and it reports its own
+ * file list; running diagnostics on the one file it was pointed at would describe a
+ * fraction of what it changed.
+ */
+const DIAGNOSED_TOOLS = new Set(['write', 'edit', 'replace_lines'])
+
+/**
  * Version tools dropped from the lean profile.
  *
  * Every tool costs context on every request — its name, description and JSON schema
@@ -98,6 +116,12 @@ const PI_BUILTIN_TOOL_NAMES = ['read', 'write', 'edit', 'bash', 'grep', 'find', 
  * tool a small model picks. These four are the cheapest to lose: the agent rarely
  * needs them mid-task, and the user drives all of them from the Version Control
  * panel. `git_status` and `rollback` stay, because the agent does reach for those.
+ *
+ * `code_intel` and `refactor` are deliberately not here, though the same token argument
+ * would seem to reach them. They are the two tools that earn their schema *most* on the
+ * smallest window: on 32k a wasted `grep` and the two whole-file reads that follow it
+ * cost a large fraction of the budget, and `code_intel` answers the same question in a
+ * few lines. Dropping them to save two schemas would spend more than it saved.
  *
  * This only ever *removes* names from the allowlist. Nothing here changes what a tool
  * may do, or how `checkPermission` and `checkConfinement` classify it.
@@ -391,11 +415,14 @@ function createAnyappExtension(params: {
   budget: ContextBudget
   /** Whether to shape the context sent to the model. */
   trimEnabled: boolean
+  /** Reports the compiler errors a write introduced. */
+  diagnostics: DiagnosticsNotifier
   /** Application callbacks. */
   callbacks: AgentHostCallbacks
 }): InlineExtension {
-  const { rootPath, budget, trimEnabled, callbacks } = params
+  const { rootPath, budget, trimEnabled, diagnostics, callbacks } = params
   const loopGuard = createLoopGuard()
+  const patches = createPatchRecorder({ rootPath })
   const editRepair = createEditRepair({
     rootPath,
     // The diagnostic quotes a region of the file back, so it is a tool result like any
@@ -467,6 +494,13 @@ function createAnyappExtension(params: {
           }
         }
 
+        // The last thing before the write runs, so a blocked or denied call never
+        // leaves a recording behind. Captured here rather than reconstructed from git
+        // afterwards, so the diff appears whether or not auto-commit is on.
+        if (DIAGNOSED_TOOLS.has(event.toolName) && typeof call.input.path === 'string') {
+          await patches.record({ toolCallId: event.toolCallId, path: call.input.path })
+        }
+
         return undefined
       })
 
@@ -504,9 +538,35 @@ function createAnyappExtension(params: {
           absolutePath: resolveLikePi(path, rootPath)
         })
 
-        if (outcome.note) {
+        // What the compiler thinks of what was just written. Runs last, after the commit,
+        // because a commit that failed is news about the *tool* and these errors are news
+        // about the *code* — and because the file has to be on disk before the language
+        // service can read it back.
+        //
+        // Only on success: reporting type errors for a write that never landed would have
+        // the model chasing a file it did not change.
+        const note =
+          event.isError === true || !DIAGNOSED_TOOLS.has(event.toolName)
+            ? null
+            : await diagnostics.check(path)
+
+        const patch = DIAGNOSED_TOOLS.has(event.toolName)
+          ? event.isError === true
+            ? (patches.forget(event.toolCallId), null)
+            : await patches.complete({ toolCallId: event.toolCallId, path })
+          : null
+
+        const appended = [
+          ...(outcome.note ? [{ type: 'text' as const, text: outcome.note }] : []),
+          ...(note ? [{ type: 'text' as const, text: `\n${note}` }] : [])
+        ]
+
+        if (appended.length > 0 || patch) {
           return {
-            content: [...event.content, { type: 'text' as const, text: outcome.note }]
+            content: appended.length > 0 ? [...event.content, ...appended] : event.content,
+            // `details` is the one channel that reaches the UI without reaching the
+            // model, which is what makes a diff in the transcript free.
+            ...(patch ? { details: { ...(event.details as object), patches: [patch] } } : {})
           }
         }
         return undefined
@@ -573,6 +633,17 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
 
   const toolNames = resolveToolNames({ profile: toolProfile, contextWindow: budget.window })
 
+  // One language service per sub-app, shared with the code panel through the registry —
+  // so the editor's squiggles and the errors appended to the agent's writes come from the
+  // same program. Warmed here rather than on first use so the program build — seconds, on
+  // a sub-app with React's declarations installed — happens while the user is still
+  // typing, not inside the first edit.
+  const tsService: TsServiceLease = acquireTsService(app.path)
+  tsService.client.warm()
+  const diagnostics = createDiagnosticsNotifier({
+    source: { request: tsService.client.request }
+  })
+
   const loader = new DefaultResourceLoader({
     cwd: app.path,
     agentDir,
@@ -592,7 +663,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     skillsOverride: (current) => ({ skills: [], diagnostics: current.diagnostics }),
     agentsFilesOverride: confineContextFiles(app.path),
     extensionFactories: [
-      createAnyappExtension({ rootPath: app.path, budget, trimEnabled, callbacks }),
+      createAnyappExtension({ rootPath: app.path, budget, trimEnabled, diagnostics, callbacks }),
       ...(samplingTemperature === null
         ? []
         : [createSamplingExtension(samplingTemperature)])
@@ -616,6 +687,11 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     tools: [...toolNames, ...mcpBindings.map((binding) => binding.qualifiedName)],
     customTools: [
       ...createFileTools({ rootPath: app.path }),
+      ...createCodeTools({
+        rootPath: app.path,
+        request: tsService.client.request,
+        getAutoCommit: callbacks.getAutoCommit
+      }),
       ...createVersionTools(app.path),
       ...createWebTools({ rootPath: app.path, getAutoCommit: callbacks.getAutoCommit }),
       ...createSkillTools({ skills }),
@@ -709,6 +785,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     dispose: () => {
       stall.clear()
       unsubscribe()
+      tsService.release()
       session.dispose()
     }
   }

@@ -406,7 +406,8 @@ export function Chat({
                 ...toolBlock,
                 status: chunk.error ? ('error' as const) : ('complete' as const),
                 output: chunk.output,
-                error: chunk.error
+                error: chunk.error,
+                patches: chunk.patches
               }
             }
             return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]

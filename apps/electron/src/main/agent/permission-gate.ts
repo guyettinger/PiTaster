@@ -164,10 +164,28 @@ const FILE_WRITING_COMMANDS = [
 ]
 
 /**
- * Pi built-in tools whose arguments include a filesystem `path`.
- * Every path-bearing built-in uses that same key, and so does `replace_lines`.
+ * Tools whose arguments include a filesystem `path`.
+ *
+ * Every path-bearing built-in uses that same key, and so do `replace_lines`,
+ * `code_intel` and `refactor`.
+ *
+ * For the last two this check is necessary and **not sufficient**, which is worth being
+ * precise about. It confines the one path the model names. It says nothing about the
+ * paths the *compiler* names back — a rename's edit list, a `references` result — which
+ * module resolution can carry outside the root. Those are confined in `ts-service/` and
+ * re-checked in `code-tools.ts` before any write. See the module comment there.
  */
-const PATH_TOOLS = new Set(['read', 'write', 'edit', 'replace_lines', 'grep', 'find', 'ls'])
+const PATH_TOOLS = new Set([
+  'read',
+  'write',
+  'edit',
+  'replace_lines',
+  'grep',
+  'find',
+  'ls',
+  'code_intel',
+  'refactor'
+])
 
 /**
  * Tools allowed in `plan` mode: they inspect, and cannot change anything.
@@ -203,7 +221,12 @@ const PLAN_READ_TOOLS = [
   'load_skill',
   'git_status',
   'get_history',
-  'list_branches'
+  'list_branches',
+  // `code_intel` only asks the compiler questions — outline, definition, references,
+  // hover, and one declaration's source. Every one of them is a read of a file the mode
+  // already permits reading, answered more precisely. `refactor` is deliberately absent:
+  // it writes, and `plan` refuses it for the same reason it refuses `create_branch`.
+  'code_intel'
 ]
 
 /**
@@ -224,7 +247,15 @@ const FILE_TOOLS = [
   'grep',
   'find',
   'ls',
-  'load_skill'
+  'load_skill',
+  'code_intel',
+  // `refactor` writes, so it belongs with `write` and `edit` rather than with the reads
+  // — and for the same reason it is auto-approved here. Its writes are auto-committed
+  // together and computed by the compiler rather than guessed at. Auto-approving it rests
+  // on its writes staying inside the app root, which is enforced in `code-tools.ts` at the
+  // point of each write rather than by this table: the compiler can name a path the model
+  // never did, and this classification is what makes that unprompted.
+  'refactor'
 ]
 
 /**

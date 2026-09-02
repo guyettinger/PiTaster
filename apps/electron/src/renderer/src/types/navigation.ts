@@ -10,7 +10,7 @@
  */
 
 /** A destination in the global nav rail. `chat` is the focused app's workspace. */
-export type MainPanel = 'apps' | 'chat' | 'skills' | 'help' | 'settings'
+export type MainPanel = 'apps' | 'chat' | 'code' | 'skills' | 'help' | 'settings'
 
 /** A panel docked to the right of the workspace. */
 export type RightPanel = 'versions' | null

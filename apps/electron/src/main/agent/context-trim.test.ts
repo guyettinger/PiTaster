@@ -229,6 +229,35 @@ describe('trimContext', () => {
     expect(text).toContain('offset and limit')
   })
 
+  test('truncates a code_intel result, which is evidence like a read', () => {
+    const messages = [
+      user('go'),
+      call('a', 'code_intel', { operation: 'references', path: 'src/App.tsx', symbol: 'x' }),
+      result('a', 'code_intel', 'src/App.tsx:1:1  const x = 1\n'.repeat(5000)),
+      user('next')
+    ]
+    const trimmed = trimContext(messages, budget(50))
+    const text = textOf(trimmed[2])
+
+    expect(text.length).toBeLessThan(1000)
+    expect(text).toContain('anyapp truncated')
+  })
+
+  test('does not truncate an edit result, which now carries the diagnostics', () => {
+    // The compiler errors appended by `diagnostics-note.ts` ride on the edit's own
+    // result. If this set ever grew to include `edit`, that block would be the first
+    // thing cut — which is why its budget is enforced where it is produced instead.
+    const body = `edited\n\n2 TypeScript errors in src/App.tsx:\n  ${'e'.repeat(5000)}`
+    const messages = [
+      user('go'),
+      call('a', 'edit', { path: '/x' }),
+      result('a', 'edit', body),
+      user('next')
+    ]
+    const trimmed = trimContext(messages, budget(10))
+    expect(textOf(trimmed[2])).toBe(body)
+  })
+
   test('does not truncate a write result', () => {
     const body = 'w'.repeat(5000)
     const messages = [

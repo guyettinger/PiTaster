@@ -3,7 +3,7 @@
  */
 
 import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent'
-import type { AgentStatus, StreamChunk } from '@anyapp/core'
+import type { AgentStatus, FilePatch, StreamChunk } from '@anyapp/core'
 
 /** Maximum characters of tool output forwarded to the renderer. */
 const MAX_OUTPUT_CHARS = 500
@@ -51,6 +51,34 @@ function renderResult(result: unknown): string {
   } catch {
     return String(result)
   }
+}
+
+/**
+ * Lift the diffs a write produced out of the tool result's `details`.
+ *
+ * `details` is where anyapp puts everything the UI needs and the model must not pay
+ * for. It is also whatever the tool chose to put there, so every field is checked
+ * rather than asserted — a tool that returns a differently-shaped `details` should
+ * render without a diff, not crash the event pump mid-turn.
+ *
+ * @param result - The tool result, in whatever shape the tool produced
+ * @returns The patches, or an empty array
+ */
+function readPatches(result: unknown): FilePatch[] {
+  const details = (result as { details?: unknown } | null | undefined)?.details
+  const candidates = (details as { patches?: unknown } | null | undefined)?.patches
+  if (!Array.isArray(candidates)) return []
+
+  return candidates.filter((entry): entry is FilePatch => {
+    const patch = entry as Partial<FilePatch> | null
+    return (
+      !!patch &&
+      typeof patch.path === 'string' &&
+      typeof patch.patch === 'string' &&
+      typeof patch.added === 'number' &&
+      typeof patch.removed === 'number'
+    )
+  })
 }
 
 /**
@@ -104,14 +132,17 @@ export function toStreamChunk(event: AgentSessionEvent): StreamChunk | null {
         input: (event.args ?? {}) as Record<string, unknown>
       }
 
-    case 'tool_execution_end':
+    case 'tool_execution_end': {
+      const patches = readPatches(event.result)
       return {
         type: 'tool_end',
         tool: event.toolName,
         toolCallId: event.toolCallId,
         output: summarizeOutput(event.result),
+        ...(patches.length > 0 ? { patches } : {}),
         ...(event.isError ? { error: summarizeOutput(event.result) } : {})
       }
+    }
 
     case 'compaction_start':
       return toStatus({

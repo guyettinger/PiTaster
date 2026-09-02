@@ -181,6 +181,129 @@ in `SettingsManager`, not on `createAgentSession` — so `session.ts` sets it th
 payload. Ollama otherwise takes its default from the model's Modelfile, which is 0.7 or
 higher on the models anyapp targets.
 
+## The compiler is a tool, and mostly not one
+
+The agent could not check its own work. `typecheck:all` is the gate the self-modification
+flow relies on, but that gate is anyapp's, run by a human — a confined agent inside a
+sub-app has none. `bash` is deliberately absent from `PLAN_READ_TOOLS` and `FILE_TOOLS`,
+so in `acceptEdits`, the mode this app is built to be run in, the model writes TypeScript
+and cannot run `tsc` without stopping to ask. Every edit was unverified until someone ran
+the app.
+
+**One in-process `ts.LanguageService` per sub-app**, in `agent/ts-service/`. All five
+templates are TypeScript or JavaScript, so the whole universe the confined agent can
+reach is one language and a generic LSP client would buy nothing while costing a
+subprocess per language and a per-language install problem.
+
+**Confining it took three layers, and the obvious one was not enough.** `checkConfinement`
+refuses an out-of-root `path` before `execute` runs — but that is only the path *the
+model* names. The compiler names others: module resolution follows an import wherever it
+leads, so an in-root file importing `../../other-app/src/config` pulls that file into the
+program, and `references` would then quote its source back and `rename` would offer to
+rewrite it. `relative()` on such a file returns `../` segments, and rejoining those
+against the root is an ordinary path traversal that happens to have been computed by tsc.
+So: the host's `readFile`/`fileExists`/`readDirectory` are gated to the root plus
+TypeScript's own `lib.*.d.ts` (`host.ts`), the queries drop any result naming a file
+outside the root (`queries.ts`), and `applyEdits` re-checks every path immediately before
+writing it (`code-tools.ts`). The last is the one that has to be right, because
+`refactor` is auto-approved in `acceptEdits`.
+
+A `tsconfig.json` is a file the agent can write, so its `include` list is filtered too.
+
+It runs in an Electron **`utilityProcess`**, not in main. The service is synchronous and
+its first call builds a whole program — seconds, on a sub-app with React's declarations
+installed, on the thread that also pumps the agent's event stream. `ts-service/registry.ts`
+keys one service per app root and reference counts it, because the code panel is a second
+consumer and the editor's squiggles and the agent's errors must come from the same
+program or the user and the model end up with two accounts of whether the code compiles.
+
+**The highest-value part is not a tool.** `agent/diagnostics-note.ts` appends the changed
+file's compiler errors to the `tool_result` of every successful `write`, `edit` and
+`replace_lines`. It costs **zero schema tokens**, which is the whole reason it is a hook
+— every published Pi LSP extension converges on this same trick. Its budget is enforced
+*at the source*, because `edit` and `write` are absent from `TRUNCATABLE_TOOLS` and
+nothing downstream will cut what it appends: errors only, first N with a `+K more` line.
+It also names dependent files that have broken *since it last looked*, and claims nothing
+about a file it has never checked — a line that cries wolf is a line the model learns to
+skip.
+
+**Two tools, not ten.** `resolveToolNames` already removes four version tools below 32k
+because a long list measurably worsens which tool a small model picks; ten LSP tools —
+the shape every published extension takes — would invert that. So `code_intel` multiplexes
+`outline`, `read_symbol`, `definition`, `references` and `hover`, and `refactor`
+multiplexes `rename`, `organize_imports` and `apply_fix`. They cannot be one tool:
+`checkPermission` classifies by tool *name*, so a combined tool would have to be a write
+and `plan` would lose navigation, which is the mode navigation is most of the point in.
+Neither is in `LEAN_PROFILE_OMITS` — they earn their schema most on the smallest window,
+where a wasted `grep` and the two whole-file reads after it cost a large fraction of the
+budget.
+
+**Symbols are named, never addressed by `line:character`.** A local model asked for an
+exact offset gets it wrong for the same reason it gets an `edit`'s leading indentation
+wrong, and unlike a failed `edit` a wrong offset does not fail — it resolves whatever
+token sits there and answers confidently about the wrong thing. Ambiguity returns the
+candidates with their lines. The one exception is `apply_fix`'s `line`, which is a number
+anyapp printed in the diagnostics attached to the model's last write: the same pairing
+that makes `replace_lines` usable.
+
+**`getCodeFixesAtPosition` must be asked at the diagnostic's own span, not the line's.**
+Given a whole line and an error code it searches the range for anything matching, and on
+`export const value = shape.widht` it answers error 2551 with "change spelling of
+`export` to `Report`" — a well-formed fix that silently corrupts the file. There is a test.
+
+**`refactor` needs its own commit path.** `autoCommitToolResult` commits exactly one path,
+keyed on `input.path`, which for a rename names only the file the symbol was pointed at.
+`autoCommitRefactor` commits every rewritten file together; without it a rollback would
+restore the declaration and keep every updated call site. A *partial* failure commits too,
+for a sharper version of the same reason: `rollback` is a `git checkout`, which restores
+tracked files and leaves untracked ones in place, so a file written but never committed
+survives every rollback that follows it.
+
+Guidance for both tools lives in `system-prompt.ts`, not on the tool definitions. Their
+`promptGuidelines` would be dead metadata for the reason `tool-guidance.ts` exists — the
+`systemPromptOverride` early return drops every tool's contributions.
+
+## Seeing what the agent did
+
+The safety story is that every write auto-commits so any change can be rolled back, and
+until Session 22 you could roll a change back without ever having seen it: `ToolBubble`
+rendered an `edit` as its path plus `JSON.stringify(input)`, `DiffViewer.tsx` was
+imported by nothing and computed no diff, and `getDiff` was plumbed to preload with no
+consumer.
+
+**Diffs are free because they travel on `details`.** Pi keeps a tool result's `details`
+out of what it sends the model, so `agent/patch.ts` can put a full unified diff there at
+no cost in the context window — the caps in that module are about what a person can read
+in a bubble, not about tokens. The before-text is captured in the `tool_call` hook rather
+than reconstructed from git, so a diff appears whether or not auto-commit is on.
+
+**The approval prompt shows the change before you approve it**, which is where this
+matters most: `default` mode used to ask you to take responsibility for a write knowing
+only its path. `previewPatch` is **accurate or absent**. `write` and `replace_lines` are
+exact. `edit` is Pi's, and its matcher falls back to a fuzzy comparison — reimplementing
+that to draw a picture would mean two matchers that must agree forever, so the preview
+applies each `oldText` as a plain exact, unique match, a strict subset of what Pi accepts,
+and returns nothing at all if any of them does not land.
+
+**Monaco, not Theia.** Theia is a framework that owns an application — Inversify, Lumino,
+its own webpack frontend/backend split — and running it embedded in a larger app has been
+an open request on its tracker for years. Its editor and its diff view *are* Monaco, so
+anyapp takes those directly. Two constraints: **no CDN**, because `@monaco-editor/react`
+loads Monaco remotely by default and an editor that needs the network is the wrong shape
+for an app whose identity is that inference never leaves the machine; and **only the
+tokenizers this app needs**, because importing `monaco-editor` whole registers all
+eighty-four language definitions and takes the renderer bundle from 1.3 MB to 9 MB — the
+same trap `CodeBlock.tsx` already documents for lowlight's `common` set.
+
+**No Monaco in the transcript.** A chat with thirty tool calls must not instantiate thirty
+editors, so tool-bubble diffs are `DiffView.tsx`, which parses the unified diff itself and
+renders old and new line-number gutters. The line numbers are the part that matters:
+they are what `replace_lines` and `apply_fix` take.
+
+No TypeScript language service is registered in Monaco. It cannot see the sub-app's
+`tsconfig.json` or `node_modules`, so it would paint every import as unresolved. The
+squiggles come over IPC from the same service that checks the agent's writes.
+
 ## What the user sees while waiting
 
 Pi emits compaction, retry and settle events; `agent/events.ts` maps them to
@@ -362,9 +485,11 @@ annotation is legibility, not enforcement: it refuses nothing, and under
 | `bypassPermissions` | Auto-approve everything. Use with caution. |
 
 **What `plan` allows** is `PLAN_READ_TOOLS` — `read`, `grep`, `find`, `ls`,
-`load_skill`, `git_status`, `get_history`, `list_branches` — plus `web_fetch`. None of
-them can write a file, run a command, or move HEAD. `create_branch`, `switch_branch` and
-`rollback` are deliberately absent: they change the app even though nothing is written.
+`load_skill`, `code_intel`, `git_status`, `get_history`, `list_branches` — plus
+`web_fetch`. None of
+them can write a file, run a command, or move HEAD. `create_branch`, `switch_branch`, `rollback` and
+`refactor` are deliberately absent: they change the app even though, for the first three,
+nothing is written.
 `bash` is absent because it is not a read tool however read-only the command looks — the
 scan that would decide that is best-effort.
 

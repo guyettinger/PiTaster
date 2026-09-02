@@ -10,11 +10,20 @@ export default defineConfig({
   main: {
     build: {
       rollupOptions: {
-        input: { index: resolve(rootDir, 'src/main/index.ts') },
+        input: {
+          index: resolve(rootDir, 'src/main/index.ts'),
+          // The TypeScript language service runs in its own `utilityProcess`, so it
+          // needs its own entry point. `client.ts` resolves it as `ts-worker.mjs`
+          // beside the main bundle; renaming it here means renaming it there.
+          'ts-worker': resolve(rootDir, 'src/main/agent/ts-service/worker.ts')
+        },
         // Pi loads extensions through jiti and ships WASM; it cannot be rolled up.
         // undici stays external for the same reason — it carries llhttp as WASM — and
         // because it must stay the single instance Pi's requests also go through.
-        external: ['sharp', /^@earendil-works\//, 'typebox', 'undici'],
+        // `typescript` is external because it is a large CommonJS module the worker
+        // loads once at startup, and rolling it into the bundle would put a copy of the
+        // whole compiler in the main entry that never uses it.
+        external: ['sharp', /^@earendil-works\//, 'typebox', 'undici', 'typescript'],
         output: { format: 'es', entryFileNames: '[name].mjs' }
       }
     }

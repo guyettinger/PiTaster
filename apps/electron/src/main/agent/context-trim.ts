@@ -89,7 +89,12 @@ const TRUNCATABLE_TOOLS = new Set([
   'ls',
   'web_fetch',
   'git_status',
-  'install_deps'
+  'install_deps',
+  // Evidence the agent gathered, like `read` and `grep` — a `references` result on a
+  // widely-used symbol is exactly the kind of large, once-useful result these caps
+  // exist for. `refactor` is deliberately absent: its result is the record of a write
+  // that happened, and the same reasoning that keeps `edit` out keeps it out.
+  'code_intel'
 ])
 
 /**

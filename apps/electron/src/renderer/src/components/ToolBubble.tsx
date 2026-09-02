@@ -18,7 +18,9 @@ import {
   ToolIcon
 } from './icons'
 import { isMcpToolName, parseMcpToolName, summarizeMcpInput } from '../lib/mcpToolDisplay'
+import { PatchList } from './DiffView'
 import type { ComponentType } from 'react'
+import type { FilePatch } from '@anyapp/core'
 import type { IconProps } from './icons'
 
 /**
@@ -35,6 +37,8 @@ interface ToolBubbleProps {
   output?: string
   /** Error message if failed. */
   error?: string
+  /** What the write changed, when this call changed a file. */
+  patches?: FilePatch[]
 }
 
 /**
@@ -47,13 +51,18 @@ interface ToolDisplay {
   label: string
 }
 
-/** Every built-in tool Pi exposes, plus anyapp's own version-control and network tools. */
+/**
+ * Every built-in tool Pi exposes, plus anyapp's own code, version-control and network
+ * tools.
+ */
 const TOOL_DISPLAY: Record<string, ToolDisplay> = {
   bash: { Icon: CommandIcon, label: 'Command' },
   read: { Icon: FileIcon, label: 'Read file' },
   write: { Icon: FileEditIcon, label: 'Write file' },
   edit: { Icon: FileEditIcon, label: 'Edit file' },
   replace_lines: { Icon: FileEditIcon, label: 'Replace lines' },
+  code_intel: { Icon: SearchIcon, label: 'Code intelligence' },
+  refactor: { Icon: FileEditIcon, label: 'Refactor' },
   ls: { Icon: FolderIcon, label: 'List files' },
   find: { Icon: SearchIcon, label: 'Find files' },
   grep: { Icon: SearchIcon, label: 'Search' },
@@ -128,6 +137,16 @@ function getInputSummary(tool: string, input?: Record<string, unknown>): string 
       return input.path
         ? `${input.path as string}:${input.startLine as number}-${input.endLine as number}`
         : null
+    case 'code_intel':
+      // The operation is what distinguishes one of these calls from another; the path
+      // alone would render five different questions as five identical rows.
+      return [input.operation, input.path, input.symbol].filter(Boolean).join(' ')
+    case 'refactor':
+      return input.operation === 'rename'
+        ? `rename ${input.symbol as string} → ${input.newName as string} in ${input.path as string}`
+        : [input.operation, input.path, input.line ? `:${input.line as number}` : '']
+            .filter(Boolean)
+            .join(' ')
     case 'grep':
     case 'find':
       return (input.pattern as string) ?? null
@@ -147,10 +166,13 @@ function getInputSummary(tool: string, input?: Record<string, unknown>): string 
 /**
  * Renders inline tool usage bubble.
  */
-export function ToolBubble({ tool, status, input, output, error }: ToolBubbleProps) {
+export function ToolBubble({ tool, status, input, output, error, patches }: ToolBubbleProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const { Icon: ToolGlyph, label } = getToolDisplay(tool)
   const summary = getInputSummary(tool, input)
+  const changed = patches ?? []
+  const added = changed.reduce((total, patch) => total + patch.added, 0)
+  const removed = changed.reduce((total, patch) => total + patch.removed, 0)
   
   return (
     <div 
@@ -178,33 +200,50 @@ export function ToolBubble({ tool, status, input, output, error }: ToolBubblePro
         </div>
         
         {/* Expand toggle for details */}
-        {(input || output) && (
+        {(input || output || changed.length > 0) && (
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="-mr-2 rounded px-2 py-1 text-xs text-ash transition-colors hover:bg-raised hover:text-bone"
           >
-            {isExpanded ? 'Hide' : 'Details'}
+            {isExpanded ? 'Hide' : changed.length > 0 ? 'Diff' : 'Details'}
           </button>
         )}
       </div>
       
       {/* Summary line */}
       {summary && (
-        <div className="mt-1 font-mono text-xs text-ash truncate">
-          {summary}
+        <div className="mt-1 flex items-baseline gap-2 font-mono text-xs text-ash">
+          <span className="truncate">{summary}</span>
+          {/* The size of the change, visible without expanding. A write whose diff is
+              two lines and one whose diff is two hundred look identical otherwise. */}
+          {changed.length > 0 && (
+            <span className="shrink-0">
+              <span className="text-patina">+{added}</span>{' '}
+              <span className="text-rust">−{removed}</span>
+              {changed.length > 1 && (
+                <span className="text-ash"> in {changed.length} files</span>
+              )}
+            </span>
+          )}
         </div>
       )}
       
       {/* Expanded details */}
       {isExpanded && (
         <div className="mt-2 space-y-2">
-          {input && (
-            <div className="rounded bg-panel p-2">
-              <div className="text-xs font-medium text-ash mb-1">Input</div>
-              <pre className="text-xs text-bone overflow-auto max-h-32">
-                {JSON.stringify(input, null, 2)}
-              </pre>
-            </div>
+          {/* When there is a diff, it *is* the input — showing the arguments as JSON
+              alongside it says the same thing twice and less clearly. */}
+          {changed.length > 0 ? (
+            <PatchList patches={changed} />
+          ) : (
+            input && (
+              <div className="rounded bg-panel p-2">
+                <div className="text-xs font-medium text-ash mb-1">Input</div>
+                <pre className="text-xs text-bone overflow-auto max-h-32">
+                  {JSON.stringify(input, null, 2)}
+                </pre>
+              </div>
+            )
           )}
           {output && (
             <div className="rounded bg-panel p-2">

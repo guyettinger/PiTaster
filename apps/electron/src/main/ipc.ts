@@ -16,6 +16,9 @@ import {
   type AgentHost
 } from './agent/session'
 import { describeNetworkUse } from './agent/permission-gate'
+import { previewPatch } from './agent/patch'
+import { listAppFiles, readAppFile } from './files'
+import { acquireTsService } from './agent/ts-service/registry'
 import { autoCommitSkillChange } from './agent/auto-commit'
 import { getAppSkillsDir } from './agent/skills'
 import {
@@ -795,6 +798,39 @@ export async function getActiveApp(): Promise<SubApp | null> {
 }
 
 /**
+ * Resolve a renderer-supplied app path to a real sub-app root.
+ *
+ * The renderer is untrusted, and `rootPath` is the value every path check is performed
+ * *against* — `isWithinRoot` only ever means "inside whatever string the caller called
+ * the root". So a handler that takes `appPath` on faith is not confined at all: a
+ * compromised renderer could ask for `~/.ssh/id_rsa` with `appPath` set to the home
+ * directory and the confinement would agree that the file is inside the root.
+ *
+ * Every path here has to come from `AppManager`, which is the only authority on where
+ * sub-apps actually live.
+ *
+ * @param appPath - The path the renderer supplied, if any
+ * @returns The verified sub-app root
+ * @throws {Error} If no app is selected, or the path is not a known sub-app
+ */
+async function resolveAppRoot(appPath?: string): Promise<string> {
+  if (appPath === undefined) {
+    const active = await getActiveApp()
+    if (!active) throw new Error('No app selected')
+    return active.path
+  }
+
+  if (typeof appPath !== 'string' || appPath.length === 0 || appPath.length > 4096) {
+    throw new Error('Invalid app path')
+  }
+
+  const known = await appManager.listApps()
+  const match = known.find((app) => app.path === appPath)
+  if (!match) throw new Error('Unknown app path')
+  return match.path
+}
+
+/**
  * Split a renderer prompt into plain text and attached element contexts.
  *
  * `tool` and `approval` blocks are display-only records of an earlier turn; Pi keeps
@@ -947,9 +983,13 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
       callMcpTool: (sourceId, toolName, args) =>
         sourceManager.callTool(sourceId, toolName, args),
 
-      requestApproval: (tool: string, input: unknown): Promise<boolean> => {
+      requestApproval: async (tool: string, input: unknown): Promise<boolean> => {
         const id = nanoid()
         const args = input as Record<string, unknown>
+
+        // What this write would do, so the prompt shows the change rather than only its
+        // path. Accurate or absent — `previewPatch` returns nothing rather than guess.
+        const patches = await previewPatch({ rootPath: app.path, toolName: tool, input: args })
 
         // Surface network use in the prompt. This annotates, it does not gate:
         // `bash` reaches the user for approval either way, and the note only
@@ -964,6 +1004,7 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
           id,
           tool,
           input: args,
+          ...(patches.length > 0 ? { patches } : {}),
           ...(notice ? { notice } : {})
         }
 
@@ -1108,25 +1149,24 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     }
   })
 
-  // Version control IPC handlers
+  // Version control IPC handlers.
+  //
+  // Every one of these routes its `appPath` through `resolveAppRoot`. They took it on
+  // faith for as long as they existed, which was dormant while nothing in the renderer
+  // passed one — `getDiff` had no caller at all. The code panel and the commit diff are
+  // the first real consumers, so the check is no longer theoretical.
   ipcMain.handle('version:get-state', async (_, appPath?: string) => {
-    const path = appPath ?? (await getActiveApp())?.path
-    if (!path) throw new Error('No app selected')
-    const vm = new VersionManager(path)
+    const vm = new VersionManager(await resolveAppRoot(appPath))
     return vm.getState()
   })
 
   ipcMain.handle('version:get-branches', async (_, appPath?: string) => {
-    const path = appPath ?? (await getActiveApp())?.path
-    if (!path) throw new Error('No app selected')
-    const vm = new VersionManager(path)
+    const vm = new VersionManager(await resolveAppRoot(appPath))
     return vm.listBranches()
   })
 
   ipcMain.handle('version:get-history', async (_, depth?: number, appPath?: string) => {
-    const path = appPath ?? (await getActiveApp())?.path
-    if (!path) throw new Error('No app selected')
-    const vm = new VersionManager(path)
+    const vm = new VersionManager(await resolveAppRoot(appPath))
     return vm.getHistory({ depth })
   })
 
@@ -1134,9 +1174,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (typeof name !== 'string' || name.length === 0) {
       throw new Error('Invalid branch name')
     }
-    const path = appPath ?? (await getActiveApp())?.path
-    if (!path) throw new Error('No app selected')
-    const vm = new VersionManager(path)
+    const vm = new VersionManager(await resolveAppRoot(appPath))
     return vm.switchBranch(name)
   })
 
@@ -1144,9 +1182,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (typeof name !== 'string' || name.length === 0) {
       throw new Error('Invalid branch name')
     }
-    const path = appPath ?? (await getActiveApp())?.path
-    if (!path) throw new Error('No app selected')
-    const vm = new VersionManager(path)
+    const vm = new VersionManager(await resolveAppRoot(appPath))
     return vm.createBranch({ name })
   })
 
@@ -1154,9 +1190,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (typeof oid !== 'string' || oid.length === 0) {
       throw new Error('Invalid commit OID')
     }
-    const path = appPath ?? (await getActiveApp())?.path
-    if (!path) throw new Error('No app selected')
-    const vm = new VersionManager(path)
+    const vm = new VersionManager(await resolveAppRoot(appPath))
     return vm.rollback(oid)
   })
 
@@ -1164,10 +1198,52 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (typeof from !== 'string' || typeof to !== 'string') {
       throw new Error('Invalid commit OIDs')
     }
-    const path = appPath ?? (await getActiveApp())?.path
-    if (!path) throw new Error('No app selected')
-    const vm = new VersionManager(path)
+    const vm = new VersionManager(await resolveAppRoot(appPath))
     return vm.diff(from, to)
+  })
+
+  /**
+   * The sub-app's source tree, for the code panel.
+   *
+   * Confinement comes from `files.ts`, which uses the same `isWithinRoot` the agent's
+   * gate uses — so the tree can never show a file the agent could not reach.
+   */
+  ipcMain.handle('files:tree', async (_, appPath?: string) => {
+    return listAppFiles(await resolveAppRoot(appPath))
+  })
+
+  ipcMain.handle('files:read', async (_, filePath: string, appPath?: string) => {
+    // The renderer is untrusted. Length is bounded here as well as type, so a path built
+    // by a runaway loop cannot be handed to the filesystem.
+    if (typeof filePath !== 'string' || filePath.length === 0 || filePath.length > 4096) {
+      throw new Error('Invalid file path')
+    }
+    return readAppFile({ rootPath: await resolveAppRoot(appPath), path: filePath })
+  })
+
+  /**
+   * Compiler errors for one file, for the code viewer's squiggles.
+   *
+   * Deliberately the *same* service the agent's writes are checked against — borrowed
+   * from the registry rather than started separately — so the human and the model are
+   * never shown two different accounts of whether the code compiles.
+   */
+  ipcMain.handle('files:diagnostics', async (_, filePath: string, appPath?: string) => {
+    if (typeof filePath !== 'string' || filePath.length === 0 || filePath.length > 4096) {
+      throw new Error('Invalid file path')
+    }
+
+    const lease = acquireTsService(await resolveAppRoot(appPath))
+    try {
+      await lease.client.request({ kind: 'invalidate', paths: [filePath] })
+      const response = await lease.client.request({ kind: 'diagnostics', path: filePath })
+      // Anything but a diagnostics answer means the service could not say — an app with
+      // no TypeScript in it, a crashed worker. The viewer shows no squiggles, which is
+      // the truthful rendering of "no information".
+      return response.kind === 'diagnostics' ? response.diagnostics : []
+    } finally {
+      lease.release()
+    }
   })
 
   // App management IPC handlers
@@ -1705,6 +1781,9 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('version:create-branch')
   ipcMain.removeHandler('version:rollback')
   ipcMain.removeHandler('version:diff')
+  ipcMain.removeHandler('files:tree')
+  ipcMain.removeHandler('files:read')
+  ipcMain.removeHandler('files:diagnostics')
 
   // App management handlers
   ipcMain.removeHandler('apps:list')
