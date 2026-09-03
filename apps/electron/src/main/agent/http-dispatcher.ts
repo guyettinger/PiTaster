@@ -30,25 +30,31 @@ import { EventEmitter } from 'node:events'
 import * as undici from 'undici'
 
 /**
- * How long a request may go without producing bytes before it is aborted.
+ * The ceiling on how long the model may be silent before a request is abandoned.
  *
- * Prefill on a large context is exactly that: minutes of silence with nothing on the
- * wire. `agent/stall-notifier.ts`, not this timeout, is what tells the user something
- * is still happening.
+ * This governs TWO different silences, and both of them are real:
  *
- * Thirty minutes is not a guess at how long prefill takes; it is a bound loose enough
- * that tripping it means something is wrong rather than merely slow. A local daemon
- * has no request budget to protect, so the cost of setting this too high is only a
- * longer wait before a genuine hang is reported — while setting it too low kills work
- * that would have finished.
+ * 1. undici's `bodyTimeout`/`headersTimeout` here — the gap between bytes once a
+ *    response is streaming.
+ * 2. Pi's per-request timeout, through `buildPiSettings`'s `httpIdleTimeoutMs`. Pi
+ *    hands that to the OpenAI SDK as `timeout`, and the SDK clears the timer the
+ *    moment response headers arrive — so on that side this is a *time to first
+ *    token* bound. Prefill is what spends it.
  *
- * This is the ceiling on one *request*. It does not bound a turn, because Pi retries
- * a timeout like any other transient error: `LOCAL_RETRY_ATTEMPTS` in `session.ts`
- * would multiply this into a two-and-a-half-hour turn. `TURN_RETRY_BUDGET_MS` in
- * `agent/retry-budget.ts` is what bounds that, and any change here has to be made
- * against it.
+ * Neither is a guess at how long prefill takes; both are bounds loose enough that
+ * tripping one means something is wrong rather than merely slow. A local daemon has
+ * no request budget to protect, so setting this too high only delays reporting a
+ * genuine hang, while setting it too low kills work that would have finished.
+ *
+ * It was 30 minutes, and 30 minutes was measured to be reachable by honest work: two
+ * requests on 2026-09-03 tripped the stream side at ~1836s and ~2266s. An hour is
+ * the same judgement made with that measurement in hand.
+ *
+ * This does not bound a turn. `TURN_RETRY_BUDGET_MS` in `agent/retry-budget.ts` does,
+ * and it has to stay strictly greater than this or a legitimately slow prefill would
+ * be cut before it could finish. Any change here has to be made against it.
  */
-export const HTTP_IDLE_TIMEOUT_MS = 1_800_000
+export const HTTP_IDLE_TIMEOUT_MS = 3_600_000
 
 /**
  * Node's default, which is the value this module exists to replace.
