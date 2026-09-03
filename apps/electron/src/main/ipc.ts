@@ -18,6 +18,7 @@ import {
   type AgentHost
 } from './agent/session'
 import { buildContextReport } from './agent/context-report'
+import { createTelemetry, type Telemetry } from './agent/telemetry'
 import { readWorkspaceLayout, writeWorkspaceLayout } from './layout-store'
 import { ensureSessionBaseline, readSessionBaseline } from './session-baselines'
 import { describeNetworkUse } from './agent/permission-gate'
@@ -127,6 +128,28 @@ let cachedReport: ContextReport | null = null
  */
 function forgetCachedReport(): void {
   cachedReport = null
+}
+
+/**
+ * What the daemon has been asked to do for the conversation on screen.
+ *
+ * Owned here rather than by the host for the same reason {@link cachedReport} is:
+ * `disposeAgentHost` runs on every skills, sources or config save, and a recorder
+ * rebuilt with the host would answer "how many times did this conversation re-prefill"
+ * with however many turns have passed since the last settings change. That number is
+ * the acceptance test for the sealed-prefix work, so it has to span the conversation.
+ */
+let sessionTelemetry: Telemetry = createTelemetry()
+
+/**
+ * Start measuring again, because the conversation changed.
+ *
+ * Paired with {@link forgetCachedReport} at every site, and always after
+ * `disposeAgentHost` — a live host holds the recorder it was built with, so replacing
+ * it while one is running would leave that host writing to a recorder nobody reads.
+ */
+function forgetSessionTelemetry(): void {
+  sessionTelemetry = createTelemetry()
 }
 
 /**
@@ -1108,6 +1131,7 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
     samplingTemperature: config.samplingTemperature,
     sessionFile: sessionFile ?? undefined,
     mcpSources: sourceManager.getConnectedSources().filter((source) => source.connected),
+    telemetry: sessionTelemetry,
     callbacks: {
       getPermissionMode: () => currentPermissionMode,
       denyPendingApprovals,
@@ -1199,6 +1223,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   ipcMain.handle('agent:clear-history', async (): Promise<void> => {
     await disposeAgentHost()
     forgetCachedReport()
+    forgetSessionTelemetry()
   })
 
   // Send message to agent
@@ -1530,7 +1555,10 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     // navigation — the Apps page is how a user gets back to a chat — and forgetting the
     // conversation there would drop the context meter to its fixed floor for a trip the
     // user made to return to the very conversation it describes.
-    if (id !== activeAppId) forgetCachedReport()
+    if (id !== activeAppId) {
+      forgetCachedReport()
+      forgetSessionTelemetry()
+    }
     activeAppId = id
     activeSessionId = null
     
@@ -1792,6 +1820,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     await chatHistoryManager.clearHistory(activeAppId, activeSessionId)
     await disposeAgentHost()
     forgetCachedReport()
+    forgetSessionTelemetry()
   })
 
   // Chat session IPC handlers
@@ -1809,6 +1838,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     activeSessionId = session.id
     await disposeAgentHost()
     forgetCachedReport()
+    forgetSessionTelemetry()
 
     // Notify renderer
     sendSessionChanged(mainWindow, activeAppId, session.id, [])
@@ -1830,6 +1860,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       activeSessionId = newActiveId
       await disposeAgentHost()
       forgetCachedReport()
+      forgetSessionTelemetry()
 
       const history = newActiveId
         ? await chatHistoryManager.loadHistory(activeAppId, newActiveId)
@@ -1859,6 +1890,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     activeSessionId = sessionId
     await disposeAgentHost()
     forgetCachedReport()
+    forgetSessionTelemetry()
 
     // Load history for the new session
     const history = await chatHistoryManager.loadHistory(activeAppId, sessionId)

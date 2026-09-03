@@ -46,6 +46,13 @@ import { createLoopGuard } from './loop-guard'
 import { AnyappResourceLoader, buildPiSettings } from './pi-settings'
 import { createRetryBudget, formatSilence } from './retry-budget'
 import { createStallNotifier } from './stall-notifier'
+import {
+  createTelemetry,
+  formatTurnSummary,
+  readProviderResult,
+  type Telemetry,
+  type TelemetrySnapshot
+} from './telemetry'
 import { toStreamChunk } from './events'
 import { createMcpTools, getMcpToolBindings, type CallMcpTool } from './mcp-tools'
 import {
@@ -220,6 +227,16 @@ export interface CreateAgentHostParams {
   sessionFile?: string
   /** Currently connected MCP sources, whose tools join this session. */
   mcpSources?: ConnectedSource[]
+  /**
+   * Where to record what each provider request cost.
+   *
+   * Defaults to a recorder of this host's own, which is right for a measurement of one
+   * session and wrong for a measurement of one *conversation*: `disposeAgentHost` runs
+   * on every skills, sources or config save, so a caller that wants the counts to
+   * survive that has to own the recorder — the same reasoning that made `ipc.ts` cache
+   * the last context report.
+   */
+  telemetry?: Telemetry
   /** Application callbacks. */
   callbacks: AgentHostCallbacks
 }
@@ -255,6 +272,13 @@ export interface AgentHost {
    * already maps to status chunks, so the UI narrates this without further wiring.
    */
   compact: () => Promise<void>
+  /**
+   * What the daemon has been asked to do, and what it cost.
+   *
+   * Prefill dominates a turn on a local model, and Ollama reports how much of each
+   * prompt it had to prefill against how much it reused. See `agent/telemetry.ts`.
+   */
+  getTelemetry: () => TelemetrySnapshot
   /** Release the session and its listeners. */
   dispose: () => void
 }
@@ -365,10 +389,12 @@ function createAnyappExtension(params: {
   trimEnabled: boolean
   /** Reports the compiler errors a write introduced. */
   diagnostics: DiagnosticsNotifier
+  /** Records what each provider request cost. */
+  telemetry: Telemetry
   /** Application callbacks. */
   callbacks: AgentHostCallbacks
 }): InlineExtension {
-  const { rootPath, budget, trimEnabled, diagnostics, callbacks } = params
+  const { rootPath, budget, trimEnabled, diagnostics, telemetry, callbacks } = params
   const loopGuard = createLoopGuard()
   const patches = createPatchRecorder({ rootPath })
   const editRepair = createEditRepair({
@@ -382,6 +408,25 @@ function createAnyappExtension(params: {
   return {
     name: 'anyapp-guard',
     factory: (pi: ExtensionAPI) => {
+      // The two ends of a provider request, and the only place anyapp can time one.
+      //
+      // Ollama sends no response headers until the first token, so the gap between
+      // these two hooks is the prefill — the cost that dominates a turn on a local
+      // model and the one the audit found anyapp paying twice over. Returning
+      // `undefined` leaves the payload alone; the runner chains handlers and only
+      // replaces the payload for a handler that returns one
+      // (`extensions/runner.js:832-836`), so this coexists with the sampling
+      // extension, which does replace it.
+      pi.on('before_provider_request', async () => {
+        telemetry.requestStarted()
+        return undefined
+      })
+
+      pi.on('after_provider_response', async (event) => {
+        telemetry.responseHeaders(event.status)
+        return undefined
+      })
+
       // A new user prompt always breaks a loop, so the streak starts over.
       //
       // Deliberately `agent_start`, not `turn_start`. Pi emits `turn_start` once per
@@ -556,6 +601,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     samplingTemperature = DEFAULT_SAMPLING_TEMPERATURE,
     sessionFile,
     mcpSources = [],
+    telemetry = createTelemetry(),
     callbacks
   } = params
 
@@ -615,7 +661,14 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     skillsOverride: (current) => ({ skills: [], diagnostics: current.diagnostics }),
     agentsFilesOverride: confineContextFiles(app.path),
     extensionFactories: [
-      createAnyappExtension({ rootPath: app.path, budget, trimEnabled, diagnostics, callbacks }),
+      createAnyappExtension({
+        rootPath: app.path,
+        budget,
+        trimEnabled,
+        diagnostics,
+        telemetry,
+        callbacks
+      }),
       ...(samplingTemperature === null
         ? []
         : [createSamplingExtension(samplingTemperature)])
@@ -657,7 +710,85 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
   const stall = createStallNotifier({ onStream: callbacks.onStream })
   const retryBudget = createRetryBudget()
 
+  // Whether a turn is being measured.
+  //
+  // Deliberately not keyed on `agent_start` alone. Pi re-emits that for every retry
+  // and every overflow-compaction continuation — the reason `loop-guard` resets there
+  // and `retry-budget` deliberately does not — so a turn summary anchored to it would
+  // start over mid-turn and report the last continuation as the whole turn.
+  // `agent_settled` fires once, after everything that could continue the run has
+  // declined to, which makes it the honest end.
+  let turnOpen = false
+
+  /**
+   * Record one session event against the request being measured.
+   *
+   * Kept separate from the control flow below because nothing here decides anything:
+   * it only writes down what the daemon did. The request's own two ends come from
+   * Pi's provider hooks in the guard extension; everything else — the first token,
+   * the final usage, the turn boundaries — is already passing through here.
+   *
+   * @param event - The Pi session event
+   */
+  const recordTelemetry = (event: AgentSessionEvent): void => {
+    switch (event.type) {
+      case 'agent_start':
+        if (!turnOpen) {
+          turnOpen = true
+          telemetry.turnStarted()
+        }
+        return
+
+      case 'compaction_start':
+        telemetry.compactionStarted()
+        return
+
+      case 'message_update': {
+        // Only the deltas. Pi's `done` and `error` events never reach `message_update`
+        // — the loop calls `response.result()` and emits `message_end` instead — so a
+        // request is closed there, not here.
+        const inner = event.assistantMessageEvent
+        if (inner.type === 'text_delta' || inner.type === 'thinking_delta') {
+          telemetry.firstContent()
+        }
+        return
+      }
+
+      case 'message_end': {
+        // `message_end` fires for user and tool-result messages too, and closing the
+        // open request on one of those would record a turn's worth of prefill as
+        // unmeasured. `readProviderResult` returns nothing for those.
+        const result = readProviderResult(event.message)
+        if (result) telemetry.messageFinished(result)
+        return
+      }
+
+      case 'agent_settled': {
+        turnOpen = false
+        telemetry.turnEnded()
+        const { turn, totals } = telemetry.snapshot()
+        // One line per turn, and the only measurement anyapp produces until W4 gives
+        // it a home in the UI. It is here rather than behind a flag because the
+        // re-prefill count is the number whose absence hid Session 25's finding for
+        // six sessions.
+        if (turn.requests > 0) {
+          console.log(
+            '[agent]',
+            formatTurnSummary(turn),
+            `| session: ${totals.invalidations} invalidated, ${totals.compactions} compacted`
+          )
+        }
+        return
+      }
+
+      default:
+        return
+    }
+  }
+
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
+    recordTelemetry(event)
+
     // Any event at all is proof the run is alive, so it resets both clocks — except
     // `agent_start`, which is where the longest silence begins. A retry is not
     // progress, which is why `auto_retry_start` reaches neither reset: it arrives on
@@ -752,6 +883,8 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     compact: async () => {
       await session.compact()
     },
+
+    getTelemetry: () => telemetry.snapshot(),
 
     dispose: () => {
       stall.clear()
