@@ -46,6 +46,7 @@ The implementation is split into **6 independent sessions**, each resulting in a
 | [21. Skills](SESSION-21-SKILLS.md) | Skills that reach the model | `load_skill`, app-scoped skills, per-app enable, authoring UI, corrected seeds | Complete | [Notes](SESSION-21-NOTES.md) |
 | [22. Code Intelligence](SESSION-22-CODE-INTELLIGENCE.md) | Compiler + editing surface | TypeScript service, diagnostics on every write, `code_intel`/`refactor`, diffs in the transcript and the approval prompt, a code panel | Complete | [Notes](SESSION-22-NOTES.md) |
 | [23. Context Report](SESSION-23-CONTEXT-REPORT.md) | An always-on context meter | Session-free context report, attributable breakdown on hover, compaction threshold shown, manual summarize | Complete | [Notes](SESSION-23-CONTEXT-REPORT.md) |
+| [24. Session Changes](SESSION-24-SESSION-CHANGES.md) | The files a session changed | Changed-files strip in the composer, per-file diffs, `VersionManager.diff` reads contents, restored diffs | Complete | [Notes](SESSION-24-NOTES.md) |
 
 ## Session 6 Sub-Sessions
 

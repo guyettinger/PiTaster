@@ -70,7 +70,8 @@ function ServerPanel() {
  * The conversation with the agent.
  */
 function ChatPanel() {
-  const { app, permissionMode, onModeChange, activeSessionId, onOpenSkills } = useWorkspace()
+  const { app, permissionMode, onModeChange, activeSessionId, onOpenSkills, openFile, changesRevision } =
+    useWorkspace()
   return (
     <Chat
       app={app}
@@ -78,6 +79,8 @@ function ChatPanel() {
       onModeChange={onModeChange}
       activeSessionId={activeSessionId}
       onOpenSkills={onOpenSkills}
+      onOpenFile={openFile}
+      changesRevision={changesRevision}
     />
   )
 }

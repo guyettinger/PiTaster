@@ -17,6 +17,8 @@ import {
 } from './skills/SkillMentionMenu'
 import { useSkills } from '../hooks/useSkills'
 import { useContextReport } from '../hooks/useContextReport'
+import { useSessionChanges } from '../hooks/useSessionChanges'
+import { ChangedFilesStrip } from './ChangedFilesStrip'
 import { ContextMeter } from './ContextMeter'
 import type { Message, ContentBlock } from './MessageBubble'
 import type {
@@ -34,6 +36,15 @@ import type {
 } from '@anyapp/core'
 
 /**
+ * Tools whose call means a file is being rewritten right now.
+ *
+ * Only used to name the file in the strip while the write is in flight. What was
+ * *actually* changed comes from the patches on the result, which covers `refactor`'s
+ * multi-file rewrites — files this list's single `input.path` never names.
+ */
+const WRITING_TOOLS = new Set(['write', 'edit', 'replace_lines', 'refactor'])
+
+/**
  * Props for the Chat component.
  */
 interface ChatProps {
@@ -47,6 +58,17 @@ interface ChatProps {
   activeSessionId: string | null
   /** Open the Skills page, from the context breakdown's fixed-cost blocks. */
   onOpenSkills: () => void
+  /** Open one of the app's files in its own Code panel. */
+  onOpenFile: (path: string) => void
+  /**
+   * Bumped when something outside this conversation moves HEAD.
+   *
+   * A rollback or a branch switch happens in the History panel, and the strip would
+   * otherwise go on asserting changes that no longer exist — the one kind of wrong a
+   * feature about trust cannot afford. Turn-by-turn refreshes stay local to this
+   * component so they never re-render the rest of the dock.
+   */
+  changesRevision: number
 }
 
 /**
@@ -64,7 +86,12 @@ function convertToUIBlocks(blocks: SerializedContentBlock[]): ContentBlock[] {
         status: block.status,
         input: block.input,
         output: block.output,
-        error: block.error
+        error: block.error,
+        // Main persists a write's diff and restores it (`chat/manager.ts`), and
+        // dropping it here is what made a reopened session render every write as a
+        // JSON dump: the diffs were only ever visible in the session that watched
+        // them happen.
+        patches: block.patches
       }
     } else if (block.type === 'approval') {
       return {
@@ -100,7 +127,8 @@ function convertToSerializedBlocks(blocks: ContentBlock[]): SerializedContentBlo
         status: block.status,
         input: block.input,
         output: block.output,
-        error: block.error
+        error: block.error,
+        patches: block.patches
       }
     } else if (block.type === 'approval') {
       return {
@@ -176,7 +204,9 @@ export function Chat({
   permissionMode,
   onModeChange,
   activeSessionId,
-  onOpenSkills
+  onOpenSkills,
+  onOpenFile,
+  changesRevision
 }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -188,6 +218,20 @@ export function Chat({
   // skill toggled off, a source connected — so the hook also refetches on mount, which
   // is every return to the chat panel.
   const [contextRevision, setContextRevision] = useState(0)
+  // What the agent has written this turn, and what it is writing right now. Both are
+  // read off the stream rather than from git, so the strip moves while the turn is
+  // still running; the git read at the end of the turn is what makes them accurate.
+  const [pendingPaths, setPendingPaths] = useState<string[]>([])
+  const [writingPath, setWritingPath] = useState<string | null>(null)
+  // Bumped when a turn ends. Paired with `changesRevision` from the dock, which is
+  // bumped when a rollback or a branch switch moves HEAD from somewhere else.
+  const [turnRevision, setTurnRevision] = useState(0)
+  const sessionChanges = useSessionChanges({
+    appId: app.id,
+    appPath: app.path,
+    sessionId: activeSessionId,
+    revision: turnRevision + changesRevision
+  })
   const {
     report: contextReport,
     compact: compactContext,
@@ -248,6 +292,10 @@ export function Chat({
     setMessages([])
     setIsStreaming(false)
     setPendingApproval(null)
+    // The optimistic half of the strip belongs to the conversation that produced it.
+    // The committed half is re-read from git for the new session by `useSessionChanges`.
+    setPendingPaths([])
+    setWritingPath(null)
 
     if (!activeSessionId) return
     let cancelled = false
@@ -318,6 +366,11 @@ export function Chat({
         // Store tool info
         currentToolRef.current = { name: chunk.tool, input: chunk.input }
 
+        const target = chunk.input?.path
+        if (WRITING_TOOLS.has(chunk.tool) && typeof target === 'string') {
+          setWritingPath(target)
+        }
+
         setMessages(prev => {
           const last = prev[prev.length - 1]
           if (last?.role !== 'assistant') return prev
@@ -365,6 +418,15 @@ export function Chat({
           return prev
         })
 
+        // The patches on the result are the uniform source: main puts them on
+        // `details` for `write`, `edit` and `replace_lines`, and `refactor` builds its
+        // own for every file it rewrote. Nothing else has to know which tool wrote what.
+        if (chunk.patches && chunk.patches.length > 0) {
+          const written = chunk.patches.map((patch) => patch.path)
+          setPendingPaths((prev) => [...new Set([...written, ...prev])])
+        }
+
+        setWritingPath(null)
         currentToolRef.current = null
       } else if (chunk.type === 'complete') {
         setIsStreaming(false)
@@ -375,6 +437,11 @@ export function Chat({
         // usage number too, but not the attribution, and taking half the answer from
         // one source and half from another is how the two drift apart.
         setContextRevision((revision) => revision + 1)
+        // Reconcile the strip against git. Until now it has been showing what the
+        // stream said; from here it shows the *net* change across the whole session,
+        // which is the only version that survives the same file being written twice.
+        setWritingPath(null)
+        setTurnRevision((revision) => revision + 1)
         // The agent persists its own transcript; nothing to save here.
       } else if (chunk.type === 'status') {
         // Compaction, retries and long prefills are most of the wall-clock time on a
@@ -395,6 +462,7 @@ export function Chat({
         })
       } else if (chunk.type === 'error') {
         setIsStreaming(false)
+        setWritingPath(null)
         
         // Add error to current tool or as text
         setMessages(prev => {
@@ -595,6 +663,14 @@ export function Chat({
       <div className="border-t border-line px-6 py-4">
         {status && <AgentStatusStrip status={status} />}
         <div className="mx-auto max-w-3xl">
+          <ChangedFilesStrip
+            patches={sessionChanges.patches}
+            committedPaths={sessionChanges.committedPaths}
+            uncommitted={sessionChanges.uncommitted}
+            pendingPaths={pendingPaths}
+            writingPath={writingPath}
+            onOpenFile={onOpenFile}
+          />
           <SkillMentionMenu
             skills={mentionableSkills}
             query={mentionQuery}

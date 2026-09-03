@@ -13,6 +13,58 @@ import type { Commit, Branch, VersionState, FileDiff, MergeResult } from '@anyap
 const AUTHOR = { name: 'anyapp Agent', email: 'agent@anyapp.local' }
 
 /**
+ * The largest blob whose contents a diff carries, in bytes.
+ *
+ * A diff's contents cross an IPC boundary whole, so this is what stands between a
+ * committed build artifact and a renderer handed several megabytes of it. Past the
+ * cap the file is still reported as changed — losing the row would be worse than
+ * losing the preview — it simply has no text to show.
+ */
+const MAX_DIFF_BYTES = 512 * 1024
+
+/**
+ * The largest total a single diff carries, in bytes.
+ *
+ * The per-blob cap alone bounds nothing that matters: a commit range touching four
+ * hundred files under the cap still builds one array of every one of their contents,
+ * structure-clones it across IPC, and hands the whole thing to the renderer. This is
+ * the ceiling on the *response*. Past it the remaining files are still reported —
+ * they changed, and saying so is the point — they simply arrive without text, which
+ * is exactly how a binary or oversized blob already arrives.
+ */
+const MAX_DIFF_TOTAL_BYTES = 4 * 1024 * 1024
+
+/**
+ * One side of a `git.walk` comparison.
+ *
+ * isomorphic-git types these loosely; this names only the three methods used here.
+ */
+interface WalkEntry {
+  /** The entry's git object type. */
+  type: () => Promise<string | void>
+  /** The entry's object id. */
+  oid: () => Promise<string | void>
+  /** The entry's bytes, for a blob. `void` for a tree, which has none. */
+  content: () => Promise<Uint8Array | void>
+}
+
+/**
+ * Turn a blob's bytes into the text a diff can be computed from.
+ *
+ * Binary is detected by a NUL byte in the first kilobyte, which is what git itself
+ * does, and answers undefined rather than mojibake: a "diff" of decoded PNG bytes
+ * is noise that would push the real changes out of the view.
+ * @param bytes - The blob's contents, or undefined when the side does not exist
+ * @returns The decoded text, or undefined when there is none worth showing
+ */
+function decodeBlob(bytes: Uint8Array | void): string | undefined {
+  if (!bytes) return undefined
+  if (bytes.byteLength > MAX_DIFF_BYTES) return undefined
+  if (bytes.subarray(0, 1024).includes(0)) return undefined
+  return new TextDecoder().decode(bytes)
+}
+
+/**
  * Options for creating a commit.
  */
 export interface CommitOptions {
@@ -252,30 +304,57 @@ export class VersionManager {
 
   /**
    * Get diff between two commits.
+   *
+   * The contents are the point. This reported a path and a type and nothing else
+   * for as long as it existed, which meant every consumer that tried to *render* a
+   * change got an empty answer: `buildPatchFromDiff` compares before against after
+   * and drops a file whose two sides are identical, so a commit's diff in the
+   * History panel was always blank. Reading the blobs is what makes the shape this
+   * returns match the name.
+   *
+   * Directories are skipped. `git.walk` visits trees as well as blobs, and a
+   * directory whose oid changed is not a change a person made — it is the sum of
+   * the changes underneath it, already listed.
+   *
+   * The response has a total budget as well as a per-file one. Once it is spent the
+   * remaining files are reported without their contents rather than dropped: a file
+   * missing from this list reads as a file that did not change, which is the one
+   * thing a diff must never say.
    * @param fromOid - The source commit SHA.
    * @param toOid - The target commit SHA.
-   * @returns Array of file diffs.
+   * @returns Array of file diffs, newest state in `newContent`.
    */
   async diff(fromOid: string, toOid: string): Promise<FileDiff[]> {
     const diffs: FileDiff[] = []
+    let spent = 0
 
     await git.walk({
       fs,
       dir: this.dir,
       trees: [git.TREE({ ref: fromOid }), git.TREE({ ref: toOid })],
-      map: async (filepath: string, entries: Array<{ oid: () => Promise<string | undefined> } | null>) => {
+      map: async (filepath: string, entries: Array<WalkEntry | null>) => {
         if (filepath === '.') return
 
         const [A, B] = entries
-        const aOid = await A?.oid()
-        const bOid = await B?.oid()
+        const [aType, bType] = await Promise.all([A?.type(), B?.type()])
+        if (aType === 'tree' || bType === 'tree') return
 
-        if (aOid !== bOid) {
-          diffs.push({
-            path: filepath,
-            type: !aOid ? 'add' : !bOid ? 'delete' : 'modify'
-          })
+        const [aOid, bOid] = await Promise.all([A?.oid(), B?.oid()])
+        if (aOid === bOid) return
+
+        const entry: FileDiff = {
+          path: filepath,
+          type: !aOid ? 'add' : !bOid ? 'delete' : 'modify'
         }
+
+        if (spent < MAX_DIFF_TOTAL_BYTES) {
+          const [aContent, bContent] = await Promise.all([A?.content(), B?.content()])
+          entry.oldContent = decodeBlob(aContent)
+          entry.newContent = decodeBlob(bContent)
+          spent += (entry.oldContent?.length ?? 0) + (entry.newContent?.length ?? 0)
+        }
+
+        diffs.push(entry)
       }
     })
 

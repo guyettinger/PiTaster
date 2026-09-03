@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { DockviewReact } from 'dockview-react'
 import { WorkspaceBar } from '../shell/WorkspaceBar'
 import { WorkspaceProvider } from './WorkspaceContext'
@@ -81,6 +81,29 @@ export function Workspace({
     [api]
   )
 
+  // A rollback or a branch switch moves HEAD, which invalidates the composer's
+  // changed-files strip — it is a diff against a fixed commit. Wrapping the two
+  // callbacks here rather than counting in `App` keeps the whole concern beside
+  // the context that carries it: `App` still just does the thing and knows nothing
+  // about who is measuring against it.
+  const [changesRevision, setChangesRevision] = useState(0)
+
+  const handleRollback = useCallback(
+    (commitId: string) => {
+      onRollback(commitId)
+      setChangesRevision((revision) => revision + 1)
+    },
+    [onRollback]
+  )
+
+  const handleBranchSwitch = useCallback(
+    (branchName: string) => {
+      onBranchSwitch(branchName)
+      setChangesRevision((revision) => revision + 1)
+    },
+    [onBranchSwitch]
+  )
+
   // Memoized because panels render inside dockview's own tree rather than as
   // children of this component: a value rebuilt each render would re-render all
   // of them, transcript included, on every keystroke that reaches App.
@@ -92,11 +115,12 @@ export function Workspace({
       onModeChange,
       onSessionSelect,
       onSessionCreate,
-      onRollback,
-      onBranchSwitch,
+      onRollback: handleRollback,
+      onBranchSwitch: handleBranchSwitch,
       onBranchCreate,
       onOpenSkills,
-      openFile
+      openFile,
+      changesRevision
     }),
     [
       app,
@@ -105,11 +129,12 @@ export function Workspace({
       onModeChange,
       onSessionSelect,
       onSessionCreate,
-      onRollback,
-      onBranchSwitch,
+      handleRollback,
+      handleBranchSwitch,
       onBranchCreate,
       onOpenSkills,
-      openFile
+      openFile,
+      changesRevision
     ]
   )
 
