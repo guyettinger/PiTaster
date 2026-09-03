@@ -10,7 +10,6 @@
 import { join, resolve } from 'node:path'
 import {
   createAgentSession,
-  DefaultResourceLoader,
   ModelRuntime,
   SessionManager,
   SettingsManager,
@@ -43,9 +42,9 @@ import { buildContextReport } from './context-report'
 import { trimContext } from './context-trim'
 import { createEditRepair } from './edit-repair'
 import { createFileTools, FILE_TOOL_NAMES } from './file-tools'
-import { HTTP_IDLE_TIMEOUT_MS } from './http-dispatcher'
 import { createLoopGuard } from './loop-guard'
-import { createRetryBudget } from './retry-budget'
+import { AnyappResourceLoader, buildPiSettings } from './pi-settings'
+import { createRetryBudget, formatSilence } from './retry-budget'
 import { createStallNotifier } from './stall-notifier'
 import { toStreamChunk } from './events'
 import { createMcpTools, getMcpToolBindings, type CallMcpTool } from './mcp-tools'
@@ -287,40 +286,6 @@ export function getAppSessionDir(agentDir: string, appPath: string): string {
 }
 
 /**
- * The settings shape `SettingsManager.applyOverrides` accepts.
- *
- * Pi does not export its `Settings` interface from the package root, so it is read
- * back off the method that consumes it. That also means this stays correct if Pi
- * changes the shape.
- */
-type PiSettingsOverrides = Parameters<SettingsManager['applyOverrides']>[0]
-
-/**
- * Retries Pi should make when the local daemon fails a request.
- *
- * A local daemon fails differently from a hosted API: no rate limits, but connection
- * refused while it restarts, a 500 when it runs out of memory, and long stalls while
- * it swaps another model out. Those recover in seconds, so a handful of attempts with
- * a couple of seconds between them is the right shape.
- *
- * Pi issues one initial attempt plus this many retries, and it cannot tell those fast
- * failures from a request that hung for the whole of `HTTP_IDLE_TIMEOUT_MS` — so the
- * count alone would allow a two-and-a-half-hour turn. `agent/retry-budget.ts` bounds
- * the wall clock instead, which is what keeps this number free to serve the case it
- * was chosen for.
- */
-const LOCAL_RETRY_ATTEMPTS = 4
-
-/** Backoff base. Pi doubles this per attempt. */
-const LOCAL_RETRY_BASE_DELAY_MS = 2000
-
-// `HTTP_IDLE_TIMEOUT_MS` lives in `./http-dispatcher`, next to the dispatcher that
-// enforces it. Setting it in `buildPiSettings` alone does nothing: Pi only applies
-// this setting from entry points anyapp does not use, so what reaches the OpenAI SDK
-// there is only that SDK's own per-request `timeout`, and the dispatcher is what
-// stops undici cutting the request short of it.
-
-/**
  * What the agent is told after its history has been summarized away.
  *
  * Compaction is where a long task quietly goes wrong on a small model: the plan was
@@ -330,33 +295,6 @@ const LOCAL_RETRY_BASE_DELAY_MS = 2000
 const COMPACTION_NOTICE =
   'Your earlier conversation was summarized to free up context. If NOTES.md exists in ' +
   'the app root, read it before continuing — it holds the goal and the remaining steps.'
-
-/**
- * Translate a context budget into the Pi settings that enforce it.
- *
- * Pi's own `DEFAULT_COMPACTION_SETTINGS` reserves 16384 tokens and retains 20000 —
- * 36k of budget, which is more than the whole window on the models anyapp targets.
- * Left alone it either never compacts or compacts in a loop.
- *
- * Provider-level retries are disabled deliberately. Pi's own retry policy is the one
- * that emits `auto_retry_*` events; retries underneath it are invisible and turn a
- * recoverable failure into a longer, unexplained wait.
- *
- * @param budget - The resolved context budget for this session's model
- * @returns Settings to layer over Pi's own, without persisting them
- */
-export function buildPiSettings(budget: ContextBudget): PiSettingsOverrides {
-  return {
-    compaction: budget.compaction,
-    retry: {
-      enabled: true,
-      maxRetries: LOCAL_RETRY_ATTEMPTS,
-      baseDelayMs: LOCAL_RETRY_BASE_DELAY_MS,
-      provider: { maxRetries: 0 }
-    },
-    httpIdleTimeoutMs: HTTP_IDLE_TIMEOUT_MS
-  }
-}
 
 /**
  * Temperature anyapp asks for unless the user says otherwise.
@@ -634,7 +572,11 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
   }
 
   const settingsManager = SettingsManager.create(app.path, agentDir)
-  settingsManager.applyOverrides(buildPiSettings(budget))
+  // Held as a function because every reload discards it and has to re-run it.
+  const applyAnyappSettings = (): void => {
+    settingsManager.applyOverrides(buildPiSettings(budget))
+  }
+  applyAnyappSettings()
 
   const skills = await loadSessionSkills(app)
 
@@ -654,7 +596,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     source: { request: tsService.client.request }
   })
 
-  const loader = new DefaultResourceLoader({
+  const loader = new AnyappResourceLoader({
     cwd: app.path,
     agentDir,
     settingsManager,
@@ -678,7 +620,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
         ? []
         : [createSamplingExtension(samplingTemperature)])
     ]
-  })
+  }, applyAnyappSettings)
 
   await loader.reload()
 
@@ -716,30 +658,36 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
   const retryBudget = createRetryBudget()
 
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
-    // Any event at all is proof the run is alive, so it resets the stall clock —
-    // except `agent_start`, which is where the longest silence begins.
+    // Any event at all is proof the run is alive, so it resets both clocks — except
+    // `agent_start`, which is where the longest silence begins. A retry is not
+    // progress, which is why `auto_retry_start` reaches neither reset: it arrives on
+    // the failure path, and treating it as a sign of life would refresh the budget
+    // exactly when it is supposed to be running out.
     if (event.type === 'agent_start') {
       stall.arm()
       retryBudget.start()
     } else if (event.type === 'agent_end' || event.type === 'agent_settled') {
       stall.clear()
       // `agent_end` also fires between retries, and the budget has to span those or
-      // it measures one attempt instead of the turn.
+      // it measures one attempt instead of the silence.
       if (event.type === 'agent_settled' || !event.willRetry) retryBudget.clear()
-    } else {
+    } else if (event.type !== 'auto_retry_start') {
       stall.reset()
+      retryBudget.noteProgress()
     }
 
     // Pi cannot tell a hung request from a dropped socket — it matches on error text,
     // and "timed out" is in its retryable list. Retrying a request that produced no
     // bytes for the whole idle timeout only spends another one, so the turn is cut
-    // here instead. Fast failures never reach the budget.
+    // here instead. Fast failures never reach the budget, and neither does a long
+    // turn that is still producing: the budget measures silence, not elapsed time.
     if (event.type === 'auto_retry_start' && retryBudget.exhausted()) {
       callbacks.onStream({
         type: 'error',
         error:
-          'The model stopped responding and retrying is no longer helping. ' +
-          'Check that Ollama is running and has room for this model, then try again.'
+          `The model has produced nothing for ${formatSilence(retryBudget.silentMs())}, ` +
+          'and retrying is no longer helping. Check that Ollama is running and has ' +
+          'room for this model, then try again.'
       })
       // Order matters, and matches `agent:abort`: deny first, so a `tool_call`
       // handler waiting on the user unblocks and Pi's loop can observe the abort.
