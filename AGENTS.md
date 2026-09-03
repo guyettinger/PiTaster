@@ -363,6 +363,70 @@ No TypeScript language service is registered in Monaco. It cannot see the sub-ap
 `tsconfig.json` or `node_modules`, so it would paint every import as unresolved. The
 squiggles come over IPC from the same service that checks the agent's writes.
 
+## What a conversation touched
+
+Session 22 made an individual change visible. The aggregate was not: after twenty turns,
+finding out which files the agent had rewritten meant scrolling the transcript or
+expanding commits one at a time. `ChangedFilesStrip` sits in the composer and answers it —
+hidden entirely when nothing has changed, which is why the composer was the right home
+rather than a panel someone has to arrange.
+
+**It measures git, not tool calls, and that is the whole design.** A file the agent wrote
+five times is one row with one net diff, and a file the *user* edited by hand appears at
+all — neither is true of a list built from tool results. `useSessionChanges` diffs the
+commit HEAD was at when the session became active against HEAD now. The optimistic half
+still comes off the stream, so the strip moves during a turn; the git read at the end of
+the turn is what makes it accurate.
+
+**The baseline lives in `~/.anyapp/session-baselines.json`**, for a sharper version of the
+reason layouts do. `.anyapp-meta.json` is tracked and `initGitRepo` adds every file, so a
+baseline kept there would be rolled back by a rollback of the *code* — destroying the exact
+reference that rollback should be measured against. `ensureSessionBaseline` is
+**first-write-wins**: every caller passes the current HEAD, so an implementation that
+overwrote would walk the baseline forward on each call and the strip would report an empty
+session forever.
+
+**`VersionManager.diff` returned no file contents.** It walked both trees, compared oids,
+and pushed `{ path, type }` — leaving `oldContent` and `newContent` undefined on every
+entry. `buildPatchFromDiff` drops a file whose two sides match, and `'' === ''`, so it
+always answered with an empty array. The History panel's commit expansion had therefore
+been blank since it was built, invisibly: a commit that expands to nothing looks like a
+commit with a small diff. It now reads the blobs, skips directories (`git.walk` visits
+trees, and a directory whose oid changed is the sum of the changes under it), and skips
+binary and oversized blobs. Those last two are still *reported* as changed — losing the
+row is worse than losing the preview — which is why `SessionChanges` carries a path list
+beside its patches.
+
+**There are two size caps on a diff and the per-file one bounds nothing on its own.** A
+commit range touching four hundred files under `MAX_DIFF_BYTES` still builds one array of
+all their contents and structure-clones it across IPC, so `MAX_DIFF_TOTAL_BYTES` is the
+ceiling on the *response*. Past it the remaining files arrive without text rather than
+being dropped — a file missing from a diff reads as a file that did not change, which is
+the one thing a diff must never say.
+
+**The session id's length is bounded at the store, not only at the handler.** It is the
+same reasoning `AppManager.appDir` embodies for app ids: `changes:session-baseline` checks
+its argument, but a session id also arrives through `sessions:set-active`, is persisted to
+the chat pointer, and is replayed into `ensureSessionBaseline` on every later app switch —
+so a bound checked at one channel is a bound the other channel does not have. It is
+checked at both.
+
+**`.anyapp-meta.json` is permanently modified**, being tracked and rewritten whenever
+anything about the app changes, `updatedAt` included. Without `HOUSEKEEPING_FILES` the
+strip opened every session announcing one changed file before the agent had done anything,
+and a strip that is never empty is a strip nobody reads. It is hidden from the strip, not
+from git; the History panel still reports it, which is the right place for a file that
+genuinely is committed.
+
+**A moved file is a delete and an add of the same name.** The agent moves files constantly,
+so bare file names showed `dry-pass.md −120` beside `dry-pass.md +120` — two rows reading
+as a contradiction rather than as a move. `shortLabels` grows only the colliding labels,
+one parent segment at a time, and only for the names actually on screen.
+
+`changesRevision` on `WorkspaceContext` is bumped by a rollback or a branch switch and by
+nothing else: it lives in the context value, so every bump re-renders every panel. `Chat`
+counts its own turns locally for that reason.
+
 ## What the user sees while waiting
 
 Pi emits compaction, retry and settle events; `agent/events.ts` maps them to

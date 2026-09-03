@@ -609,6 +609,20 @@ const electronAPI = {
     return ipcRenderer.invoke('version:diff', from, to, appPath)
   },
 
+  /**
+   * The commit a chat session started from.
+   *
+   * The fixed end of the changed-files strip's diff. Recording is idempotent and
+   * first-write-wins in the main process, so asking repeatedly is free and never
+   * moves the answer.
+   * @param appId - The app the session belongs to
+   * @param sessionId - The session to ask about
+   * @returns The baseline commit oid, or null when one could not be recorded
+   */
+  getSessionBaseline: (appId: string, sessionId: string): Promise<string | null> => {
+    return ipcRenderer.invoke('changes:session-baseline', appId, sessionId)
+  },
+
   // File reading methods
 
   /**

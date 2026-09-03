@@ -19,6 +19,7 @@ import {
 } from './agent/session'
 import { buildContextReport } from './agent/context-report'
 import { readWorkspaceLayout, writeWorkspaceLayout } from './layout-store'
+import { ensureSessionBaseline, readSessionBaseline } from './session-baselines'
 import { describeNetworkUse } from './agent/permission-gate'
 import { previewPatch } from './agent/patch'
 import { listAppFiles, readAppFile } from './files'
@@ -141,6 +142,31 @@ const MAX_PROMPT_CHARS = 100000
 
 /** Maximum accepted number of content blocks in one prompt. */
 const MAX_PROMPT_BLOCKS = 100
+
+/**
+ * Maximum accepted length of a chat session id.
+ *
+ * Ids are generated in main and are far shorter than this; the bound exists because
+ * the renderer is untrusted and hands them back. An id is persisted into the chat
+ * pointer and replayed on every later app switch, so an unbounded one is not a bad
+ * argument to one call — it is a bad argument to every call that follows.
+ */
+const MAX_SESSION_ID_LENGTH = 256
+
+/**
+ * Reject a session id the renderer should never have sent.
+ * @param sessionId - The value received over IPC
+ * @throws {Error} If it is not a string of usable length
+ */
+function assertSessionId(sessionId: unknown): asserts sessionId is string {
+  if (
+    typeof sessionId !== 'string' ||
+    sessionId.length === 0 ||
+    sessionId.length > MAX_SESSION_ID_LENGTH
+  ) {
+    throw new Error('Invalid session ID')
+  }
+}
 
 /** Config directory for sources and skills. */
 const configDir = join(homedir(), '.anyapp')
@@ -301,12 +327,54 @@ async function onTurnComplete(mainWindow: BrowserWindow): Promise<void> {
  */
 function sendSessionChanged(
   mainWindow: BrowserWindow,
+  appId: string | null,
   sessionId: string | null,
   messages: PersistedMessage[]
 ): void {
   if (mainWindow.isDestroyed()) return
+  // Fire and forget, deliberately. The changed-files strip needs the commit this
+  // session started from, and the honest moment to record it is here — not when the
+  // strip first asks, which never happens at all if the Chat panel is closed while
+  // the agent works. Awaiting it would make this function async and put a git read
+  // between the two sends below, whose order is the whole point of the helper.
+  if (appId && sessionId) void captureSessionBaseline(appId, sessionId)
   mainWindow.webContents.send('chat:session-changed', sessionId)
   mainWindow.webContents.send('chat:history-loaded', { sessionId, messages })
+}
+
+/**
+ * Record where a chat session's work started, if it has no baseline yet.
+ *
+ * First-write-wins lives in the store; this is only the part that has to touch git.
+ * Every failure is swallowed: an app with no repo, a HEAD that does not resolve, an
+ * unwritable store. None of them is worth failing a session switch over — the strip
+ * degrades to showing uncommitted work, and the next call tries again.
+ * @param appId - The app the session belongs to
+ * @param sessionId - The session to record a baseline for
+ * @returns The session's baseline commit, or null when one could not be recorded
+ */
+async function captureSessionBaseline(appId: string, sessionId: string): Promise<string | null> {
+  try {
+    // `getApp` rather than a join: it routes through `AppManager.appDir`, which is
+    // part of the sandbox — an id must be one path segment resolving to a direct
+    // child of the apps root. An id becoming a path is always validated here.
+    const app = await appManager.getApp(appId)
+    if (!app) return null
+
+    const state = await new VersionManager(app.path).getState()
+    if (!state.head) return null
+
+    const entries = await fs.readdir(appManager.getAppsDir(), { withFileTypes: true })
+    return await ensureSessionBaseline({
+      storePath: baselinePath,
+      appId,
+      sessionId,
+      head: state.head,
+      liveAppIds: entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name)
+    })
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -353,6 +421,16 @@ const configPath = join(configDir, 'config.json')
  * is a git repo every agent write commits to — see `layout-store.ts`.
  */
 const layoutPath = join(configDir, 'layouts.json')
+
+/**
+ * Path to the chat session baseline store.
+ *
+ * Beside `layouts.json`, and outside the app repo for a sharper version of the same
+ * reason: a baseline kept in the app would be rolled back by a rollback of the code,
+ * destroying the reference that rollback should be measured against. See
+ * `session-baselines.ts`.
+ */
+const baselinePath = join(configDir, 'session-baselines.json')
 
 /**
  * Legacy path to the encrypted Anthropic API key.
@@ -1318,6 +1396,23 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   })
 
   /**
+   * The commit a chat session started from, for the composer's changed-files strip.
+   *
+   * Takes an app *id* rather than a path: the id goes to `AppManager.getApp`, which
+   * validates it where it becomes a path, so there is no path here for the renderer
+   * to spell wrong. Recording is idempotent and first-write-wins, so calling this on
+   * every strip refresh cannot walk the baseline forward.
+   */
+  ipcMain.handle('changes:session-baseline', async (_, appId: unknown, sessionId: unknown) => {
+    if (typeof appId !== 'string' || !isValidAppId(appId)) {
+      throw new Error('Invalid app ID')
+    }
+    assertSessionId(sessionId)
+    const stored = await readSessionBaseline({ storePath: baselinePath, appId, sessionId })
+    return stored ?? (await captureSessionBaseline(appId, sessionId))
+  })
+
+  /**
    * The sub-app's source tree, for the code panel.
    *
    * Confinement comes from `files.ts`, which uses the same `isWithinRoot` the agent's
@@ -1449,14 +1544,14 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       if (manifest.sessions.length === 0) {
         const session = await chatHistoryManager.createSession(id)
         activeSessionId = session.id
-        sendSessionChanged(mainWindow, session.id, [])
+        sendSessionChanged(mainWindow, activeAppId, session.id, [])
       } else {
         activeSessionId = manifest.activeSessionId
 
         const history = activeSessionId
           ? await chatHistoryManager.loadHistory(id, activeSessionId)
           : []
-        sendSessionChanged(mainWindow, activeSessionId, history)
+        sendSessionChanged(mainWindow, activeAppId, activeSessionId, history)
       }
 
       await broadcastSessions(mainWindow, id)
@@ -1716,7 +1811,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     forgetCachedReport()
 
     // Notify renderer
-    sendSessionChanged(mainWindow, session.id, [])
+    sendSessionChanged(mainWindow, activeAppId, session.id, [])
     await broadcastSessions(mainWindow, activeAppId)
 
     return session
@@ -1724,9 +1819,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
   ipcMain.handle('sessions:delete', async (_, sessionId: string) => {
     if (!activeAppId) throw new Error('No active app')
-    if (typeof sessionId !== 'string' || sessionId.length === 0) {
-      throw new Error('Invalid session ID')
-    }
+    assertSessionId(sessionId)
 
     await chatHistoryManager.deleteSession(activeAppId, sessionId)
     forgetSkillLoads([sessionId])
@@ -1741,7 +1834,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       const history = newActiveId
         ? await chatHistoryManager.loadHistory(activeAppId, newActiveId)
         : []
-      sendSessionChanged(mainWindow, newActiveId, history)
+      sendSessionChanged(mainWindow, activeAppId, newActiveId, history)
     }
 
     await broadcastSessions(mainWindow, activeAppId)
@@ -1749,9 +1842,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
   ipcMain.handle('sessions:rename', async (_, sessionId: string, title: string) => {
     if (!activeAppId) throw new Error('No active app')
-    if (typeof sessionId !== 'string' || sessionId.length === 0) {
-      throw new Error('Invalid session ID')
-    }
+    assertSessionId(sessionId)
     if (typeof title !== 'string' || title.length === 0) {
       throw new Error('Invalid title')
     }
@@ -1762,9 +1853,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
   ipcMain.handle('sessions:set-active', async (_, sessionId: string) => {
     if (!activeAppId) throw new Error('No active app')
-    if (typeof sessionId !== 'string' || sessionId.length === 0) {
-      throw new Error('Invalid session ID')
-    }
+    assertSessionId(sessionId)
 
     await chatHistoryManager.setActiveSession(activeAppId, sessionId)
     activeSessionId = sessionId
@@ -1773,7 +1862,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
     // Load history for the new session
     const history = await chatHistoryManager.loadHistory(activeAppId, sessionId)
-    sendSessionChanged(mainWindow, sessionId, history)
+    sendSessionChanged(mainWindow, activeAppId, sessionId, history)
   })
 
   ipcMain.handle('sessions:get-active', async () => {

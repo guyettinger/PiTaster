@@ -377,6 +377,14 @@ interface ElectronAPI {
   /** Get diff between two commits. */
   getDiff: (from: string, to: string, appPath?: string) => Promise<FileDiff[]>
 
+  /**
+   * The commit a chat session started from, for the changed-files strip.
+   * @param appId - The app the session belongs to
+   * @param sessionId - The session to ask about
+   * @returns The baseline commit oid, or null when one could not be recorded
+   */
+  getSessionBaseline: (appId: string, sessionId: string) => Promise<string | null>
+
   /** List the sub-app's source files as a tree. */
   getFileTree: (appPath?: string) => Promise<FileNode[]>
   /** Read one file from inside the sub-app. */

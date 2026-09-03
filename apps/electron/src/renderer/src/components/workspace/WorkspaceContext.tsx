@@ -34,6 +34,16 @@ export interface WorkspaceContextValue {
   onOpenSkills: () => void
   /** Open a file as its own Code panel, focusing it if already open. */
   openFile: (path: string) => void
+  /**
+   * Bumped whenever something moves HEAD from outside a conversation.
+   *
+   * The composer's changed-files strip is a diff against a fixed commit, so a
+   * rollback or a branch switch in the History panel invalidates it. Only those
+   * two bump it: it lives in the context value, so every bump re-renders every
+   * panel, and a per-turn refresh would do that on every turn. Chat counts its
+   * own turns locally.
+   */
+  changesRevision: number
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
