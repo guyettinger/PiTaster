@@ -375,9 +375,21 @@ export async function isOllamaReachable(baseUrl: string): Promise<boolean> {
 /**
  * Write `<agentDir>/models.json` describing the Ollama provider to Pi.
  *
- * Two compatibility flags are mandatory: Ollama's OpenAI-compatible endpoint does not
- * understand the `developer` role or `reasoning_effort`, and reasoning-capable models
- * fail outright without them.
+ * `supportsDeveloperRole` and `supportsStore` are off because Ollama's
+ * OpenAI-compatible endpoint does not understand either, and a reasoning-capable model
+ * fails outright with them.
+ *
+ * `supportsReasoningEffort` was off for the same stated reason and should not have
+ * been. Session 25's audit sent the parameter directly: `low`, `medium` and `high`
+ * are all accepted, and `low` and `high` measurably change both the prompt token
+ * count — so the daemon injects something into the template — and the length of the
+ * reasoning produced. `medium` is byte-identical to sending nothing. Disabling the
+ * flag stripped the one working control anyapp had over how long a model thinks.
+ *
+ * What it does *not* buy is an off switch. With `thinkingLevel: 'off'` Pi sends no
+ * `reasoning_effort` at all, and the audit found the models reasoning on every
+ * request regardless. Ollama's native `think: false` works, but that is `/api/chat`,
+ * not the `/v1` path Pi uses.
  *
  * @param params - Target directory, daemon URL, and models to register
  */
@@ -397,7 +409,7 @@ export async function writeOllamaModelsFile(
         apiKey: 'ollama',
         compat: {
           supportsDeveloperRole: false,
-          supportsReasoningEffort: false,
+          supportsReasoningEffort: true,
           supportsStore: false
         },
         models: models.map((model) => {

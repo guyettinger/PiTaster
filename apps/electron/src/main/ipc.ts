@@ -14,6 +14,9 @@ import {
   DEFAULT_SAMPLING_TEMPERATURE,
   MAX_SAMPLING_TEMPERATURE,
   MIN_SAMPLING_TEMPERATURE,
+  REASONING_LEVELS,
+  DEFAULT_REASONING_LEVEL,
+  type ReasoningLevel,
   PI_BUILTIN_TOOL_NAMES,
   type AgentHost
 } from './agent/session'
@@ -504,6 +507,13 @@ interface AppConfig {
    * model's default for anyone who wants it.
    */
   samplingTemperature: number | null
+  /**
+   * How hard to ask the model to think.
+   *
+   * Only three levels are offered because only three are distinguishable on Ollama,
+   * and `unset` is not `off` — see `ReasoningLevel` in `agent/session.ts`.
+   */
+  reasoningLevel: ReasoningLevel
 }
 
 /** Default configuration. */
@@ -516,7 +526,8 @@ const defaultConfig: AppConfig = {
   contextWindow: null,
   toolProfile: 'auto',
   trimContext: true,
-  samplingTemperature: DEFAULT_SAMPLING_TEMPERATURE
+  samplingTemperature: DEFAULT_SAMPLING_TEMPERATURE,
+  reasoningLevel: DEFAULT_REASONING_LEVEL
 }
 
 /** Cached configuration, populated by {@link loadConfig}. */
@@ -1129,6 +1140,7 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
     toolProfile: config.toolProfile,
     trimContext: config.trimContext,
     samplingTemperature: config.samplingTemperature,
+    reasoningLevel: config.reasoningLevel,
     sessionFile: sessionFile ?? undefined,
     mcpSources: sourceManager.getConnectedSources().filter((source) => source.connected),
     telemetry: sessionTelemetry,
@@ -1778,7 +1790,22 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     ) {
       throw new Error('Invalid sampling temperature')
     }
-    return saveConfig(config)
+    // An allowlist rather than a string check: this value reaches Pi as a
+    // `thinkingLevel` and then the daemon as `reasoning_effort`, and the renderer is
+    // untrusted.
+    if (!REASONING_LEVELS.includes(config.reasoningLevel)) {
+      throw new Error('Invalid reasoning level')
+    }
+    await saveConfig(config)
+    // Every setting on this page is read once, when the host is built: the reasoning
+    // level and the temperature reach Pi through `createAgentSession`, the tool
+    // profile fixes the tool list, and the window override rewrites `models.json`.
+    // Without this a saved change did nothing until some unrelated action — a skills
+    // save, an app switch — happened to dispose the host, which is indistinguishable
+    // from a control that does not work. Deliberately *not* paired with
+    // `forgetCachedReport` or `forgetSessionTelemetry`: the conversation this
+    // disposes is still the one on screen, and its numbers still describe it.
+    await disposeAgentHost()
   })
 
   /**

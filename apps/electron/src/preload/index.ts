@@ -6,8 +6,16 @@ type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
 /** A single streamed update from the agent to the renderer. */
 interface StreamChunk {
   /** Type of chunk. */
-  type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error' | 'rate_limit' | 'status'
-  /** Text content (for 'text' type). */
+  type:
+    | 'text'
+    | 'thinking'
+    | 'tool_start'
+    | 'tool_end'
+    | 'complete'
+    | 'error'
+    | 'rate_limit'
+    | 'status'
+  /** Text content (for 'text' and 'thinking' types). */
   text?: string
   /** Tool name (for 'tool_start' and 'tool_end' types). */
   tool?: string

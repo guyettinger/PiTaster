@@ -218,7 +218,7 @@ measured on real sessions, F6 cannot be settled without evidence, and the
 re-prefill count per session — the number that would have made F1 obvious — did
 not exist before this.
 
-### W3 — Thinking: surface it, then expose the control
+### W3 — Thinking: surface it, then expose the control — **landed**
 
 - Carry `thinking_delta` as a new `StreamChunk` variant instead of dropping it
   (`events.ts:203-204`), mirrored in all three type files per the comment at
@@ -230,6 +230,25 @@ not exist before this.
   setting beside temperature, shown only when the model advertises the `thinking`
   capability — which `describeModel` already collects as `supportsThinking` and
   currently uses only to set `reasoning: true` in `models.json`.
+
+Four levels are offered, not Pi's seven: the audit measured `medium` coming back
+byte-identical to sending nothing, and the levels above `high` collapsing into it,
+so the rest would be a control that does nothing. The `off` value is called **Unset**
+because it is not off — Pi sends no `reasoning_effort` for it and the models reason
+anyway. Turning thinking off would need Ollama's native `think: false` on
+`/api/chat`, which is not the path Pi uses.
+
+**One item was pulled forward from W6.** `config:save` did not dispose the agent
+host, so every setting on that page — the new one, the temperature, the tool
+profile — took effect only when some unrelated action happened to rebuild the
+session. Shipping a control that silently does nothing is worse than not shipping
+it, so the dispose landed here. It is deliberately *not* paired with
+`forgetCachedReport` or `forgetSessionTelemetry`: the conversation it disposes is
+still the one on screen.
+
+Verified on the running app: the reasoning streams into a collapsed *Thinking*
+region during the turn, expands to the model's actual text, and the effort control
+appears only for a model advertising `thinking`, saves, and persists.
 
 ### W4 — Say what the interaction is doing
 

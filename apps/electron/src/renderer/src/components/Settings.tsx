@@ -30,6 +30,8 @@ export interface AppConfig {
   trimContext: boolean
   /** Sampling temperature for the model, or null for the model's own default. */
   samplingTemperature: number | null
+  /** How hard to ask the model to think; `unset` sends no `reasoning_effort`. */
+  reasoningLevel: 'unset' | 'low' | 'medium' | 'high'
 }
 
 /**
@@ -48,6 +50,8 @@ export interface OllamaModel {
   contextWindowSource: 'user' | 'daemon' | 'fallback'
   /** Whether the model supports function calling. The agent's tools require it. */
   supportsTools: boolean
+  /** Whether the model advertises Ollama's `thinking` capability. */
+  supportsThinking: boolean
 }
 
 /** The sections of Settings. */
@@ -70,7 +74,8 @@ const DEFAULT_CONFIG: AppConfig = {
   contextWindow: null,
   toolProfile: 'auto',
   trimContext: true,
-  samplingTemperature: 0
+  samplingTemperature: 0,
+  reasoningLevel: 'unset'
 }
 
 /** Shared input styling, so every field in Settings matches. */
@@ -443,6 +448,39 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
                     className={FIELD_CLASS}
                   />
                 </Field>
+
+                {/* Only for a model that advertises `thinking`. On anything else Pi
+                    never sends `reasoning_effort`, so the control would do nothing
+                    and say nothing about why. */}
+                {selectedModel?.supportsThinking && (
+                  <Field
+                    label="Reasoning effort"
+                    hint={
+                      config.reasoningLevel === 'unset'
+                        ? 'Sends no reasoning_effort. This is not off — Ollama\u2019s models reason on every request, and its OpenAI-compatible endpoint has no switch that stops them.'
+                        : 'Reasoning is produced before the answer and shares the output budget with it, so a higher setting costs time and tokens on every turn.'
+                    }
+                  >
+                    <select
+                      value={config.reasoningLevel}
+                      onChange={(e) =>
+                        setConfig({
+                          ...config,
+                          reasoningLevel: e.target.value as AppConfig['reasoningLevel']
+                        })
+                      }
+                      className={FIELD_CLASS}
+                    >
+                      {/* Four values, not Pi's seven. The audit measured `medium`
+                          coming back byte-identical to sending nothing, and the
+                          levels above `high` collapsing into it. */}
+                      <option value="unset">Unset</option>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  </Field>
+                )}
 
                 <div className="mt-5">
                   <label className="flex items-start gap-2">

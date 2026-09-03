@@ -471,6 +471,32 @@ Pi emits compaction, retry and settle events; `agent/events.ts` maps them to
 and reported with an elapsed count. Tool approval prompts have no timeout: a turn
 takes minutes, and a timeout does not fail safe, it silently denies.
 
+**The reasoning is the thing that was actually happening in that silence.** Ollama's
+models reason on every request — `session.ts` passed `thinkingLevel: 'off'` and the
+audit found it had never been off — and `events.ts` dropped `thinking_delta`, so the
+longest part of a turn rendered as a pulsing ellipsis until the stall notifier
+apologised at 20s. It is now a `thinking` `StreamChunk` and a collapsed
+`ThinkingBubble` that streams live and folds to a one-line estimate once the answer
+starts. The estimate is chars/4, because Ollama returns no `completion_tokens_details`
+at all and Pi's `Usage.reasoning` is therefore `0` on every response — which means
+"not reported", never "no thinking happened".
+
+**`reasoning_effort` is a real control that a compat flag was disabling.**
+`supportsReasoningEffort: false` stripped the parameter; the audit sent it directly
+and found `low` and `high` changing both the prompt token count and the length of the
+reasoning. Settings exposes four levels rather than Pi's seven, because `medium` comes
+back byte-identical to sending nothing and everything above `high` collapses into it,
+and the `off` value is labelled **Unset**: Pi sends no parameter for it and the model
+reasons anyway. Turning thinking off needs Ollama's native `think: false` on
+`/api/chat`, which is not the path Pi uses.
+
+Every setting on that page is read once, when the host is built, so `config:save`
+disposes it. Without that a saved temperature, tool profile or reasoning level did
+nothing until an unrelated action happened to rebuild the session, which is
+indistinguishable from a control that does not work. It does not clear the cached
+context report or the session telemetry: the conversation it disposes is still the
+one on screen.
+
 How long a turn may stay silent is not Pi's setting to enforce. Pi applies
 `httpIdleTimeoutMs` only from its own CLI, RPC and interactive entry points,
 never from the SDK path anyapp embeds — and does not export the function that

@@ -223,6 +223,14 @@ export interface CreateAgentHostParams {
    * {@link createSamplingExtension} for why anyapp sets this at all.
    */
   samplingTemperature?: number | null
+  /**
+   * How hard to ask the model to think.
+   *
+   * Defaults to {@link DEFAULT_REASONING_LEVEL}. Only reaches the daemon on a model
+   * that advertises the `thinking` capability — `models.json` sets `reasoning` from
+   * that, and Pi sends `reasoning_effort` only for a model carrying it.
+   */
+  reasoningLevel?: ReasoningLevel
   /** Existing Pi session file to resume, or undefined to start a new one. */
   sessionFile?: string
   /** Currently connected MCP sources, whose tools join this session. */
@@ -340,6 +348,46 @@ export const DEFAULT_SAMPLING_TEMPERATURE = 0
  */
 export const MIN_SAMPLING_TEMPERATURE = 0
 export const MAX_SAMPLING_TEMPERATURE = 2
+
+/**
+ * How hard to ask the model to think.
+ *
+ * A subset of Pi's seven `ThinkingLevel`s, because on Ollama only three of them are
+ * distinguishable: Session 25's audit measured `low` and `high` changing both the
+ * prompt token count and the length of the reasoning, and `medium` coming back
+ * byte-identical to sending nothing. Offering four more levels the daemon collapses
+ * into these would be a control that does nothing.
+ *
+ * `unset` sends no `reasoning_effort` at all. It is deliberately not called `off`:
+ * the audit found every model reasoning on every request regardless, so this asks
+ * for no particular effort rather than for none.
+ */
+export type ReasoningLevel = 'unset' | 'low' | 'medium' | 'high'
+
+/** The reasoning levels a user may choose. */
+export const REASONING_LEVELS: readonly ReasoningLevel[] = ['unset', 'low', 'medium', 'high']
+
+/**
+ * Default reasoning level.
+ *
+ * `unset` preserves what anyapp did before the control existed — it passed
+ * `thinkingLevel: 'off'`, which sends nothing — so enabling the parameter does not
+ * silently change how every existing install behaves.
+ */
+export const DEFAULT_REASONING_LEVEL: ReasoningLevel = 'unset'
+
+/**
+ * Map a reasoning level to the `thinkingLevel` Pi takes.
+ *
+ * Pi turns anything but `off` into `reasoning_effort` on the request, and `off` into
+ * no parameter at all (`agent.js:292`) — which is exactly what `unset` means here.
+ *
+ * @param level - The configured level
+ * @returns Pi's thinking level
+ */
+export function toThinkingLevel(level: ReasoningLevel): 'off' | 'low' | 'medium' | 'high' {
+  return level === 'unset' ? 'off' : level
+}
 
 /**
  * Build the inline extension that pins sampling on every provider request.
@@ -621,6 +669,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     toolProfile = 'auto',
     trimContext: trimEnabled = true,
     samplingTemperature = DEFAULT_SAMPLING_TEMPERATURE,
+    reasoningLevel = DEFAULT_REASONING_LEVEL,
     sessionFile,
     mcpSources = [],
     telemetry = createTelemetry(),
@@ -723,7 +772,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     agentDir,
     model,
     modelRuntime,
-    thinkingLevel: 'off',
+    thinkingLevel: toThinkingLevel(reasoningLevel),
     noTools: 'all',
     tools: [...toolNames, ...mcpBindings.map((binding) => binding.qualifiedName)],
     customTools: [

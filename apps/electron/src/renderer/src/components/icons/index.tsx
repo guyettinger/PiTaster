@@ -351,6 +351,17 @@ export function LayoutIcon(props: IconProps) {
   )
 }
 
+/** A thought bubble: the model's reasoning, before its answer. */
+export function ThinkingIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M8.5 5.5a3.6 3.6 0 0 1 7 0 3.4 3.4 0 0 1 1.9 5.9 3.6 3.6 0 0 1-6.4 2.4 3.6 3.6 0 0 1-5.5-4.3 3.4 3.4 0 0 1 3-4Z" />
+      <path d="M9.5 17.5h.01" />
+      <path d="M7 20.5h.01" />
+    </Icon>
+  )
+}
+
 /** Anything the icon set has no specific glyph for. */
 export function ToolIcon(props: IconProps) {
   return (

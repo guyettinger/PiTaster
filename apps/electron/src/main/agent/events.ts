@@ -98,8 +98,8 @@ function toStatus(status: AgentStatus): StreamChunk {
  * summarizing a full context, and re-issuing a request the daemon dropped — rendered
  * as a silent hang. They are the whole reason `status` exists.
  *
- * Still dropped: thinking deltas, queue updates, and turn boundaries the renderer
- * does not distinguish.
+ * Still dropped: queue updates and turn boundaries the renderer does not
+ * distinguish.
  *
  * @param event - The Pi session event
  * @returns The chunk to forward, or null to drop the event
@@ -110,6 +110,13 @@ export function toStreamChunk(event: AgentSessionEvent): StreamChunk | null {
       const inner = event.assistantMessageEvent
       if (inner.type === 'text_delta') {
         return { type: 'text', text: inner.delta }
+      }
+      // Ollama's models reason on every request whatever anyapp asks for — the
+      // OpenAI-compatible endpoint has no working off switch, only `reasoning_effort`
+      // — so dropping this left the user watching a pulsing ellipsis through the
+      // longest part of a turn. The reasoning is the one thing arriving during it.
+      if (inner.type === 'thinking_delta') {
+        return { type: 'thinking', text: inner.delta }
       }
       if (inner.type === 'error') {
         // `reason` separates a failure from the user pressing stop. Reporting an

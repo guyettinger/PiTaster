@@ -362,6 +362,28 @@ export function Chat({
             return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
           }
         })
+      } else if (chunk.type === 'thinking' && chunk.text) {
+        // The model's reasoning, which on Ollama arrives on every request whether or
+        // not anyapp asked for it. Appended to its own trailing block so it stays
+        // separate from the answer and can be folded away once the answer starts.
+        setMessages(prev => {
+          const last = prev[prev.length - 1]
+          if (last?.role !== 'assistant') return prev
+
+          const blocks = last.blocks ?? []
+          const lastBlock = blocks[blocks.length - 1]
+
+          if (lastBlock?.type === 'thinking') {
+            const newBlocks: ContentBlock[] = [...blocks.slice(0, -1), {
+              ...lastBlock,
+              content: lastBlock.content + chunk.text
+            }]
+            return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
+          }
+
+          const newBlocks: ContentBlock[] = [...blocks, { type: 'thinking' as const, content: chunk.text! }]
+          return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
+        })
       } else if (chunk.type === 'tool_start' && chunk.tool) {
         // Store tool info
         currentToolRef.current = { name: chunk.tool, input: chunk.input }
