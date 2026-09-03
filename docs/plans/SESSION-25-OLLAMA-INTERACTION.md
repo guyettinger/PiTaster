@@ -131,42 +131,53 @@ silently does not take effect until something unrelated disposes the host.
 
 ## Approach
 
-### W1 — Sealed prefix: make the sent prompt append-only
+### W1 — Sealed prefix: make the sent prompt append-only — **landed**
 
 The invariant: **once a byte has been sent to the daemon it does not change until
 a deliberate, rare reset.**
 
-A monotonically advancing `sealIndex` replaces the per-request transform.
+A *seal* replaces the per-request transform. `createContextSealer` in
+`agent/context-trim.ts` holds one per session and exposes two operations:
 
-- Messages **below** the seal are frozen: their trimmed bytes are computed once and
-  reused verbatim forever.
-- Messages **at or above** the seal are sent untouched, subject only to
-  `hardToolResultTokens` — which asks *can this request succeed at all*, not *is
-  this worth its space*, and so must keep applying immediately.
-- The seal advances **rarely**: when the unsealed tail crosses a threshold, or when
-  compaction is about to fire. Every trim for the newly sealed range is computed in
-  one batch, so a session pays exactly one cache invalidation at a moment anyapp
-  chose, rather than one per turn at a moment it did not.
+- `seal(messages)` freezes everything before the current turn — truncation,
+  superseding and screenshot-stripping, applied once and permanently.
+- `capForRequest(messages)` applies `hardToolResultTokens` and nothing else. That
+  cap asks *can this request succeed at all*, not *is this worth its space*, so it
+  must keep applying immediately and must not be written back.
 
-Superseding and image-stripping move to seal time. A later read that covers an
-already-*sealed* read does not rewrite it; the saving waits for the next seal
-advance. That trades a little window for cache stability, which the measurements
-say is the right way round by two orders of magnitude.
+The seal advances only when `sealAdvanceTokens` of new history has accumulated —
+a quarter of the window, bounded above by what compaction keeps, since history
+about to be summarized away is not worth a cache invalidation to seal. A session
+pays one invalidation at a moment anyapp chose, several turns apart, instead of one
+per turn at a moment it did not.
 
-**The move that also fixes F2.** Sealing is a permanent decision, so it can be
-*written back* into `session.state.messages` instead of applied as a per-request
-view. Pi's `shouldCompact` then sees the real, trimmed size, and the `context` hook
-shrinks to handling only the unsealed tail.
+The seal stops at the current turn rather than at a screenshot cutoff, which is
+what bounds the untrimmed tail to one turn plus the threshold. Superseding is the
+one rule that can never be settled — any later read might cover an earlier one — so
+that saving is deliberately deferred to the next advance rather than taken the
+moment it appears.
 
-**Resolve this first.** Whether Pi tolerates mutation of `session.state.messages`
-is the design's load-bearing assumption and is not yet established. If it does not,
-the fallback is to keep `transformContext` and memoise the frozen range: that
-recovers F1 in full and leaves F2 where it is. Settle it before writing the
-redesign, not during.
+**The blocking question, settled.** Pi tolerates mutation of its stored messages,
+and does it itself (`agent-session.js:453-460`). Verified against 0.84.4: session
+entries hold the *same* message objects and `sessionEntryToContextMessages` returns
+them unchanged, so a mutation survives the rebuild that compaction and branching do;
+`estimateContextTokens` reads content live, measured dropping from 10001 to 106
+tokens across an in-place edit — which is F2 fixed; and anyapp's chat UI reads the
+transcript from disk, so the conversation a person sees keeps everything.
 
-The new property to test is the one that is currently untrue and untested:
-**trimming the same conversation at turn N and turn N+1 produces byte-identical
-output for every message below the seal.**
+**But the `context` hook cannot be where it happens.** Pi hands that hook
+`structuredClone(messages)` (`extensions/runner.js:793`), so the plan's stated
+mechanism — write back from `transformContext` — reaches a copy and is discarded
+with it. `session.ts` passes the hook the live list through a function instead,
+never a captured array, because Pi replaces `state.messages` wholesale after a
+compaction (`agent-session.js:1536`). The fallback this plan named — memoise the
+frozen range and leave F2 unfixed — was therefore not needed.
+
+Tested, including the property that was untrue and untested before:
+**the same conversation at turn N and turn N+1 sends byte-identical bytes for every
+message the seal has not reached**, the seal advancing only on the threshold, the
+write-back landing in the caller's own messages, `capForRequest` leaving them alone,
+and the baseline re-anchoring when compaction shrinks the history it was measuring.
 
 ### W2 — Instrument the request path — *do this first* — **landed**
 

@@ -39,7 +39,7 @@ import {
 } from './context-budget'
 import { confineContextFiles } from './context-files'
 import { buildContextReport } from './context-report'
-import { trimContext } from './context-trim'
+import { createContextSealer, type AgentMessage } from './context-trim'
 import { createEditRepair } from './edit-repair'
 import { createFileTools, FILE_TOOL_NAMES } from './file-tools'
 import { createLoopGuard } from './loop-guard'
@@ -391,11 +391,24 @@ function createAnyappExtension(params: {
   diagnostics: DiagnosticsNotifier
   /** Records what each provider request cost. */
   telemetry: Telemetry
+  /**
+   * Pi's live message list, once the session it belongs to exists.
+   *
+   * The extension is built before the session, and the `context` hook needs the real
+   * list rather than the copy Pi hands it — see the hook.
+   */
+  getLiveMessages: () => AgentMessage[] | null
   /** Application callbacks. */
   callbacks: AgentHostCallbacks
 }): InlineExtension {
-  const { rootPath, budget, trimEnabled, diagnostics, telemetry, callbacks } = params
+  const { rootPath, budget, trimEnabled, diagnostics, telemetry, getLiveMessages, callbacks } =
+    params
   const loopGuard = createLoopGuard()
+  const sealer = createContextSealer({
+    maxToolResultTokens: budget.maxToolResultTokens,
+    hardToolResultTokens: budget.hardToolResultTokens,
+    sealAdvanceTokens: budget.sealAdvanceTokens
+  })
   const patches = createPatchRecorder({ rootPath })
   const editRepair = createEditRepair({
     rootPath,
@@ -447,15 +460,24 @@ function createAnyappExtension(params: {
         return undefined
       })
 
-      // Shape what the model sees, never what is stored. The transcript, git history
-      // and the chat UI keep the whole conversation regardless.
+      // Keep the prompt prefix stable, because prefill is what a turn actually costs
+      // on a local model. The seal advances rarely and writes its result into Pi's own
+      // messages; everything past it is sent as it stands, under the viability cap
+      // alone. The transcript, git history and the chat UI keep the whole
+      // conversation regardless — they read the JSONL, never this list.
       if (trimEnabled) {
-        pi.on('context', async (event) => ({
-          messages: trimContext(event.messages, {
-            maxToolResultTokens: budget.maxToolResultTokens,
-            hardToolResultTokens: budget.hardToolResultTokens
-          })
-        }))
+        pi.on('context', async (event) => {
+          // Pi hands this hook `structuredClone(messages)`
+          // (`extensions/runner.js:793`), so a seal written into `event.messages`
+          // would reach a copy and be thrown away with it. The live list is both what
+          // Pi sends and what its compaction check estimates over, which is the whole
+          // reason the seal is written there. Falling back to the event's copy keeps
+          // the hook correct — only unable to relieve compaction — if the session is
+          // ever not yet attached.
+          const messages = getLiveMessages() ?? event.messages
+          sealer.seal(messages)
+          return { messages: sealer.capForRequest(messages) }
+        })
       }
 
       pi.on('tool_call', async (event) => {
@@ -642,6 +664,15 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     source: { request: tsService.client.request }
   })
 
+  /**
+   * Reads Pi's live message list, once there is a session to read it from.
+   *
+   * The extension below is constructed as an argument to the resource loader, which
+   * `createAgentSession` needs — so the session cannot exist yet when the `context`
+   * hook is registered.
+   */
+  let readLiveMessages: (() => AgentMessage[]) | null = null
+
   const loader = new AnyappResourceLoader({
     cwd: app.path,
     agentDir,
@@ -667,6 +698,11 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
         trimEnabled,
         diagnostics,
         telemetry,
+        // Read through a function, never captured as an array: Pi replaces
+        // `state.messages` wholesale after a compaction or a branch switch
+        // (`agent-session.js:1536`), so a held reference would go stale exactly when
+        // the history changes most.
+        getLiveMessages: () => readLiveMessages?.() ?? null,
         callbacks
       }),
       ...(samplingTemperature === null
@@ -706,6 +742,8 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     sessionManager,
     settingsManager
   })
+
+  readLiveMessages = () => session.state.messages
 
   const stall = createStallNotifier({ onStream: callbacks.onStream })
   const retryBudget = createRetryBudget()

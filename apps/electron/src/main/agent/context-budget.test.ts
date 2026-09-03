@@ -53,6 +53,19 @@ describe('deriveContextBudget', () => {
     }
   })
 
+  test('the seal batches, and never outruns what compaction keeps', () => {
+    for (const window of WINDOWS) {
+      const budget = deriveContextBudget({ userOverride: window })
+
+      // History past what compaction retains is history about to be summarized away.
+      // Sealing it would buy a cold prefill for bytes that are leaving anyway.
+      expect(budget.sealAdvanceTokens).toBeLessThanOrEqual(budget.compaction.keepRecentTokens)
+      // And the seal has to batch: one advance costs a full re-prefill, so a threshold
+      // small enough to fire every turn is the bug the seal exists to fix.
+      expect(budget.sealAdvanceTokens).toBeGreaterThan(budget.maxToolResultTokens / 8)
+    }
+  })
+
   test('never lets one turn of output claim the window', () => {
     for (const window of WINDOWS) {
       const budget = deriveContextBudget({ userOverride: window })

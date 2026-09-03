@@ -87,11 +87,31 @@ Four things keep a long session coherent on a local model, all configurable:
 
 - **Compaction** is Pi's, with anyapp's thresholds. `compaction_end` nudges the
   agent to re-read `NOTES.md`, which is on disk and survives being summarized.
-- **`agent/context-trim.ts`** runs on Pi's `context` hook and shapes what is
-  *sent*: long tool results truncated with a pointer to resume from, a read whose
-  every line a later read returned collapsed into that later one, screenshots on
-  user messages older than two turns dropped. The transcript, git history and chat
-  UI keep everything.
+- **`agent/context-trim.ts`** shapes what is *sent*: long tool results truncated
+  with a pointer to resume from, a read whose every line a later read returned
+  collapsed into that later one, stale screenshots dropped. The transcript, git
+  history and chat UI keep everything.
+
+  **It applies all of that at a *seal*, and that timing is the whole design.**
+  Ollama caches the KV state of a prompt prefix, so resending a stable prefix is
+  nearly free — 133.5s to prefill 11431 tokens cold against 0.24s to resend the
+  same bytes. Rewriting one early message put it back to 124.4s. The trimmer used
+  to run per request and was stable only *within* one message list: the current
+  turn's exemption expired at each turn boundary, superseding rewrote an earlier
+  read the moment a later one covered it, and the screenshot cutoff advanced. Every
+  one of those is an edit in the middle of the prefix, so anyapp paid a full cold
+  prefill once per turn, on itself. `tool-guidance.ts` had carried the principle all
+  along — *"a prompt that reorders between requests defeats prefix caching"*.
+
+  The invariant now is that **once a byte has been sent it does not change until a
+  deliberate, rare reset**. Nothing is trimmed until the seal advances, which
+  happens when `sealAdvanceTokens` of new history has accumulated — one invalidation
+  anyapp chose, several turns apart, instead of one per turn it did not. The seal
+  stops at the current turn, so what rides untrimmed is bounded by one turn plus
+  that threshold, and everything past the seal still gets `hardToolResultTokens`.
+  Superseding is the one rule that can never be settled — any later read might cover
+  an earlier one — so that saving is deliberately deferred to the next advance
+  rather than taken as soon as it appears.
 
   Superseding compares **regions, not paths**. Pi's `read` caps its output at 2000
   lines or 50 KB and tells the model to "continue with offset until complete", so
@@ -101,9 +121,8 @@ Four things keep a long session coherent on a local model, all configurable:
   the loss.
 
   There are **two size caps**, and they answer different questions.
-  `maxToolResultTokens` asks whether a result still earns its space, and the
-  current turn is exempt from it — an agent that cannot see what it just did
-  repeats it. `hardToolResultTokens`, half the window, asks whether the request can
+  `maxToolResultTokens` asks whether a result still earns its space, and only a
+  sealed message pays it — an agent that cannot see what it just did repeats it. `hardToolResultTokens`, half the window, asks whether the request can
   succeed at all, and nothing is exempt: past it the result cannot coexist with the
   system prompt, the tool schemas and the surrounding history, so the request fails
   either way — as an unexplained timeout rather than as an oversized result. The
@@ -117,14 +136,31 @@ Four things keep a long session coherent on a local model, all configurable:
   added — `git_status` and `install_deps` are in the set; the other version tools
   and every MCP tool are not.
 
-  **Compaction does not see any of this.** Pi decides to compact from
-  `estimateContextTokens` over `agent.state.messages`, but the trimmer runs as
-  `transformContext`, which builds the request and never writes back. So compaction
-  fires on the *untrimmed* size, always at or above what is actually sent, and the
-  trimmer's savings can never relieve compaction pressure — on a session full of
-  large tool results the agent summarizes away history that would still have fit.
-  It is also why the trimmer must be idempotent: `transformContext` re-runs on every
-  provider request against the same stored messages.
+  **A seal is written into Pi's own messages, which is what lets compaction see it.**
+  Pi decides to compact from `estimateContextTokens` over `agent.state.messages`, so
+  a trim that only shapes the outgoing request can never relieve compaction pressure
+  — the old transform did exactly that, and a session full of large tool results
+  summarized away history that would still have fit. Mutating the stored message
+  fixes it, and is safe for four reasons, each read off Pi 0.84.4: `SessionManager`
+  entries hold the *same* message objects and `sessionEntryToContextMessages` hands
+  them straight back (`session-manager.js:166-176`), so a mutation survives the
+  rebuild compaction and branching do; the JSONL entry is written when the message
+  is appended, so a later mutation cannot rewrite it, and the seal never reaches into
+  the current turn, which keeps that true; anyapp's chat UI reads the transcript from
+  disk through its own `SessionManager`, never this list; and Pi mutates messages in
+  place itself, for the same reason (`agent-session.js:453-460`).
+
+  **The `context` hook cannot do the writing, and that is not a style preference.**
+  Pi hands it `structuredClone(messages)` (`extensions/runner.js:793`), so a write
+  there reaches a copy and is discarded with it. `session.ts` passes the hook the
+  live list instead — through a function, never a captured array, because Pi replaces
+  `state.messages` wholesale after a compaction or a branch switch
+  (`agent-session.js:1536`) and a held reference would go stale exactly when the
+  history changes most.
+
+  Sealing repeatedly must still change nothing: the hook runs on every provider
+  request, retries included, and re-walks everything it has already sealed. The
+  truncation and supersede markers are what make that idempotent.
 - **Tool profiles** (`resolveToolNames`) drop the branch tools on a small window.
   Every tool's schema is a per-request cost, and a long list makes a small model
   choose worse.

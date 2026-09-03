@@ -93,6 +93,25 @@ const PI_READ_MAX_TOKENS = Math.floor((50 * 1024) / 4)
  */
 const HARD_TOOL_RESULT_SHARE = 0.5
 
+/**
+ * Share of the window carried as untrimmed recent history before the seal advances.
+ *
+ * The seal is what makes the prompt prefix stable, and advancing it costs one cold
+ * prefill of the whole prompt — 133.5s on the audited model. Advancing too eagerly
+ * pays that repeatedly; advancing too rarely carries this much untrimmed history in
+ * every request meanwhile. A quarter of the window puts the advance several turns
+ * apart on the windows anyapp targets, against the previous design's every turn.
+ */
+const SEAL_ADVANCE_SHARE = 0.25
+
+/**
+ * Floor on that, so a small window still batches its seals.
+ *
+ * Bounded below by {@link CompactionThresholds.keepRecentTokens} at the point of use:
+ * history compaction is about to summarize away is history not worth sealing.
+ */
+const MIN_SEAL_ADVANCE_TOKENS = 1024
+
 /** Where the effective context window came from. */
 export type ContextWindowSource = 'user' | 'daemon' | 'fallback'
 
@@ -137,6 +156,14 @@ export interface ContextBudget {
    * did repeats it.
    */
   hardToolResultTokens: number
+  /**
+   * Tokens of new, untrimmed history carried before the context seal advances.
+   *
+   * See `agent/context-trim.ts`: the seal is the one moment anyapp deliberately
+   * invalidates the daemon's prefix cache, and this is how much it lets accumulate
+   * before deciding that is worth doing.
+   */
+  sealAdvanceTokens: number
 }
 
 /**
@@ -246,6 +273,12 @@ export function deriveContextBudget(params: DeriveContextBudgetParams = {}): Con
     maxToolResultTokens,
     // Never below the ordinary cap: the current turn is exempt from that one, so a
     // hard cap under it would trim the turn more aggressively than the history.
-    hardToolResultTokens: Math.max(maxToolResultTokens, Math.floor(window * HARD_TOOL_RESULT_SHARE))
+    hardToolResultTokens: Math.max(maxToolResultTokens, Math.floor(window * HARD_TOOL_RESULT_SHARE)),
+    // Never above what compaction keeps. History past that is summarized away, so
+    // sealing it buys a cache invalidation for bytes that are about to disappear.
+    sealAdvanceTokens: Math.min(
+      keepRecentTokens,
+      Math.max(MIN_SEAL_ADVANCE_TOKENS, Math.floor(window * SEAL_ADVANCE_SHARE))
+    )
   }
 }

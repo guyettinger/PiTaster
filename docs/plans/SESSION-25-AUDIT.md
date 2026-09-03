@@ -340,13 +340,45 @@ for effort in ("low", "medium", "high"):
     post({"reasoning_effort": effort}, f"reasoning_effort:{effort}")
 ```
 
-## 7. Re-taking these after the work lands
+## 7. Re-taken after W1 landed
 
-The comparison that matters is row 4 against row 2. If the sealed-prefix design in
-[SESSION-25-OLLAMA-INTERACTION.md](SESSION-25-OLLAMA-INTERACTION.md) works, a turn
-boundary stops producing row 4 and starts producing row 3 or better, and the count
-of full re-prefills per session drops to roughly the number of compactions.
+The comparison that matters is row 4 against row 2: does a turn boundary still cost
+a full re-prefill? It does not.
 
-That count is not observable today. Landing the telemetry (W2) before the trim
-redesign (W1) is what makes the comparison possible at all, which is why the plan
-sequences them that way.
+Measured on the running app — a fresh chat in the Moon Phase sub-app, four turns,
+each asking the agent to read a file and answer in one sentence. The numbers are the
+daemon's own, from `~/.ollama/logs/server.log`, which reports every prefix-cache
+lookup: `matched` is what it reused, and the difference is what it had to prefill.
+
+| Turn boundary | Prompt | Matched | **Prefilled** |
+|---|---|---|---|
+| 1 → 2 | 7292 | 7265 | **27** |
+| 2 → 3 | 7573 | 7548 | **25** |
+| 3 → 4 | 9501 | 9474 | **27** |
+
+Twenty-five to twenty-seven tokens is the new user message and nothing else. Under
+the previous design each of these was a row-4 event: the previous turn's tool result
+lost its `inCurrentTurn` exemption the moment the next turn began, was rewritten in
+the middle of the prefix, and cost a prefill of the whole prompt — 124.4s on the
+11481-token prompt of row 4.
+
+Requests *within* a turn append, as they always did: 118, 1727 and 82 tokens, the
+1727 being a `read` result the model had just asked for.
+
+**What this run does not show.** The conversation reached about 9.6k tokens against
+a `sealAdvanceTokens` of 16384, so the seal never advanced. What is measured here is
+the elimination of the per-turn rewrite, which is the dominant cost; the batched
+invalidation when the seal does advance is covered by tests, not by this run. A
+longer session is what would measure it, and the telemetry from W2 —
+`N invalidated` in the turn summary — is where it would show up.
+
+### Reproducing it
+
+```bash
+# Watch the daemon's own cache accounting while driving the app.
+tail -f ~/.ollama/logs/server.log | grep --line-buffered prefix_cache
+```
+
+Send successive prompts that each make the agent read a file. A healthy boundary
+shows `matched` within a few dozen tokens of `total`; a rewritten prefix shows
+`matched` collapsing to whatever precedes the rewrite.

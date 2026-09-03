@@ -179,12 +179,17 @@ like every other shell scan here. Do not describe it as a control.
 
 ## Context Shaping Is Not Confinement
 
-`agent/context-trim.ts` runs on Pi's `context` hook and rewrites the message list
-before each provider request — truncating long tool results, collapsing reads a
-later read has fully covered, dropping stale screenshots. It is a token-budget
-optimization and nothing more. It does not gate, filter, or redact anything for
-safety, and the untrimmed conversation is still on disk in Pi's transcript. Never
-rely on it to keep anything away from the model.
+`agent/context-trim.ts` truncates long tool results, collapses reads a later read
+has fully covered, and drops stale screenshots. It is a token-budget optimization
+and nothing more. It does not gate, filter, or redact anything for safety, and the
+untrimmed conversation is still on disk in Pi's transcript. Never rely on it to
+keep anything away from the model.
+
+It **mutates Pi's stored messages**, which is unusual enough to state plainly: a
+seal is permanent, because Pi's compaction check estimates over
+`agent.state.messages` and a trim it cannot see relieves nothing. That makes the
+JSONL transcript the only remaining copy of the full text, so the rules below are
+about data, not tokens.
 
 It is also not a bound on a tool's output. The hook shapes what is *sent*; the
 full result is still written to the transcript, and any tool left out of
@@ -193,7 +198,7 @@ bound it itself — `git_status` caps its path listing and `get_history` clamps 
 count the model asks for, because relying on the trimmer would leave the defect
 in place everywhere the trimmer does not reach.
 
-Two rules the trimmer must keep, both of which have been broken before:
+Four rules the trimmer must keep, the first two of which have been broken before:
 
 - **Superseding compares regions, not paths.** Pi's `read` pages a large file with
   `offset`, so two reads of one path are usually two different parts of it.
@@ -202,6 +207,16 @@ Two rules the trimmer must keep, both of which have been broken before:
   its `[Showing lines X-Y of Z. Use offset=N to continue.]` footer is the only
   thing telling the agent where it got to, and it is the last line — exactly what
   a head-slice removes. Recompute it for the shortened body, never just cut it.
+- **The seal never reaches into the current turn.** `SessionManager` writes a
+  message's transcript entry when the message is appended, so mutating anything
+  older cannot rewrite what is already on disk. Sealing a message whose entry has
+  not been written yet would put the trimmed text into the transcript — destroying
+  the only full copy, silently, and with it the History panel's record of what the
+  agent actually saw.
+- **Never flatten content that carries an image.** The seal writes over the
+  original, so replacing a result's blocks with one text block destroys an image
+  permanently rather than for one request. No truncatable tool returns one today;
+  the guard is what keeps that from becoming data loss the day one does.
 
 ## The Edit-Repair Hook Only Explains
 
