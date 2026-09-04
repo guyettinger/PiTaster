@@ -43,7 +43,7 @@ flowchart TB
     end
     
     subgraph Storage
-        AppDir["~/.anyapp/apps/{app-id}/"]
+        AppDir["~/.pitaster/apps/{app-id}/"]
         SessionsFile[".chat-sessions.json"]
         Session1Dir[".chat-history/{session-id-1}/"]
         Session2Dir[".chat-history/{session-id-2}/"]
@@ -73,8 +73,8 @@ flowchart TB
 ### Before (current)
 
 ```
-~/.anyapp/apps/{app-id}/
-├── .anyapp-meta.json
+~/.pitaster/apps/{app-id}/
+├── .pitaster-meta.json
 ├── .chat-history/
 │   ├── 2024-01-15T10-30-00-000Z_abc123.json
 │   └── 2024-01-15T10-30-05-500Z_def456.json
@@ -84,8 +84,8 @@ flowchart TB
 ### After (new)
 
 ```
-~/.anyapp/apps/{app-id}/
-├── .anyapp-meta.json
+~/.pitaster/apps/{app-id}/
+├── .pitaster-meta.json
 ├── .chat-sessions.json              ← Session metadata manifest
 ├── .chat-history/
 │   ├── {session-id-1}/              ← One directory per session
@@ -195,13 +195,13 @@ import type {
   ChatSession, 
   ChatSessionManifest, 
   CreateChatSessionParams 
-} from '@anyapp/core'
+} from '@pitaster/core'
 
 export class ChatHistoryManager {
   private appsDir: string
 
   constructor() {
-    this.appsDir = join(homedir(), '.anyapp', 'apps')
+    this.appsDir = join(homedir(), '.Pi Taster', 'apps')
   }
 
   // --- Session Manifest ---
@@ -780,7 +780,7 @@ Add imports and type definitions for session operations:
 import type { 
   SubApp, CreateAppParams, AppTemplate, PersistedMessage, 
   ChatSession, CreateChatSessionParams 
-} from '@anyapp/core'
+} from '@pitaster/core'
 
 interface ElectronAPI {
   // ... existing methods ...
@@ -826,7 +826,7 @@ A sidebar/panel component showing all sessions for the active app with create/de
 
 ```typescript
 import { useState, useEffect, useCallback } from 'react'
-import type { ChatSession } from '@anyapp/core'
+import type { ChatSession } from '@pitaster/core'
 
 /**
  * Props for the ChatSessionList component.
@@ -1208,7 +1208,7 @@ This ensures users never see an empty state requiring manual session creation �
 ```bash
 git add -A && git commit -m "feat: add multiple chat sessions per app
 
-- Add ChatSession, ChatSessionManifest types to @anyapp/core
+- Add ChatSession, ChatSessionManifest types to @pitaster/core
 - Refactor ChatHistoryManager for session-aware storage
 - Add migration from flat .chat-history/ to session directories
 - Add session CRUD IPC handlers (create, delete, rename, list, set-active)

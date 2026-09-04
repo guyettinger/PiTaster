@@ -14,7 +14,7 @@ Verified live against `qwen3.8:27b-mlx` on Ollama: `bun --version 2>/dev/null` r
 (it used to return `Path outside the app directory: /dev/null`), the model read
 `README.md` and then edited it with `replace_lines`, the tool bubble rendered
 `Replace lines · README.md:1-1`, and auto-commit produced
-`replace_lines: README.md`. Deleting `~/.anyapp/skills` and relaunching reinstated all
+`replace_lines: README.md`. Deleting `~/.pitaster/skills` and relaunching reinstated all
 eight skills.
 
 ### Components Created
@@ -54,7 +54,7 @@ eight skills.
 ## Decisions
 
 **Read Pi's guidance, never restate it.** The four `edit` bullets are Pi's and change
-with Pi. Copying them into anyapp's prompt would have fixed the symptom and created a
+with Pi. Copying them into Pi Taster's prompt would have fixed the symptom and created a
 second source of truth that drifts silently — the same failure mode as the tool list
 that `.claude/rules/` had already removed from the prompt.
 
@@ -75,7 +75,7 @@ instead, so the cost falls only where the need is.
 
 **Temperature 0 by default, null to opt out.** Most of a coding turn is reproducing text
 that already exists exactly. Ollama's default comes from the Modelfile and is 0.7 or
-higher on the models anyapp targets.
+higher on the models Pi Taster targets.
 
 ## Deviations from Plan
 
@@ -120,7 +120,7 @@ higher on the models anyapp targets.
 session's central finding. Pi's `buildSystemPrompt` takes a `customPrompt` early return
 (`dist/core/system-prompt.js:13-34`) that appends the append-prompt, project context
 files, the skills block and the cwd — and drops `toolSnippets` and `promptGuidelines`
-entirely. anyapp has supplied a custom prompt since Pi was adopted, so the model had
+entirely. Pi Taster has supplied a custom prompt since Pi was adopted, so the model had
 *never* been told how `edits[]` works. Nothing surfaces this: the prompt looks complete,
 the tool schemas are still sent, and the only symptom is a model that edits badly.
 
@@ -182,7 +182,7 @@ allows is in-root either way — but "allowed `src/App.tsx`, wrote `@src/App.tsx
 the wrong file.
 
 **Pi's context-file discovery walks up from `cwd`.** Sub-apps live under
-`~/.anyapp/apps/`, so `~/.anyapp/AGENTS.md` and `~/AGENTS.md` were entering every
+`~/.pitaster/apps/`, so `~/.pitaster/AGENTS.md` and `~/AGENTS.md` were entering every
 session's prompt: unbounded text against a 32k window, invisible in the UI, describing a
 different project. Verified by planting a sentinel — and note the *system prompt is not in
 Pi's transcript*, so this cannot be checked after the fact from a session file.

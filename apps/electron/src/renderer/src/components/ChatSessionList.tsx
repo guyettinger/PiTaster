@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { PlusIcon, PencilIcon, TrashIcon } from './icons'
 import { formatCompactTime, dayBucketOf, DAY_BUCKETS, type DayBucket } from '../lib/relativeTime'
-import type { ChatSession } from '@anyapp/core'
+import type { ChatSession } from '@pitaster/core'
 
 /** The title a session carries until it has a message to be named after. */
 const UNTITLED_SESSION = 'New Chat'

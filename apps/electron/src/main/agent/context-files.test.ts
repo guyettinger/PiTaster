@@ -1,14 +1,14 @@
 /**
  * Tests for context-file confinement.
  *
- * The case that motivated it is the first one: sub-apps live under `~/.anyapp/apps/`, so
- * Pi's upward walk reaches `~/.anyapp` and `~` on every single session.
+ * The case that motivated it is the first one: sub-apps live under `~/.pitaster/apps/`, so
+ * Pi's upward walk reaches `~/.pitaster` and `~` on every single session.
  */
 
 import { describe, expect, test } from 'bun:test'
 import { confineContextFiles } from './context-files'
 
-const ROOT = '/Users/someone/.anyapp/apps/my-app'
+const ROOT = '/Users/someone/.Pi Taster/apps/my-app'
 
 /**
  * Run the filter over a list of paths.
@@ -31,9 +31,9 @@ describe('confineContextFiles', () => {
     expect(
       keep([
         '/Users/someone/AGENTS.md',
-        '/Users/someone/.anyapp/AGENTS.md',
-        '/Users/someone/.anyapp/apps/AGENTS.md',
-        '/Users/someone/.anyapp/pi/CLAUDE.md'
+        '/Users/someone/.Pi Taster/AGENTS.md',
+        '/Users/someone/.Pi Taster/apps/AGENTS.md',
+        '/Users/someone/.Pi Taster/pi/CLAUDE.md'
       ])
     ).toEqual([])
   })
@@ -43,7 +43,7 @@ describe('confineContextFiles', () => {
   })
 
   test('keeps the in-root file when both are present', () => {
-    expect(keep(['/Users/someone/.anyapp/AGENTS.md', `${ROOT}/AGENTS.md`])).toEqual([
+    expect(keep(['/Users/someone/.Pi Taster/AGENTS.md', `${ROOT}/AGENTS.md`])).toEqual([
       `${ROOT}/AGENTS.md`
     ])
   })

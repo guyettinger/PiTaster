@@ -3,7 +3,7 @@
  *
  * Skills used to be delivered the way Pi delivers them: the manifest carried each
  * skill's absolute path and told the model to open it with `read`. Every workspace
- * skill lives under `~/.anyapp/skills`, `read` is a path tool, and `checkConfinement`
+ * skill lives under `~/.pitaster/skills`, `read` is a path tool, and `checkConfinement`
  * refuses any path outside the app root — so the model was shown a list of skills and
  * refused every one it tried to open. The bodies had never reached a model.
  *
@@ -21,7 +21,7 @@
 import { Type } from 'typebox'
 import { defineTool, type ToolDefinition } from '@earendil-works/pi-coding-agent'
 import { dirname } from 'node:path'
-import type { Skill } from '@anyapp/core'
+import type { Skill } from '@pitaster/core'
 
 /** The tools this module contributes. */
 export const SKILL_TOOL_NAMES = ['load_skill']

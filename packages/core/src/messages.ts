@@ -1,5 +1,5 @@
 /**
- * Message-related type definitions for anyapp.
+ * Message-related type definitions for Pi Taster.
  */
 
 import type { ToolResult } from './agent.js'

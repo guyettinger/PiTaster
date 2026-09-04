@@ -3,11 +3,11 @@ import { dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import * as git from 'isomorphic-git'
 import fs from 'node:fs'
-import type { SubApp, AppMetadata, CreateAppParams } from '@anyapp/core'
+import type { SubApp, AppMetadata, CreateAppParams } from '@pitaster/core'
 import { DEFAULT_GITIGNORE, getTemplate } from './templates.js'
 
-const APPS_DIR = join(homedir(), '.anyapp', 'apps')
-const AUTHOR = { name: 'anyapp Agent', email: 'agent@anyapp.local' }
+const APPS_DIR = join(homedir(), '.pitaster', 'apps')
+const AUTHOR = { name: 'Pi Taster Agent', email: 'agent@Pi Taster.local' }
 
 /**
  * Whether a string can name a sub-app directory.
@@ -120,7 +120,7 @@ export class AppManager {
     const appPath = this.appDir(id)
     if (!appPath) return null
 
-    const metaPath = join(appPath, '.anyapp-meta.json')
+    const metaPath = join(appPath, '.pitaster-meta.json')
 
     try {
       const metaContent = await readFile(metaPath, 'utf-8')
@@ -167,8 +167,10 @@ export class AppManager {
    * Create a new sub-app from template.
    */
   async createApp(params: CreateAppParams): Promise<SubApp> {
-    await this.ensureAppsDir()
-
+    // Validate before creating anything. `ensureAppsDir` used to run first, which
+    // meant a call that was going to be refused still created the apps root as a
+    // side effect — enough to make a refusal test leave a directory in the real home
+    // directory, and enough for an empty apps root to appear before any app exists.
     const id = this.generateId(params.name)
     const appPath = this.appDir(id)
     if (!appPath) {
@@ -187,6 +189,7 @@ export class AppManager {
     }
 
     // Create directory
+    await this.ensureAppsDir()
     await mkdir(appPath, { recursive: true })
 
     // Get template config
@@ -280,7 +283,7 @@ export class AppManager {
       disabledSkills: updates.disabledSkills ?? app.disabledSkills
     }
 
-    await writeFile(join(app.path, '.anyapp-meta.json'), JSON.stringify(meta, null, 2))
+    await writeFile(join(app.path, '.pitaster-meta.json'), JSON.stringify(meta, null, 2))
 
     return (await this.getApp(id))!
   }
@@ -341,6 +344,6 @@ export class AppManager {
    * Write metadata file for an app.
    */
   async writeMetadata(appPath: string, meta: AppMetadata): Promise<void> {
-    await writeFile(join(appPath, '.anyapp-meta.json'), JSON.stringify(meta, null, 2))
+    await writeFile(join(appPath, '.pitaster-meta.json'), JSON.stringify(meta, null, 2))
   }
 }

@@ -1,4 +1,4 @@
-# anyapp Implementation Plan
+# Pi Taster Implementation Plan
 
 ## Overview
 
@@ -134,7 +134,7 @@ Launch subagents with specific, scoped tasks. They work best for:
 ## Architecture
 
 ```
-anyapp/
+PiTaster/
 ├── apps/
 │   └── electron/           # Electron desktop app (IMMUTABLE)
 │       └── src/
@@ -151,7 +151,7 @@ anyapp/
 │           └── skills/    # Skills loader
 ├── docs/
 │   └── plans/             # These session documents
-└── ~/.anyapp/
+└── ~/.pitaster/
     └── apps/              # Sub-apps directory (SANDBOXED)
         └── {app-id}/      # Each app has isolated git versioning
 ```
@@ -216,7 +216,7 @@ bun run typecheck:all
 
 ### Configuration
 
-User data stored at `~/.anyapp/`:
+User data stored at `~/.pitaster/`:
 - `config.json` - App settings
 - `skills/` - User skills
 - `workspaces/` - Workspace data

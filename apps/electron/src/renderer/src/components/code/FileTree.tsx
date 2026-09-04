@@ -41,7 +41,7 @@ interface FileTreeNodeProps {
  * One file or directory, and its children when expanded.
  */
 function FileTreeNode({ node, depth, selectedPath, onSelect }: FileTreeNodeProps) {
-  // `src` open by default: on every template anyapp ships it is where the code is, and
+  // `src` open by default: on every template Pi Taster ships it is where the code is, and
   // making the user open it every time to reach the file they came for is friction with
   // nothing on the other side of it.
   const [isOpen, setIsOpen] = useState(depth === 0 && node.name === 'src')

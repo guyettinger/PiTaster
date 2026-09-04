@@ -43,7 +43,7 @@ import type {
   SerializedContentBlock,
   ElementContext,
   ChatHistoryPayload
-} from '@anyapp/core'
+} from '@pitaster/core'
 
 /**
  * Tools whose call means a file is being rewritten right now.
@@ -402,7 +402,7 @@ export function Chat({
         })
       } else if (chunk.type === 'thinking' && chunk.text) {
         // The model's reasoning, which on Ollama arrives on every request whether or
-        // not anyapp asked for it. Appended to its own trailing block so it stays
+        // not Pi Taster asked for it. Appended to its own trailing block so it stays
         // separate from the answer and can be folded away once the answer starts.
         setMessages(prev => {
           const last = prev[prev.length - 1]

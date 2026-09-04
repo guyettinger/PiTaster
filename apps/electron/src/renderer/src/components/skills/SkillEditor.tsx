@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { Skill, SkillDraft } from '@anyapp/core'
+import type { Skill, SkillDraft } from '@pitaster/core'
 
 /** How a skill name must be spelled, matching the loader and the IPC handlers. */
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/

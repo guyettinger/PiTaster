@@ -1,7 +1,7 @@
 /**
- * @anyapp/core - Shared TypeScript types for anyapp
+ * @pitaster/core - Shared TypeScript types for Pi Taster
  *
- * This package contains type definitions shared across all anyapp packages.
+ * This package contains type definitions shared across all Pi Taster packages.
  */
 
 export * from './agent.js'

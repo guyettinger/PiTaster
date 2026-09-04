@@ -1,12 +1,12 @@
 {
-  "name": "anyapp",
+  "name": "pitaster",
   "private": true,
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run --filter @anyapp/electron dev",
+    "dev": "bun run --filter @pitaster/electron dev",
     "build": "bun run --workspaces build",
     "typecheck:all": "bun run --workspaces typecheck",
     "test": "bun test",

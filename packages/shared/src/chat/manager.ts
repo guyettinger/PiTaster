@@ -6,7 +6,7 @@
  * that store to the {@link ChatSession} and {@link PersistedMessage} shapes the
  * renderer already speaks, so the UI does not need to know about Pi's format.
  *
- * The only thing anyapp still persists itself is which session is active, which Pi
+ * The only thing Pi Taster still persists itself is which session is active, which Pi
  * has no concept of.
  */
 
@@ -21,7 +21,7 @@ import type {
   FilePatch,
   PersistedMessage,
   SerializedContentBlock
-} from '@anyapp/core'
+} from '@pitaster/core'
 import { getAppPath, getAppSessionDir, getPiAgentDir } from './session-paths.js'
 
 /** Filename holding the active-session pointer, inside the sub-app directory. */
@@ -65,7 +65,7 @@ export function isLegacyPlaceholderName(name: string): boolean {
 }
 
 /**
- * The per-app state anyapp persists alongside Pi's transcripts.
+ * The per-app state Pi Taster persists alongside Pi's transcripts.
  */
 interface ActiveSessionPointer {
   /** Pi session id currently selected in the UI, or null. */
@@ -119,7 +119,7 @@ interface PiContentBlock {
 }
 
 /**
- * Manages chat sessions and their transcripts for anyapp's sub-apps.
+ * Manages chat sessions and their transcripts for Pi Taster's sub-apps.
  */
 export class ChatHistoryManager {
   /** Pi agent directory holding all session transcripts. */
@@ -127,7 +127,7 @@ export class ChatHistoryManager {
 
   /**
    * Creates a new ChatHistoryManager.
-   * @param agentDir - Pi agent directory; defaults to `~/.anyapp/pi`
+   * @param agentDir - Pi agent directory; defaults to `~/.pitaster/pi`
    */
   constructor(agentDir: string = getPiAgentDir()) {
     this.agentDir = agentDir
@@ -455,7 +455,7 @@ function extractText(content: string | PiContentBlock[]): string {
  * Lift the diffs a write produced out of a persisted tool result's `details`.
  *
  * `details` is whatever the tool chose to put there, and a transcript on disk may have
- * been written by an older version of anyapp — so every field is checked rather than
+ * been written by an older version of Pi Taster — so every field is checked rather than
  * asserted. A malformed entry costs a diff, never a failed history load.
  *
  * @param details - The tool result's `details`, in whatever shape it was persisted

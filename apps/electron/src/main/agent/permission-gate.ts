@@ -4,7 +4,7 @@
  * Pi ships no sandbox: its built-in `read`, `write`, `edit`, and `bash` tools run with
  * the permissions of the host process, and `resolveToCwd` expands `~` and passes
  * absolute paths straight through without a containment check. Adopting those tools
- * therefore moves anyapp's confinement out of the tools and into this handler.
+ * therefore moves Pi Taster's confinement out of the tools and into this handler.
  *
  * That is a real change in kind. Previously a file tool physically could not be handed
  * a path outside the sub-app root, and `run_command` always executed with
@@ -36,7 +36,7 @@
  * {@link SHELL_TOOLCHAIN_PREFIXES} for the two paths that may be named but not written.
  *
  * MCP source tools are the one part of the surface {@link checkConfinement} cannot
- * police. They carry no anyapp-resolved path, they execute inside a separate server
+ * police. They carry no path Pi Taster resolved, they execute inside a separate server
  * process the user configured, and their reach is whatever that server exposes.
  * Approval is their entire boundary, which is why {@link checkPermission} never
  * auto-approves one outside `bypassPermissions`.
@@ -44,7 +44,7 @@
 
 import { homedir, tmpdir } from 'node:os'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
-import type { PermissionMode } from '@anyapp/core'
+import type { PermissionMode } from '@pitaster/core'
 import { isMcpToolName } from './mcp-tools'
 
 /**
@@ -368,7 +368,7 @@ export function checkPermission(
     return { behavior: 'allow' }
   }
 
-  // MCP tools reach outside the app root into a process anyapp does not control,
+  // MCP tools reach outside the app root into a process Pi Taster does not control,
   // and no path check applies to them. Like `bash`, they always reach the user.
   if (isMcpToolName(toolName)) {
     return { behavior: 'ask' }

@@ -4,7 +4,7 @@ import { manifestCost, useSkills } from '../../hooks/useSkills'
 import { SkillEditor } from './SkillEditor'
 import { SkillRow } from './SkillRow'
 import { SkillSection } from './SkillSection'
-import type { Skill, SkillDraft, SkillScope } from '@anyapp/core'
+import type { Skill, SkillDraft, SkillScope } from '@pitaster/core'
 
 /**
  * Props for the SkillsPanel component.
@@ -45,7 +45,7 @@ function filterSkills(skills: Skill[], search: string): Skill[] {
  * The page is split because the split is real and used to be invisible. **This app's**
  * skills live in the app's own `skills/` directory: they are inside what the agent can
  * write, they commit with the app, and they win a name collision. **Workspace** skills
- * live in `~/.anyapp/skills` and are offered to every app. Before this, only the second
+ * live in `~/.pitaster/skills` and are offered to every app. Before this, only the second
  * library existed here, and the app-scoped skills the agent had been writing for itself
  * were not shown anywhere.
  *
@@ -224,7 +224,7 @@ export function SkillsPanel({ appName }: SkillsPanelProps) {
                 <ul className="space-y-2">
                   <SkillEditor
                     skill={null}
-                    scopeLabel="Shared by every app, in ~/.anyapp/skills"
+                    scopeLabel="Shared by every app, in ~/.pitaster/skills"
                     onSave={handleSave}
                     onCancel={() => setEditor(null)}
                   />

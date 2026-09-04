@@ -36,7 +36,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 ```typescript
 const client = new Client({
-  name: 'anyapp-client',
+  name: 'pitaster-client',
   version: '1.0.0'
 })
 

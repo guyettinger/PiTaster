@@ -2,7 +2,7 @@
 
 ## Overview
 
-anyapp has had a complete MCP stack since Session 4, extended with full CRUD in
+Pi Taster has had a complete MCP stack since Session 4, extended with full CRUD in
 Session 12 — and the agent has never been able to use any of it. A user could add
 an MCP server, connect it, and watch the Sources panel list its tools, while
 `apps/electron/src/main/agent/session.ts` went on offering Pi's seven built-ins
@@ -22,7 +22,7 @@ custom tool, gated by the existing permission modes.
 - The `enabled` flag on `SourceConfig` was written on save and read by nothing, so
   every source went cold on restart.
 - Pi 0.84 has no MCP support of its own — nothing in
-  `@earendil-works/pi-coding-agent` mentions it. The bridge has to be anyapp's.
+  `@earendil-works/pi-coding-agent` mentions it. The bridge has to be Pi Taster's.
 
 ## Current State
 
@@ -41,7 +41,7 @@ something. Connection is per-source and failures are non-fatal.
 
 **MCP tools are gated like `bash`.** `plan` denies, `default` and `acceptEdits`
 ask, `bypassPermissions` allows. This is the security-relevant choice:
-`checkConfinement` cannot police an MCP tool — it carries no anyapp-resolved path,
+`checkConfinement` cannot police an MCP tool — it carries no path Pi Taster resolved,
 it executes inside a separate process the user configured, and its reach is
 whatever that server exposes. Approval is the entire boundary.
 
@@ -108,7 +108,7 @@ so the model can recover.
 | `main/index.ts` | `void initializeSources()` on ready, off the first-paint path |
 
 `sources:save` previously checked only that `config.id` was a string. Its payload
-names a command anyapp will spawn *and* becomes part of the agent's tool surface,
+names a command Pi Taster will spawn *and* becomes part of the agent's tool surface,
 so it is now validated in full: `type`, id charset, field lengths, argument count,
 and a flat string env record.
 

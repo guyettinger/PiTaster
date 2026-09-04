@@ -7,7 +7,7 @@ reaches the model.
 
 ## Why
 
-anyapp targets a local Ollama daemon. On the reference configuration —
+Pi Taster targets a local Ollama daemon. On the reference configuration —
 `qwen3.8:27b-mlx`, a 27B MLX model — three things were broken, and none of them
 were tuning:
 
@@ -29,7 +29,7 @@ window has to be *discovered*, not configured.
 
 **2. Pi's compaction defaults assume a frontier window.**
 `DEFAULT_COMPACTION_SETTINGS` is `reserveTokens: 16384`, `keepRecentTokens:
-20000` — 36k of reserved budget — and anyapp never set `settings.compaction`.
+20000` — 36k of reserved budget — and Pi Taster never set `settings.compaction`.
 Point the window at a realistic 32k and compaction becomes `tokens > 16384` with
 a retained tail that alone overflows what is left: compact, then immediately
 compact again.
@@ -60,7 +60,7 @@ auto-compacting; the UI rendered a silent hang while it did.
 2. **Ollama probing** — `warmModel` and `getLoadedContextLength` in
    `agent/ollama.ts`, both failing soft.
 3. **`settingsManager.applyOverrides`** in `createAgentHost` for compaction,
-   retry, and `httpIdleTimeoutMs`. anyapp never writes Pi's `settings.json`.
+   retry, and `httpIdleTimeoutMs`. Pi Taster never writes Pi's `settings.json`.
 4. **`StreamChunk.status`** — compacting / retrying / waiting / settled, plus a
    stall heartbeat and a context meter.
 5. **`agent/context-trim.ts`** — caps tool results, collapses superseded reads,

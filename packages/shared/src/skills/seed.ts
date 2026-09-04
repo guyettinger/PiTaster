@@ -20,9 +20,9 @@ export interface SeedSkillsResult {
   installed: string[]
   /** Names already present and therefore left alone. */
   skipped: string[]
-  /** Names whose superseded body anyapp replaced with the corrected one. */
+  /** Names whose superseded body Pi Taster replaced with the corrected one. */
   corrected: string[]
-  /** Names anyapp removed because the skill described work this agent cannot do. */
+  /** Names Pi Taster removed because the skill described work this agent cannot do. */
   removed: string[]
 }
 
@@ -35,11 +35,11 @@ export interface SeedSkillsResult {
  * decision, but an undetectable one from here, so a deleted skill does come back; the
  * panel is where it can be emptied instead.
  *
- * That leaves the case this function used to have no answer for: a skill anyapp itself
+ * That leaves the case this function used to have no answer for: a skill Pi Taster itself
  * shipped with content that was untrue. `manage-versions` documented nine `version_*`
  * tools that have never existed. Because seeding never overwrites, every install that
  * had ever run kept them forever. So before seeding, any skill whose body still matches
- * one anyapp shipped exactly — meaning the user has not touched it — is corrected in
+ * one Pi Taster shipped exactly — meaning the user has not touched it — is corrected in
  * place, or deleted when the honest correction is that the skill should not exist. A
  * body that differs by so much as a character is left alone; the panel flags it as
  * outdated instead. See {@link SUPERSEDED_SEEDS}.
@@ -47,7 +47,7 @@ export interface SeedSkillsResult {
  * Failures are per-skill and non-fatal. This runs at startup, and a skill that cannot
  * be written is not a reason for the app not to open.
  *
- * @param skillsDir - The skills root, normally `~/.anyapp/skills`
+ * @param skillsDir - The skills root, normally `~/.pitaster/skills`
  * @returns What was installed, left alone, corrected and removed
  */
 export async function seedSkills(skillsDir: string): Promise<SeedSkillsResult> {

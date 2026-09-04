@@ -1,5 +1,5 @@
 /**
- * Source configuration and connection types for anyapp.
+ * Source configuration and connection types for Pi Taster.
  */
 
 /**

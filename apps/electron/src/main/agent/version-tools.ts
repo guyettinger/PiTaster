@@ -1,7 +1,7 @@
 /**
  * Git and version-control tools exposed to the agent.
  *
- * Pi's built-ins cover file and shell work but have no equivalent for anyapp's
+ * Pi's built-ins cover file and shell work but have no equivalent for Pi Taster's
  * isomorphic-git layer, so these stay as custom tools backed by {@link VersionManager}.
  *
  * Every handler returns its failure as text rather than throwing, matching the
@@ -10,7 +10,7 @@
 
 import { Type } from 'typebox'
 import { defineTool, type ToolDefinition } from '@earendil-works/pi-coding-agent'
-import { VersionManager } from '@anyapp/shared'
+import { VersionManager } from '@pitaster/shared'
 
 /** Default number of commits returned by `get_history`. */
 const DEFAULT_HISTORY_DEPTH = 10

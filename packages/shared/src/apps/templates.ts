@@ -1,4 +1,4 @@
-import type { AppTemplate, AppTemplateConfig } from '@anyapp/core'
+import type { AppTemplate, AppTemplateConfig } from '@pitaster/core'
 
 /**
  * The `.gitignore` every new sub-app is seeded with.
@@ -32,7 +32,7 @@ yarn-debug.log*
 .env.local
 .env.*.local
 
-# anyapp runtime state
+# Pi Taster runtime state
 .chat-sessions.json
 
 # Editor and OS

@@ -12,16 +12,16 @@
  * which is the defect W3 was about.
  */
 
-import { RECOMMENDED_SAMPLING } from '@anyapp/core'
+import { RECOMMENDED_SAMPLING } from '@pitaster/core'
 
 /**
  * A sampling value as the user configured it.
  *
  * Three states, because two were not enough. A number pins it; `null` sends nothing
- * and leaves the model's own Modelfile default alone; `'auto'` asks anyapp to choose
+ * and leaves the model's own Modelfile default alone; `'auto'` asks Pi Taster to choose
  * from what it knows about the model. `'auto'` is the default because the right value
  * genuinely differs by model — see {@link resolveSampling} — and a single number
- * baked into the config was how anyapp came to run every thinking model greedily.
+ * baked into the config was how Pi Taster came to run every thinking model greedily.
  */
 export type SamplingSetting = number | 'auto' | null
 
@@ -39,7 +39,7 @@ export interface ResolvedSampling {
   topP?: number
 }
 
-/** Default for both settings: let anyapp choose from the model. */
+/** Default for both settings: let Pi Taster choose from the model. */
 export const DEFAULT_SAMPLING_TEMPERATURE: SamplingSetting = 'auto'
 
 /** Default nucleus setting. See {@link DEFAULT_SAMPLING_TEMPERATURE}. */
@@ -81,7 +81,7 @@ export interface ResolveSamplingParams {
  * The recommendation splits on whether the model reasons, because the two cases want
  * opposite things. A reasoning model asked to decode greedily loops; a model
  * reproducing an exact `oldText` wants no creativity at all. One number cannot serve
- * both, and anyapp shipped one number.
+ * both, and Pi Taster shipped one number.
  *
  * A pinned value always wins. `'auto'` sends no `top_p` at all — rather than 1 —
  * whenever the temperature in effect is 0, whether that came from the recommendation
@@ -109,7 +109,7 @@ export function resolveSampling(params: ResolveSamplingParams): ResolvedSampling
   } else if (topP === 'auto' && supportsThinking && resolved.temperature !== 0) {
     // Only when the temperature it would modify is not greedy. A recommendation that
     // pairs a nucleus cutoff with `temperature: 0` is sending a parameter that cannot
-    // do anything — and an install carrying anyapp's old pinned 0 would have got
+    // do anything — and an install carrying Pi Taster's old pinned 0 would have got
     // exactly that pair the moment this field appeared.
     resolved.topP = RECOMMENDED_SAMPLING.thinking.topP
   }

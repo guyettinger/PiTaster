@@ -6,11 +6,11 @@ A Bun workspace. Inter-package dependencies use `"workspace:*"`.
 
 | Path | Package | Contents |
 |------|---------|----------|
-| `apps/electron/` | `@anyapp/electron` | The desktop app |
-| `packages/core/` | `@anyapp/core` | Shared TypeScript types only |
-| `packages/shared/` | `@anyapp/shared` | Apps, chat, skills, sources, versions, inspector |
+| `apps/electron/` | `@pitaster/electron` | The desktop app |
+| `packages/core/` | `@pitaster/core` | Shared TypeScript types only |
+| `packages/shared/` | `@pitaster/shared` | Apps, chat, skills, sources, versions, inspector |
 
-Import types from `@anyapp/core` and business logic from `@anyapp/shared`.
+Import types from `@pitaster/core` and business logic from `@pitaster/shared`.
 Neither package may import from `apps/electron/` — the dependency only runs one
 way.
 
@@ -28,7 +28,7 @@ through its SDK in `apps/electron/src/main/agent/`.
 **Pi owns** the agent loop, the built-in tools (`read`, `write`, `edit`, `bash`,
 `grep`, `find`, `ls`), and the session transcript.
 
-**anyapp adds** the permission gate, path confinement, git auto-commit, its own
+**Pi Taster adds** the permission gate, path confinement, git auto-commit, its own
 version-control, network and skill tools, a TypeScript language service per
 sub-app, and a bridge that exposes connected MCP sources' tools as
 `mcp__<source>__<tool>`.

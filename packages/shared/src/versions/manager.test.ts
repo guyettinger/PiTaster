@@ -21,7 +21,7 @@ let dir: string
 let manager: VersionManager
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'anyapp-versions-'))
+  dir = await mkdtemp(join(tmpdir(), 'pitaster-versions-'))
   await git.init({ fs, dir, defaultBranch: 'main' })
   manager = new VersionManager(dir)
 })

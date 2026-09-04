@@ -31,7 +31,7 @@ Complete chat interface with tool visualization:
 
 ```tsx
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { StreamChunk, PermissionMode, ToolApprovalRequest, Skill } from '@anyapp/core'
+import type { StreamChunk, PermissionMode, ToolApprovalRequest, Skill } from '@pitaster/core'
 import { ToolApprovalDialog } from './ToolApprovalDialog'
 import { MessageBubble } from './MessageBubble'
 
@@ -163,7 +163,7 @@ export function Chat() {
     <div className="flex flex-col h-screen bg-neutral-50">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b bg-white">
-        <h1 className="text-lg font-semibold">anyapp</h1>
+        <h1 className="text-lg font-semibold">Pi Taster</h1>
         <div className="flex items-center gap-4">
           <select 
             value={permissionMode}
@@ -285,7 +285,7 @@ export function MessageBubble({ message }: { message: Message }) {
 ### apps/electron/src/renderer/src/components/ToolApprovalDialog.tsx
 
 ```tsx
-import type { ToolApprovalRequest } from '@anyapp/core'
+import type { ToolApprovalRequest } from '@pitaster/core'
 
 interface Props {
   request: ToolApprovalRequest
@@ -343,11 +343,11 @@ export function ToolApprovalDialog({ request, onApprove, onDeny }: Props) {
 Add skill loading to queries:
 
 ```typescript
-import { SkillsLoader, extractSkillMentions, buildSystemPrompt } from '@anyapp/shared'
+import { SkillsLoader, extractSkillMentions, buildSystemPrompt } from '@pitaster/shared'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 
-const skillsLoader = new SkillsLoader(join(homedir(), '.anyapp', 'skills'))
+const skillsLoader = new SkillsLoader(join(homedir(), '.Pi Taster', 'skills'))
 
 export async function runAgentQuery(
   prompt: string,
@@ -364,7 +364,7 @@ export async function runAgentQuery(
   ).then(results => results.filter((s): s is Skill => s !== null))
   
   // Build system prompt with skills
-  const baseSystemPrompt = `You are anyapp, a self-modifying AI assistant.
+  const baseSystemPrompt = `You are Pi Taster, a self-modifying AI assistant.
 You can read and modify your own source code using the provided tools.
 Always explain what you're doing before making changes.
 Use version control (branches, commits) for safe experimentation.`
@@ -392,7 +392,7 @@ Use version control (branches, commits) for safe experimentation.`
 
 ## Part 3: Create Remaining Skills
 
-### ~/.anyapp/skills/connect-source/SKILL.md
+### ~/.pitaster/skills/connect-source/SKILL.md
 
 ```markdown
 ---
@@ -425,12 +425,12 @@ For filesystem access:
 3. Test file listing
 ```
 
-### ~/.anyapp/skills/enhance-ui/SKILL.md
+### ~/.pitaster/skills/enhance-ui/SKILL.md
 
 ```markdown
 ---
 name: enhance-ui
-description: Improve the anyapp user interface using shadcn/ui and Tailwind.
+description: Improve the Pi Taster user interface using shadcn/ui and Tailwind.
 ---
 
 # UI Enhancement
@@ -452,19 +452,19 @@ description: Improve the anyapp user interface using shadcn/ui and Tailwind.
 5. Test in the actual app
 ```
 
-### ~/.anyapp/skills/create-skill/SKILL.md
+### ~/.pitaster/skills/create-skill/SKILL.md
 
 ```markdown
 ---
 name: create-skill
-description: Create new skills for anyapp. Use when user wants to add new agent capabilities.
+description: Create new skills for Pi Taster. Use when user wants to add new agent capabilities.
 ---
 
 # Creating Skills
 
 ## Structure
 
-Skills are stored in `~/.anyapp/skills/{name}/SKILL.md`
+Skills are stored in `~/.pitaster/skills/{name}/SKILL.md`
 
 ```
 ---
@@ -723,7 +723,7 @@ export default App
 
 ```bash
 git add -A
-git commit -m "feat: complete anyapp v0.1.0
+git commit -m "feat: complete Pi Taster v0.1.0
 
 - Enhanced chat UI with tool visualization
 - Tool approval dialog for permission flow

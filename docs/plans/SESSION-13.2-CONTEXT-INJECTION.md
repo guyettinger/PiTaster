@@ -263,7 +263,7 @@ Add APIs:
 
 ```typescript
 import type { ElementInfo } from '../main/screenshot'
-import type { ElementContext } from '@anyapp/core/messages'
+import type { ElementContext } from '@pitaster/core/messages'
 
 {
   // ... existing APIs
@@ -286,7 +286,7 @@ import type { ElementContext } from '@anyapp/core/messages'
 Add types:
 
 ```typescript
-import type { ElementContext } from '@anyapp/core/messages'
+import type { ElementContext } from '@pitaster/core/messages'
 
 interface ElectronAPI {
   // ... existing types
@@ -345,7 +345,7 @@ Create a component to display element context in chat.
  * Display an element context block in chat.
  */
 
-import type { ElementContext } from '@anyapp/core/messages'
+import type { ElementContext } from '@pitaster/core/messages'
 
 /**
  * Props for the ElementContextBubble component.
@@ -503,7 +503,7 @@ Update the message handler:
  */
 useEffect(() => {
   const handleMessage = async (event: MessageEvent) => {
-    if (event.data?.type === 'anyapp:element-selected') {
+    if (event.data?.type === 'pitaster:element-selected') {
       const elementInfo = event.data.data
 
       try {
@@ -516,7 +516,7 @@ useEffect(() => {
         // Exit inspect mode
         setIsInspecting(false)
         if (webviewRef.current) {
-          await webviewRef.current.executeJavaScript('window.__anyappInspector?.deactivate()')
+          await webviewRef.current.executeJavaScript('window.__piTasterInspector?.deactivate()')
         }
       } catch (err) {
         console.error('Failed to capture element:', err)

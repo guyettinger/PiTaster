@@ -11,7 +11,7 @@
 
 import { describe, expect, test } from 'bun:test'
 import { collectChangedFiles } from './ChangedFilesStrip'
-import type { FilePatch } from '@anyapp/core'
+import type { FilePatch } from '@pitaster/core'
 
 /**
  * A patch fixture.

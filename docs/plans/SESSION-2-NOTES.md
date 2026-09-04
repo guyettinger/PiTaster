@@ -12,11 +12,11 @@
 
 ### Type Imports
 
-**Plan:** Import types from `@anyapp/core` across all Electron processes.
+**Plan:** Import types from `@pitaster/core` across all Electron processes.
 
 **Actual:** Defined types locally in each process (main, preload, renderer).
 
-**Reason:** TypeScript module resolution with `moduleResolution: "bundler"` and workspace packages required building packages before type checking. While the types are defined in `@anyapp/core` for external use, the Electron app uses local type definitions to avoid build ordering dependencies during development.
+**Reason:** TypeScript module resolution with `moduleResolution: "bundler"` and workspace packages required building packages before type checking. While the types are defined in `@pitaster/core` for external use, the Electron app uses local type definitions to avoid build ordering dependencies during development.
 
 ### Tool Definition Format
 

@@ -32,7 +32,7 @@ work was making network access legible, not making it possible.
    and result characters (100KB). HTML is reduced to readable text by a contained
    tag-stripping pass rather than a new dependency.
 2. **`packages/shared/src/process/env.ts`** — `buildSubprocessEnv`, one filtered
-   environment for every subprocess anyapp spawns.
+   environment for every subprocess Pi Taster spawns.
 3. **`packages/shared/src/apps/install.ts`** — `installDependencies`, shared by
    the Install button and the agent tool so there is one spawn path.
 4. **`docs/skills/lookup-docs/SKILL.md`** — runtime skill teaching the agent when

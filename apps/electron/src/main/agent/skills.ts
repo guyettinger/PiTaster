@@ -3,7 +3,7 @@
  *
  * Skills come from two roots. The open app's `skills/` directory holds skills written
  * for that app, versioned with it and inside the agent's confinement boundary. The
- * workspace's `~/.anyapp/skills` holds the ones every app is offered.
+ * workspace's `~/.pitaster/skills` holds the ones every app is offered.
  *
  * This module is the only place either path is spelled out, because three things have
  * to agree on them: the manifest in the system prompt, the `load_skill` tool, and the
@@ -13,8 +13,8 @@
 
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { activeSkills, buildSkillLibrary } from '@anyapp/shared'
-import type { Skill, SubApp } from '@anyapp/core'
+import { activeSkills, buildSkillLibrary } from '@pitaster/shared'
+import type { Skill, SubApp } from '@pitaster/core'
 
 /**
  * The workspace skills root.
@@ -23,14 +23,14 @@ import type { Skill, SubApp } from '@anyapp/core'
  * `load_skill` takes a name and reads the file itself rather than pointing the model at
  * a path it would be refused.
  */
-export const WORKSPACE_SKILLS_DIR = join(homedir(), '.anyapp', 'skills')
+export const WORKSPACE_SKILLS_DIR = join(homedir(), '.pitaster', 'skills')
 
 /**
  * The directory an app's own skills live in.
  *
  * `skills/` at the app root, not `.pi/skills`. Pi's project scope is the latter, but
  * `DefaultResourceLoader` runs with `includeDefaults: false` so it discovers neither —
- * the path is anyapp's to choose, and this is the one the agent already reaches for
+ * the path is Pi Taster's to choose, and this is the one the agent already reaches for
  * when it writes a skill, because it is plainly visible in a directory listing.
  *
  * @param rootPath - Absolute path to the sub-app root

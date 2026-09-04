@@ -50,8 +50,8 @@ import {
   AppRunner,
   ChatHistoryManager,
   installDependencies
-} from '@anyapp/shared'
-import type { AgentStatus, ContextReport, DaemonHealth, TelemetrySnapshot, PermissionMode, StreamChunk, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
+} from '@pitaster/shared'
+import type { AgentStatus, ContextReport, DaemonHealth, TelemetrySnapshot, PermissionMode, StreamChunk, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@pitaster/core'
 import {
   DEFAULT_OLLAMA_BASE_URL,
   isOllamaReachable,
@@ -202,7 +202,7 @@ function assertSessionId(sessionId: unknown): asserts sessionId is string {
 }
 
 /** Config directory for sources and skills. */
-const configDir = join(homedir(), '.anyapp')
+const configDir = join(homedir(), '.pitaster')
 
 /** Pi agent directory, holding models.json, settings.json and session transcripts. */
 const piAgentDir = join(configDir, 'pi')
@@ -468,13 +468,13 @@ const baselinePath = join(configDir, 'session-baselines.json')
 /**
  * Legacy path to the encrypted Anthropic API key.
  *
- * anyapp runs on a local Ollama daemon and no longer holds any secret, so this file
+ * Pi Taster runs on a local Ollama daemon and no longer holds any secret, so this file
  * is deleted on startup rather than read.
  */
 const legacyApiKeyPath = join(configDir, '.apikey')
 
 /**
- * Persisted application configuration, stored at `~/.anyapp/config.json`.
+ * Persisted application configuration, stored at `~/.pitaster/config.json`.
  */
 interface AppConfig {
   /** Ollama daemon base URL, without the `/v1` suffix. */
@@ -497,7 +497,7 @@ interface AppConfig {
    * Context window to configure for the selected model, or null to discover it.
    *
    * Ollama's advertised context length is the model's architectural maximum, not
-   * what the daemon serves; anyapp probes `/api/ps` for the real number and falls
+   * what the daemon serves; Pi Taster probes `/api/ps` for the real number and falls
    * back to a conservative default. This is the escape hatch when both are wrong.
    */
   contextWindow: number | null
@@ -509,8 +509,8 @@ interface AppConfig {
    * Sampling temperature for the model, or null to use the model's own default.
    *
    * Pi exposes no temperature and Ollama takes its default from the model's
-   * Modelfile — 0.7 to 1.0 on the qwen builds anyapp targets. Most of a coding turn
-   * is reproducing text that already exists, so anyapp pins 0; null restores the
+   * Modelfile — 0.7 to 1.0 on the qwen builds Pi Taster targets. Most of a coding turn
+   * is reproducing text that already exists, so Pi Taster pins 0; null restores the
    * model's default for anyone who wants it.
    */
   samplingTemperature: SamplingSetting
@@ -560,7 +560,7 @@ export function getConfig(): AppConfig {
 
 /**
  * Get the Pi agent directory.
- * @returns Absolute path to `~/.anyapp/pi`
+ * @returns Absolute path to `~/.pitaster/pi`
  */
 export function getPiAgentDir(): string {
   return piAgentDir
@@ -828,13 +828,13 @@ The user named ${named.length === 1 ? 'a skill' : 'skills'}: ${list}. Call \`loa
 /**
  * Install the seed skills, so a fresh machine's agent is not skill-less.
  *
- * `~/.anyapp/skills` was read by the agent and by the Skills panel and written by
+ * `~/.pitaster/skills` was read by the agent and by the Skills panel and written by
  * neither, so on any install where the `docs/skills/` copies had not been placed by hand
  * the agent ran with none. `working-notes` is the one that matters: the post-compaction
  * nudge in `agent/session.ts` tells the model to read `NOTES.md`, and that skill is
  * where the convention for keeping one is defined.
  *
- * A skill the user has edited is never overwritten, but one anyapp shipped with content
+ * A skill the user has edited is never overwritten, but one Pi Taster shipped with content
  * that was untrue of this agent is corrected in place — see {@link seedSkills}.
  */
 export async function initializeSkills(): Promise<void> {
@@ -907,7 +907,7 @@ function requireSourceString(value: unknown, field: string): string {
  * Validate an MCP source configuration arriving from the renderer.
  *
  * The renderer is untrusted, and this payload is unusually load-bearing: it names a
- * command anyapp will spawn and, once connected, becomes part of the agent's tool
+ * command Pi Taster will spawn and, once connected, becomes part of the agent's tool
  * surface. Everything is checked here rather than in `SourceManager`.
  *
  * @param config - The raw value from the renderer
@@ -1851,7 +1851,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       throw new Error('Invalid trimContext')
     }
     // Bounded by what the OpenAI-compatible endpoint accepts. `null` is the deliberate
-    // "send nothing" value and is not the same as 0; `'auto'` asks anyapp to choose.
+    // "send nothing" value and is not the same as 0; `'auto'` asks Pi Taster to choose.
     if (!isValidSampling(config.samplingTemperature, MIN_SAMPLING_TEMPERATURE, MAX_SAMPLING_TEMPERATURE)) {
       throw new Error('Invalid sampling temperature')
     }

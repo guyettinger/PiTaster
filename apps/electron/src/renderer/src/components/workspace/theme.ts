@@ -9,7 +9,7 @@ import type { DockviewTheme } from 'dockview-react'
  * their own is deliberate — the dock is chrome, and its colors have to move
  * when the palette does.
  */
-export const ANYAPP_DOCKVIEW_THEME: DockviewTheme = {
-  name: 'anyapp',
-  className: 'dockview-theme-anyapp'
+export const PITASTER_DOCKVIEW_THEME: DockviewTheme = {
+  name: 'pitaster',
+  className: 'dockview-theme-pitaster'
 }

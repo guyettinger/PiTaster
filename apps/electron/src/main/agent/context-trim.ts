@@ -25,7 +25,7 @@
  * - The JSONL transcript is written when a message is appended, so a mutation
  *   afterwards cannot rewrite it. Nothing inside the current turn is ever sealed,
  *   which is what keeps that true — see {@link sealTarget}.
- * - anyapp's chat UI reads the transcript from disk through its own `SessionManager`,
+ * - Pi Taster's chat UI reads the transcript from disk through its own `SessionManager`,
  *   never this list, so the conversation a person sees keeps everything.
  * - Pi mutates messages in place itself, for the same reason
  *   (`agent-session.js:453-460`).
@@ -58,7 +58,7 @@ const CHARS_PER_TOKEN = 4
  *
  * An estimate, and only ever used to answer "has enough accumulated to be worth a
  * cache invalidation" — never shown to anyone as a price. Pi bills an image at a flat
- * character count anyapp has no business restating; `agent/context-report.ts` recovers
+ * character count Pi Taster has no business restating; `agent/context-report.ts` recovers
  * that number by difference where it matters.
  */
 const IMAGE_TOKENS = 1200
@@ -76,10 +76,24 @@ const READ_TOOL = 'read'
  * Matched against the *last line* only. A substring test over the whole result would
  * exempt any file that happens to contain this sentence.
  */
-const TRUNCATION_MARKER = '…[anyapp truncated'
+const TRUNCATION_MARKER = '…[Pi Taster truncated'
+
+/**
+ * The same sentinel under the pre-rebrand name.
+ *
+ * This is not tidiness, it is a correctness requirement. The marker is written into
+ * Pi's *stored* messages — that is what lets compaction see a seal — and those
+ * messages are restored from disk when a session resumes. A conversation sealed
+ * before the rename therefore carries the old prefix forever, and a check that only
+ * knew the new one would fail to recognise its own work: the next seal pass would
+ * truncate an already-truncated result and report a smaller, wrong number of dropped
+ * lines. Idempotency is the whole contract of this module, so the old prefix stays
+ * recognised permanently.
+ */
+const LEGACY_TRUNCATION_MARKER = '…[anyapp truncated'
 
 /** Sentinel identifying a read this module has already collapsed. */
-const SUPERSEDED_MARKER = '[anyapp: superseded by a later read of'
+const SUPERSEDED_MARKER = '[Pi Taster: superseded by a later read of'
 
 /**
  * Pi's own continuation notice, appended when its `read` tool truncates.
@@ -354,7 +368,10 @@ function describeRegion(region: ReadRegion): string {
  * @returns True when the text ends with a truncation marker
  */
 function isAlreadyTruncated(text: string): boolean {
-  return text.slice(text.lastIndexOf('\n') + 1).startsWith(TRUNCATION_MARKER)
+  const lastLine = text.slice(text.lastIndexOf('\n') + 1)
+  return (
+    lastLine.startsWith(TRUNCATION_MARKER) || lastLine.startsWith(LEGACY_TRUNCATION_MARKER)
+  )
 }
 
 /**

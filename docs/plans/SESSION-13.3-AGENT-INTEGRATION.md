@@ -29,7 +29,7 @@ Create a utility to convert element context to Claude API message format.
  * Utilities for converting app-specific types to Claude API format.
  */
 
-import type { ElementContext } from '@anyapp/core/messages'
+import type { ElementContext } from '@pitaster/core/messages'
 
 /**
  * Claude API message content block.
@@ -141,7 +141,7 @@ Add element context awareness to the agent's system prompt.
 Update the system prompt (find the system message construction):
 
 ```typescript
-const systemPrompt = `You are an AI coding assistant for anyapp...
+const systemPrompt = `You are an AI coding assistant for Pi Taster...
 
 [Existing system prompt content]
 
@@ -234,7 +234,7 @@ let bannerOverlay: HTMLDivElement | null = null
  */
 function createBanner(): HTMLDivElement {
   const banner = document.createElement('div')
-  banner.id = 'anyapp-inspector-banner'
+  banner.id = 'pitaster-inspector-banner'
   banner.style.cssText = `
     position: fixed;
     top: 0;
@@ -381,7 +381,7 @@ function handleClick(e: MouseEvent): void {
 
       // Send with count
       window.parent.postMessage({
-        type: 'anyapp:element-selected',
+        type: 'pitaster:element-selected',
         data: info,
         isMultiSelect: true,
         selectionCount: selectedElements.length
@@ -402,7 +402,7 @@ function handleClick(e: MouseEvent): void {
       selectedElement = element
 
       window.parent.postMessage({
-        type: 'anyapp:element-selected',
+        type: 'pitaster:element-selected',
         data: info,
         isMultiSelect: false
       }, '*')

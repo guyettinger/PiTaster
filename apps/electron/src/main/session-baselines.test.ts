@@ -18,7 +18,7 @@ import { ensureSessionBaseline, readSessionBaseline } from './session-baselines'
 let storePath: string
 
 beforeEach(async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'anyapp-baselines-'))
+  const dir = await mkdtemp(join(tmpdir(), 'pitaster-baselines-'))
   storePath = join(dir, 'session-baselines.json')
 })
 

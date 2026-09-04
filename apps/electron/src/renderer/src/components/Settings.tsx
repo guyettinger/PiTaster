@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { SourcesPanel } from './SourcesPanel'
 import { PermissionModeControl, describePermissionMode } from './PermissionModeControl'
 import { WarningIcon, CheckIcon } from './icons'
-import { RECOMMENDED_SAMPLING } from '@anyapp/core'
+import { RECOMMENDED_SAMPLING } from '@pitaster/core'
 import type { PermissionMode, SamplingSetting } from '../types/electron'
 
 /**
@@ -47,7 +47,7 @@ export interface OllamaModel {
   parameterSize?: string
   /** Context window the model's metadata advertises: its architectural maximum. */
   contextWindow: number
-  /** The window anyapp actually configures, probed from the daemon when it can be. */
+  /** The window Pi Taster actually configures, probed from the daemon when it can be. */
   effectiveContextWindow: number
   /** Where the effective window came from. */
   contextWindowSource: 'user' | 'daemon' | 'fallback'
@@ -131,7 +131,7 @@ interface SamplingControlProps {
  * A sampling setting in its three states.
  *
  * A number input alone cannot express them: empty has to mean *something*, and when it
- * meant "the model's own default" there was nowhere left to say "let anyapp choose".
+ * meant "the model's own default" there was nowhere left to say "let Pi Taster choose".
  * That is how one baked-in number came to be sent to every model regardless of whether
  * it reasons. The mode is chosen explicitly and the number appears only when it is
  * being pinned.
@@ -197,7 +197,7 @@ function describeSampling(
     return "Sending nothing. Ollama takes the value from the model's Modelfile — usually 0.7 or higher."
   }
   // A pinned value that disagrees with the recommendation is said out loud rather than
-  // corrected. anyapp's old default was a pinned 0, which is indistinguishable on disk
+  // corrected. Pi Taster's old default was a pinned 0, which is indistinguishable on disk
   // from a 0 someone chose — so an install that predates this control keeps decoding
   // greedily, including on a reasoning model, and nothing would otherwise say so.
   if (recommended !== null && value !== recommended) {
@@ -207,7 +207,7 @@ function describeSampling(
 }
 
 /**
- * Explain where the context window anyapp will use came from.
+ * Explain where the context window Pi Taster will use came from.
  *
  * Ollama advertises a model's architectural maximum, not what the daemon serves —
  * 262144 against a served 65536 is normal — and believing the advertised number means
@@ -257,7 +257,7 @@ interface SettingsProps {
  * writes are committed automatically, and which MCP sources it can reach.
  *
  * Sources live here rather than in the nav rail because they are workspace-wide
- * configuration stored under `~/.anyapp/sources`, not something scoped to the
+ * configuration stored under `~/.pitaster/sources`, not something scoped to the
  * app you happen to have open.
  */
 export function Settings({ permissionMode, onModeChange }: SettingsProps) {
@@ -391,7 +391,7 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
 
                 <Field
                   label="Ollama server"
-                  hint="anyapp runs entirely on local models. No API key is needed."
+                  hint="Pi Taster runs entirely on local models. No API key is needed."
                 >
                   <div className="flex gap-2">
                     <input
@@ -705,15 +705,17 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
           {tab === 'about' && (
             <div className="space-y-4">
               <div>
-                <h2 className="text-[14px] font-semibold text-bone">anyapp 0.1.0</h2>
+                <h2 className="text-[14px] font-semibold text-bone">Pi Taster 0.1.0</h2>
                 <p className="mt-1 text-[13px] text-ash">
-                  A self-modifying desktop app. The agent reads and writes its own source
-                  and the source of the apps it creates, entirely on local models.
+                  A desktop app for tasting Pi, the coding agent, on models served by
+                  your own Ollama. It writes its own source and the source of the apps
+                  it creates. No API key, and no inference request that leaves this
+                  machine.
                 </p>
               </div>
               <div>
                 <p className="eyebrow text-ash">Workspace</p>
-                <p className="mt-1 font-mono text-[12.5px] text-bone">~/.anyapp/</p>
+                <p className="mt-1 font-mono text-[12.5px] text-bone">~/.pitaster/</p>
                 <p className="mt-1 text-[12px] text-ash">
                   Apps, skills, sources, and chat history are all stored here.
                 </p>

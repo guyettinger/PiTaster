@@ -2,7 +2,7 @@
 
 ## Implementation Summary
 
-Session 12 adds full CRUD for MCP source configurations directly from the Sources panel UI. Previously, sources could only be added by hand-editing JSON files in `~/.anyapp/sources/`. The backend APIs (`saveSource`, `deleteSource`) were built in Session 4 but never wired to the renderer. This session builds the missing UI components and connects them to the existing infrastructure.
+Session 12 adds full CRUD for MCP source configurations directly from the Sources panel UI. Previously, sources could only be added by hand-editing JSON files in `~/.pitaster/sources/`. The backend APIs (`saveSource`, `deleteSource`) were built in Session 4 but never wired to the renderer. This session builds the missing UI components and connects them to the existing infrastructure.
 
 ## Files Changed
 
@@ -52,7 +52,7 @@ Session 12 adds full CRUD for MCP source configurations directly from the Source
 
 ### Empty State
 
-- Replaced the old "Add MCP servers in ~/.anyapp/sources/" text with a prominent "+ Add MCP Source" button
+- Replaced the old "Add MCP servers in ~/.pitaster/sources/" text with a prominent "+ Add MCP Source" button
 - Clicking it opens the add form directly
 - Helper text updated to "Connect MCP servers to extend agent capabilities"
 

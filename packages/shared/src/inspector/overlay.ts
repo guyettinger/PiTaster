@@ -147,7 +147,7 @@ let bannerOverlay: HTMLDivElement | null = null
  */
 function createOverlay(): HTMLDivElement {
   const overlay = document.createElement('div')
-  overlay.id = 'anyapp-inspector-highlight'
+  overlay.id = 'pitaster-inspector-highlight'
   overlay.style.cssText = `
     position: fixed;
     pointer-events: none;
@@ -187,7 +187,7 @@ function hideOverlay(): void {
  */
 function createBanner(): HTMLDivElement {
   const banner = document.createElement('div')
-  banner.id = 'anyapp-inspector-banner'
+  banner.id = 'pitaster-inspector-banner'
   banner.style.cssText = `
     position: fixed;
     top: 0;
@@ -237,7 +237,7 @@ function handleClick(e: MouseEvent): void {
 
     // Send to parent via postMessage
     window.parent.postMessage({
-      type: 'anyapp:element-selected',
+      type: 'pitaster:element-selected',
       data: info
     }, '*')
 
@@ -282,7 +282,7 @@ export function activate(): void {
   // Change cursor
   document.body.style.cursor = 'crosshair'
 
-  console.log('[anyapp] Inspector mode activated')
+  console.log('[Pi Taster] Inspector mode activated')
 }
 
 /**
@@ -307,7 +307,7 @@ export function deactivate(): void {
     bannerOverlay.style.display = 'none'
   }
 
-  console.log('[anyapp] Inspector mode deactivated')
+  console.log('[Pi Taster] Inspector mode deactivated')
 }
 
 /**
@@ -318,7 +318,7 @@ export function isActiveMode(): boolean {
 }
 
 // Expose global API for injection via executeJavaScript
-;(window as any).__anyappInspector = {
+;(window as any).__piTasterInspector = {
   activate,
   deactivate,
   isActive: isActiveMode

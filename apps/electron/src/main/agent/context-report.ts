@@ -25,7 +25,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { estimateTokens as estimateMessageTokens } from '@earendil-works/pi-coding-agent'
 import type { ContextEvent } from '@earendil-works/pi-coding-agent'
-import { estimateTokens, renderSkillManifest } from '@anyapp/shared'
+import { estimateTokens, renderSkillManifest } from '@pitaster/shared'
 import type {
   ConnectedSource,
   ContextBlock,
@@ -34,7 +34,7 @@ import type {
   ContextReportState,
   Skill,
   SubApp
-} from '@anyapp/core'
+} from '@pitaster/core'
 import type { ContextBudget } from './context-budget'
 import { createCodeTools } from './code-tools'
 import { createFileTools } from './file-tools'
@@ -211,7 +211,7 @@ function contentBlocks(message: AgentMessage): unknown[] {
  * Drop image blocks from a message entirely.
  *
  * Used to price images by *difference* rather than by restating Pi's own per-image
- * charge. Pi's estimator bills an image at a flat character count that anyapp has no
+ * charge. Pi's estimator bills an image at a flat character count that Pi Taster has no
  * business knowing; subtracting the stripped estimate from the whole one recovers
  * exactly that charge, and keeps recovering it if Pi ever changes the number.
  *

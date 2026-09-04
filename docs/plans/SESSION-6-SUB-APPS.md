@@ -12,7 +12,7 @@ This session introduces the **sub-apps architecture** where the outer Electron c
 
 ### Before (Sessions 1-5)
 ```
-anyapp/
+PiTaster/
 ├── apps/electron/          # Self-modifying (unsafe)
 ├── packages/core/          # Self-modifying (unsafe)
 └── packages/shared/        # Self-modifying (unsafe)
@@ -20,11 +20,11 @@ anyapp/
 
 ### After (Session 6)
 ```
-anyapp/
+PiTaster/
 ├── apps/electron/          # IMMUTABLE - outer container
 ├── packages/core/          # IMMUTABLE - core types
 ├── packages/shared/        # IMMUTABLE - shared logic
-└── ~/.anyapp/
+└── ~/.pitaster/
     └── apps/               # Sub-apps directory
         ├── my-todo-app/    # Sandboxed sub-app
         │   ├── .git/       # Per-app versioning
@@ -39,7 +39,7 @@ anyapp/
 | Concept | Description |
 |---------|-------------|
 | **Immutable Container** | Electron app cannot be modified by the agent |
-| **Sandboxed Sub-Apps** | Each app in `~/.anyapp/apps/` is self-contained |
+| **Sandboxed Sub-Apps** | Each app in `~/.pitaster/apps/` is self-contained |
 | **Per-App Versioning** | Independent git repos for branching/rollback |
 | **Scoped Context** | Agent only sees/modifies the active app |
 | **App Templates** | Pre-defined scaffolds for common app types |
@@ -115,7 +115,7 @@ git commit -m "feat: complete sub-apps architecture (Session 6)
 
 - Immutable outer container, modifiable sub-apps
 - 5 app templates: React, Node CLI, Server, Static, Blank
-- Per-app git versioning in ~/.anyapp/apps/
+- Per-app git versioning in ~/.pitaster/apps/
 - Agent tools scoped to active app
 - Path traversal prevention
 - App management UI"

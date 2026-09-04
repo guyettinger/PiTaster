@@ -11,7 +11,7 @@ button.
 
 This session rebuilds the shell around one rule — **the rail holds what exists
 without an app, a second column holds what belongs to the open app** — and gives
-anyapp a visual identity: design tokens, two bundled typefaces, one icon set, a
+Pi Taster a visual identity: design tokens, two bundled typefaces, one icon set, a
 logo, and a dock icon.
 
 **Estimated scope**: Large
@@ -27,7 +27,7 @@ logo, and a dock icon.
 - **The contextual gating was backwards.** Skills and Sources were both
   `disabled={!activeApp}`, yet `SkillsLoader` and `SourceManager` are both
   constructed from `configDir` in `ipc.ts` — they are workspace-global data under
-  `~/.anyapp`, unrelated to the open app. Meanwhile History, Terminal, and Preview
+  `~/.pitaster`, unrelated to the open app. Meanwhile History, Terminal, and Preview
   really are app-scoped and sat in the same undifferentiated group.
 - **The window could not be dragged.** A repo-wide grep for `app-region` returned
   zero hits.
@@ -67,7 +67,7 @@ the whole system is two families.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│ ●●●   ◈ anyapp │ Magic 8 Ball ● :5173 │ Ask to edit ▾  ▶ Run   │  h-11, drag
+│ ●●●   ◈ Pi Taster │ Magic 8 Ball ● :5173 │ Ask to edit ▾  ▶ Run   │  h-11, drag
 ├════════════════════════════════════════════════════════════════┤  ← mode hairline
 │ APPS │ MAGIC 8 BALL │                                          │
 │ SKILLS│  ⎇ main     │                                          │

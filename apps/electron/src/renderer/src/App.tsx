@@ -10,7 +10,7 @@ import { NavRail } from './components/shell/NavRail'
 import { RunningAppsProvider } from './context/RunningAppsContext'
 import type { Destination } from './types/navigation'
 import type { PermissionMode } from './types/electron'
-import type { SubApp } from '@anyapp/core'
+import type { SubApp } from '@pitaster/core'
 
 /**
  * Root application component.

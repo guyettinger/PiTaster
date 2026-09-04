@@ -65,7 +65,7 @@ function languageFromClassName(className: unknown): string | undefined {
 }
 
 /**
- * Renders markdown with anyapp's typography, palette, and link handling.
+ * Renders markdown with Pi Taster's typography, palette, and link handling.
  */
 export const Markdown = memo(function Markdown({ content, isStreaming = false }: MarkdownProps) {
   const openLink = useCallback((href: string | undefined) => {

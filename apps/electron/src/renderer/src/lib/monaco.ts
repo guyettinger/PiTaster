@@ -5,7 +5,7 @@
  * in the packaged build.
  *
  * **No CDN.** `@monaco-editor/react` is the usual wrapper and it loads Monaco from
- * jsdelivr by default. anyapp's whole identity is that inference never leaves the
+ * jsdelivr by default. Pi Taster's whole identity is that inference never leaves the
  * machine; an editor that silently needs the network to render is the wrong shape for
  * it, and would simply fail to appear offline. So Monaco is imported as ESM from
  * `node_modules` and the thin wrapper below replaces the React binding.
@@ -75,7 +75,7 @@ export function setupMonaco(): typeof monaco {
 
   // The palette, so the editor reads as part of the app rather than as VS Code embedded
   // in it. Token colours map onto the same brass/patina/rust the chat's code blocks use.
-  monaco.editor.defineTheme('anyapp', {
+  monaco.editor.defineTheme('pitaster', {
     base: 'vs-dark',
     inherit: true,
     rules: [

@@ -17,7 +17,7 @@ interface NavRailProps {
  *
  * Holds only destinations that exist independently of any app — the app
  * library, the workspace's skills, help, and settings. Nothing here is ever
- * disabled: skills and MCP sources are workspace-global data under `~/.anyapp`,
+ * disabled: skills and MCP sources are workspace-global data under `~/.pitaster`,
  * so gating them on a focused app was always wrong.
  *
  * Workspace is the exception that proves the rule: it needs an app to show
