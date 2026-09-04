@@ -2,7 +2,7 @@
  * Type definitions for the Electron API exposed via preload script.
  */
 
-import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, CacheVerdict, DaemonHealth, ElementContext, SerializedContentBlock, Skill, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, TurnCost } from '@anyapp/core'
+import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, CacheVerdict, DaemonHealth, ElementContext, SerializedContentBlock, Skill, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, ProviderRequestRecord, RequestOutcome, TelemetrySnapshot, TelemetryTotals, TurnCost } from '@anyapp/core'
 
 /**
  * A sampling value as the user configured it.
@@ -384,6 +384,8 @@ interface ElectronAPI {
 
   /** Read what the context window holds, broken down into attributable blocks. */
   getContextReport: () => Promise<ContextReport | null>
+  /** Read what the session's provider requests actually cost. */
+  getTelemetry: () => Promise<TelemetrySnapshot>
 
   /** Summarize the conversation now rather than waiting for the threshold. */
   compactContext: () => Promise<void>
@@ -568,6 +570,10 @@ export type {
   CacheVerdict,
   DaemonHealth,
   TurnCost,
+  TelemetrySnapshot,
+  ProviderRequestRecord,
+  RequestOutcome,
+  TelemetryTotals,
   ContextUsage, 
   ContextBlock,
   ContextBlockGroup,

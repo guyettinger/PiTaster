@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, test } from 'bun:test'
-import { collectChangedFiles, shortLabels } from './ChangedFilesStrip'
+import { collectChangedFiles } from './ChangedFilesStrip'
 import type { FilePatch } from '@anyapp/core'
 
 /**
@@ -148,34 +148,5 @@ describe('collectChangedFiles', () => {
       ['y.md', 'pending'],
       ['z.md', 'uncommitted']
     ])
-  })
-})
-
-describe('shortLabels', () => {
-  test('uses the file name when that is enough', () => {
-    expect(shortLabels(['src/App.tsx', 'NOTES.md'])).toEqual(['App.tsx', 'NOTES.md'])
-  })
-
-  test('grows only the colliding labels', () => {
-    // The case a moving agent produces on every rename: one delete and one add of
-    // the same name, which as two bare file names read as a contradiction.
-    expect(
-      shortLabels(['docs/plans/dry-pass.md', 'docs/plans/done/dry-pass.md', 'src/App.tsx'])
-    ).toEqual(['plans/dry-pass.md', 'done/dry-pass.md', 'App.tsx'])
-  })
-
-  test('keeps growing until the collision is gone', () => {
-    expect(shortLabels(['a/shared/index.ts', 'b/shared/index.ts'])).toEqual([
-      'a/shared/index.ts',
-      'b/shared/index.ts'
-    ])
-  })
-
-  test('stops at the root rather than looping on an unresolvable pair', () => {
-    expect(shortLabels(['x.ts', 'x.ts'])).toEqual(['x.ts', 'x.ts'])
-  })
-
-  test('is empty for no paths', () => {
-    expect(shortLabels([])).toEqual([])
   })
 })

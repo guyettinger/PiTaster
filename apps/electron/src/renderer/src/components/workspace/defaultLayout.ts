@@ -4,10 +4,18 @@ import type { WorkspacePanelName } from './catalog'
 /**
  * The layout schema version.
  *
- * A saved layout names panel components and ids. Bump this whenever that set
- * changes — adding a panel, renaming one, or changing what an id means — and
- * every layout saved against an older set is discarded in favour of the
- * default rather than restored into a shape it no longer describes.
+ * A saved layout names panel components and ids, so bump this whenever an older
+ * layout would no longer describe a shape the dock can build: a component
+ * renamed or removed, an id given a new meaning, a `params` shape changed.
+ * Every layout saved against an older version is then discarded in favour of
+ * the default.
+ *
+ * **A purely additive kind is not one of those cases.** Sessions 26's Activity,
+ * Daemon and Changes panels join the catalog without appearing in the default
+ * layout and without touching any existing id, so a layout saved before them
+ * still restores exactly as it was written. Bumping for that would throw away
+ * every user's arrangement to gain nothing — the version is a compatibility
+ * gate, not a changelog.
  */
 export const LAYOUT_VERSION = 1
 
