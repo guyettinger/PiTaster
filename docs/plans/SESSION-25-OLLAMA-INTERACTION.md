@@ -250,7 +250,7 @@ Verified on the running app: the reasoning streams into a collapsed *Thinking*
 region during the turn, expands to the model's actual text, and the effort control
 appears only for a model advertising `thinking`, saves, and persists.
 
-### W4 — Say what the interaction is doing
+### W4 — Say what the interaction is doing — **landed**
 
 1. **The context meter shows time, not only tokens.** The window has a wall clock:
    `31k / 65k · ~6 min to prefill if the cache misses`. `ContextMeter.tsx` and
@@ -269,6 +269,28 @@ appears only for a model advertising `thinking`, saves, and persists.
 7. **Model-unload warning.** `/api/ps` reports `expires_at`. A model loaded outside
    anyapp carries the daemon's 5-minute default rather than the warm call's 30
    minutes, and the turn after an unload pays a full reload of a 32 GB model.
+
+All seven landed. `TurnCost`, `CacheVerdict` and `DaemonHealth` live in
+`@anyapp/core` rather than being mirrored by hand, because the UI renders them and
+`agent/telemetry.ts` produces them — two definitions of the same thing would drift,
+and the whole point is that the number the user reads is the number that was measured.
+The turn cost and the cache verdict ride the `complete` chunk beside `contextUsage`,
+which already travelled that way for the same reason: the end of a turn is when all
+three become final.
+
+Two things deliberately render nothing rather than something reassuring. The daemon
+health strip is empty when the daemon is fine — a strip that is always present stops
+being read, which is the reasoning `ChangedFilesStrip` already embodies — and the
+prefill-time line is absent until there is a measured rate, rather than computed from
+a constant, which would be the same mistake as trusting the advertised context window.
+
+Verified on the running app: `2 requests · 12.2k prompt (2.3k prefilled) · 152 out ·
+43s · prefix reused` under the composer, `Summarizes at 55.3k · ~1 min to prefill if
+the cache misses` on the meter card, and `daemon:health` answering
+`{reachable: true, modelLoaded: true, expiresAt: +29 min}` — consistent with
+`warmModel`'s 30-minute `keep_alive`. Items 3 and 4 are code-verified only: the status
+strip renders during compaction, a retry, or a long prefill, none of which a
+short healthy turn produces on demand.
 
 ### W5 — Model-aware sampling defaults
 

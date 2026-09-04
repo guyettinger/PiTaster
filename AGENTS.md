@@ -218,7 +218,15 @@ Three things the module has to keep doing:
   live session.
 
 The bar's tick is `window - reserveTokens`, which is where compaction fires and the one
-number the old meter never showed. `Summarize now` calls Pi's `session.compact()` — the
+number the old meter never showed. Beside it now sits the *time* that token count
+implies: `Summarizes at 55.3k · ~1 min to prefill if the cache misses`, from the
+prefill rate W2 measures. A token count alone hides a wall clock — a comfortable
+`31k / 65k` says nothing about the thirteen minutes a cold prefill of the full window
+costs on the audited model. The rate is passed into `buildContextReport` rather than
+derived there, because that module is deliberately buildable cold and a rate is by
+definition something only a session that has run can know; before there is a sample the
+line is absent rather than invented, for the same reason the window itself is
+discovered and not assumed. `Summarize now` calls Pi's `session.compact()` — the
 first thing in anyapp to do so — and is refused mid-turn, because compacting a
 conversation Pi is still appending to summarizes a moving target.
 
@@ -470,6 +478,33 @@ Pi emits compaction, retry and settle events; `agent/events.ts` maps them to
 — nothing happens during it — so silence longer than 20s is timed from outside
 and reported with an elapsed count. Tool approval prompts have no timeout: a turn
 takes minutes, and a timeout does not fail safe, it silently denies.
+
+**Every wait now says which wait it is.** `AgentStatusStrip` discarded `status.kind`,
+so compaction, a retry after a failure, and an ordinary long prefill rendered
+identically — three situations with three different right responses. The dot takes its
+colour from the kind, and `retrying` is the one that earns a warning colour because it
+means something already went wrong. Status is also cleared on `error`, which it was
+not: the strip kept saying "…retrying" after the run it described had failed.
+
+**And when a turn ends, it says what it cost.** `TurnSummaryStrip` takes the slot the
+status strip was using — `2 requests · 12.2k prompt (2.3k prefilled) · 152 out · 43s ·
+prefix reused` — off the `TurnCost` and `CacheVerdict` that now ride the `complete`
+chunk beside `contextUsage`, for the same reason that one does: the end of a turn is
+when all three become final. The gap between the prompt figure and the prefilled figure
+*is* W1's saving, which is why both are shown rather than the total alone. The cache
+verdict is the quietest when it is `reused` — a healthy turn should not decorate
+itself — and coloured only for `invalidated`, which is anyapp having re-sent a prompt
+the daemon already held.
+
+**`DaemonHealthStrip` renders nothing when nothing is wrong.** Health was checked in
+one place, Settings, once, on mount — which is the one place a person is not looking
+when a turn fails to start. It now polls `/api/ps` beside the composer, and says only
+the two things worth saying: the daemon is not answering, or the model is about to be
+unloaded and the next turn will pay a full reload of a 32 GB model. `warmModel` asks
+for 30 minutes but a model loaded by anything else carries the daemon's 5-minute
+default, so that second warning fires on a case that costs real time. Settings' own
+`reachable` flag initialised to `true` and so opened claiming Ollama was running,
+including when it was not; it starts unknown now.
 
 **The reasoning is the thing that was actually happening in that silence.** Ollama's
 models reason on every request — `session.ts` passed `thinkingLevel: 'off'` and the

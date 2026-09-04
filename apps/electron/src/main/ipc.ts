@@ -45,11 +45,12 @@ import {
   ChatHistoryManager,
   installDependencies
 } from '@anyapp/shared'
-import type { AgentStatus, ContextReport, PermissionMode, StreamChunk, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
+import type { AgentStatus, ContextReport, DaemonHealth, PermissionMode, StreamChunk, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
 import {
   DEFAULT_OLLAMA_BASE_URL,
   isOllamaReachable,
   listOllamaModels,
+  readDaemonHealth,
   prepareModelForSession,
   syncOllamaModels,
   type OllamaModel
@@ -1809,6 +1810,18 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   })
 
   /**
+   * Whether the daemon is answering, and whether it still holds the selected model.
+   *
+   * Cheap enough to poll: one `/api/ps` against a local daemon, with the same short
+   * timeout as every other discovery call. It exists outside Settings because that is
+   * the one place a person is *not* looking when a turn fails to start.
+   */
+  ipcMain.handle('daemon:health', async (): Promise<DaemonHealth> => {
+    const config = getConfig()
+    return readDaemonHealth({ baseUrl: config.ollamaBaseUrl, modelId: config.ollamaModel })
+  })
+
+  /**
    * List the models pulled into the local Ollama daemon, refreshing Pi's catalog.
    */
   ipcMain.handle('models:list', async (): Promise<OllamaModel[]> => {
@@ -2085,6 +2098,7 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('permissions:set-mode')
   ipcMain.removeHandler('agent:clear-history')
   ipcMain.removeHandler('agent:message')
+  ipcMain.removeHandler('daemon:health')
   ipcMain.removeHandler('agent:abort')
   ipcMain.removeHandler('agent:get-context-report')
   ipcMain.removeHandler('agent:compact')

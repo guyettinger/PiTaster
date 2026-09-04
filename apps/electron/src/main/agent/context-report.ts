@@ -102,6 +102,14 @@ export interface BuildContextReportParams {
   messages?: AgentMessage[]
   /** The provider's own token count for the conversation, when Pi has reported one. */
   measured?: number | null
+  /**
+   * Measured prefill rate in tokens per second, when the session has a sample.
+   *
+   * Passed in rather than derived here: this module is deliberately buildable cold,
+   * with no session and no model warm, and a rate is by definition something only a
+   * session that has run can know.
+   */
+  prefillRate?: number | null
 }
 
 /**
@@ -489,6 +497,7 @@ export async function buildContextReport(
     windowSource: budget.source,
     compactAt: Math.max(0, budget.window - budget.compaction.reserveTokens),
     blocks,
-    hotspots: tally?.hotspots ?? []
+    hotspots: tally?.hotspots ?? [],
+    prefillRate: params.prefillRate ?? null
   }
 }

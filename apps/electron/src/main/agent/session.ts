@@ -936,10 +936,25 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     if (!chunk) return
 
     // The end of a turn is the only moment context usage changes, so the meter rides
-    // the chunk that already marks it rather than a polling channel of its own.
-    callbacks.onStream(
-      chunk.type === 'complete' ? { ...chunk, ...readContextUsage(session) } : chunk
-    )
+    // the chunk that already marks it rather than a polling channel of its own. The
+    // turn's cost and the daemon's cache verdict ride with it for the same reason:
+    // both are answers to "what did that just cost", and both are final exactly here.
+    if (chunk.type !== 'complete') {
+      callbacks.onStream(chunk)
+      return
+    }
+
+    const measured = telemetry.snapshot()
+    callbacks.onStream({
+      ...chunk,
+      ...readContextUsage(session),
+      turn: measured.turn,
+      // The last request is the one whose prefix the daemon most recently judged.
+      // An unmeasured turn — every request aborted, or the daemon reporting no usage
+      // — leaves this `unknown`, which the UI renders as "not reported" rather than
+      // as a healthy reuse.
+      cache: measured.requests[measured.requests.length - 1]?.cache ?? 'unknown'
+    })
   })
 
   return {
@@ -964,7 +979,8 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
         builtinToolNames: PI_BUILTIN_TOOL_NAMES,
         mcpSources,
         messages: session.state.messages,
-        measured: readContextUsage(session).contextUsage?.used ?? null
+        measured: readContextUsage(session).contextUsage?.used ?? null,
+        prefillRate: telemetry.snapshot().prefillRate
       }),
 
     compact: async () => {

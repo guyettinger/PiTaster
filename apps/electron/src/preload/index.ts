@@ -33,6 +33,10 @@ interface StreamChunk {
   status?: AgentStatus
   /** Context consumed after this turn, when Pi has reported usage. */
   contextUsage?: ContextUsage
+  /** What the finished turn cost (for 'complete' type). */
+  turn?: TurnCost
+  /** What the daemon did with the prefix on the turn's last request. */
+  cache?: CacheVerdict
   /** What a write actually changed (for 'tool_end' on a file-modifying tool). */
   patches?: FilePatch[]
 }
@@ -69,6 +73,37 @@ interface ContextUsage {
   used: number
   /** Tokens the model will actually accept. */
   window: number
+}
+
+/** What the daemon did with the prompt prefix it was sent. */
+type CacheVerdict = 'cold' | 'reused' | 'compacted' | 'invalidated' | 'unknown'
+
+/** What one turn cost. */
+interface TurnCost {
+  /** Provider requests in the turn. */
+  requests: number
+  /** Prompt tokens sent, prefilled and reused together. */
+  promptTokens: number
+  /** Prompt tokens the daemon had to prefill. */
+  prefilledTokens: number
+  /** Tokens generated. */
+  outputTokens: number
+  /** Of those, the ones spent thinking. 0 on Ollama, which does not report it. */
+  reasoningTokens: number
+  /** Requests that re-prefilled a prefix they had already sent. */
+  rePrefills: number
+  /** Wall time from the turn's first request to its last measured moment. */
+  elapsedMs: number
+}
+
+/** Whether the daemon can answer, and whether it still holds the model. */
+interface DaemonHealth {
+  /** Whether the daemon answered at all. */
+  reachable: boolean
+  /** Whether the selected model is resident, or null when none is selected. */
+  modelLoaded: boolean | null
+  /** When the daemon will unload it, epoch ms, or null when it is not resident. */
+  expiresAt: number | null
 }
 
 /** Where the context window number came from. */
@@ -120,6 +155,8 @@ interface ContextReport {
   blocks: ContextBlock[]
   /** The largest individual tool results, descending, at most three. */
   hotspots: ContextHotspot[]
+  /** Measured prefill rate in tokens per second, or null before there is a sample. */
+  prefillRate: number | null
 }
 
 /** Tool approval request sent to renderer. */
@@ -810,6 +847,10 @@ const electronAPI = {
    * List the models pulled into the local Ollama daemon.
    * @returns The available models, or an empty array if the daemon is unreachable
    */
+  getDaemonHealth: (): Promise<DaemonHealth> => {
+    return ipcRenderer.invoke('daemon:health')
+  },
+
   listModels: (): Promise<OllamaModel[]> => {
     return ipcRenderer.invoke('models:list')
   },

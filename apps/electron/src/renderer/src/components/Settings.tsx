@@ -165,7 +165,10 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
   const [tab, setTab] = useState<SettingsTab>('general')
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG)
   const [models, setModels] = useState<OllamaModel[]>([])
-  const [reachable, setReachable] = useState(true)
+  // Null until the first probe answers. Initialising to `true` made the page open
+  // claiming Ollama was running — including when it was not — and then correct itself
+  // a moment later, which reads as a flicker rather than as a check.
+  const [reachable, setReachable] = useState<boolean | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -307,7 +310,9 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
                 </Field>
 
                 <Field label="Model">
-                  {reachable && models.length > 0 ? (
+                  {reachable === null ? (
+                    <p className="text-[13px] text-ash">Checking the daemon…</p>
+                  ) : reachable && models.length > 0 ? (
                     <>
                       <select
                         value={config.ollamaModel ?? ''}

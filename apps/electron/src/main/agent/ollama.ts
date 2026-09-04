@@ -8,6 +8,7 @@
 
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
+import type { DaemonHealth } from '@anyapp/core'
 import { deriveContextBudget, type ContextBudget, type ContextWindowSource } from './context-budget'
 
 /** Default address of the local Ollama daemon, without the `/v1` suffix. */
@@ -282,6 +283,8 @@ interface OllamaRunningEntry {
   model?: unknown
   /** Context length the daemon actually loaded this model with. */
   context_length?: unknown
+  /** ISO timestamp at which the daemon will unload this model. */
+  expires_at?: unknown
 }
 
 /**
@@ -353,6 +356,60 @@ export async function warmModel(params: LoadedModelParams): Promise<boolean> {
     return response.ok
   } catch {
     return false
+  }
+}
+
+/**
+ * Read whether the daemon is answering and whether it still holds the model.
+ *
+ * One request, because both answers come from `/api/ps`: a response at all proves the
+ * daemon is up, and the entry for the selected model — if there is one — carries the
+ * `expires_at` after which it is unloaded.
+ *
+ * That second number is worth surfacing because its cost is invisible until it is
+ * paid. `warmModel` asks for 30 minutes, but a model loaded by anything else carries
+ * the daemon's 5-minute default, and the first turn after an unload pays a full
+ * reload of a 32 GB model on top of its prefill — indistinguishable, from the outside,
+ * from a turn that simply hung.
+ *
+ * @param params - Daemon URL and the selected model, if any
+ * @returns The daemon's health; never throws
+ */
+export async function readDaemonHealth(params: {
+  /** Ollama daemon base URL, without the `/v1` suffix. */
+  baseUrl: string
+  /** The selected model tag, or null when none is chosen. */
+  modelId: string | null
+}): Promise<DaemonHealth> {
+  const { baseUrl, modelId } = params
+  const unreachable: DaemonHealth = { reachable: false, modelLoaded: null, expiresAt: null }
+
+  try {
+    const response = await fetch(`${normalizeOllamaBaseUrl(baseUrl)}/api/ps`, {
+      signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS)
+    })
+    if (!response.ok) return unreachable
+
+    const payload = (await response.json()) as { models?: unknown }
+    if (modelId === null) return { reachable: true, modelLoaded: null, expiresAt: null }
+    if (!Array.isArray(payload.models)) {
+      return { reachable: true, modelLoaded: false, expiresAt: null }
+    }
+
+    for (const entry of payload.models as OllamaRunningEntry[]) {
+      const id = typeof entry.name === 'string' ? entry.name : entry.model
+      if (id !== modelId) continue
+      const expires =
+        typeof entry.expires_at === 'string' ? Date.parse(entry.expires_at) : Number.NaN
+      return {
+        reachable: true,
+        modelLoaded: true,
+        expiresAt: Number.isFinite(expires) ? expires : null
+      }
+    }
+    return { reachable: true, modelLoaded: false, expiresAt: null }
+  } catch {
+    return unreachable
   }
 }
 

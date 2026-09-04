@@ -28,6 +28,7 @@
  * directly. The verdict and the formatting are pure functions beside it.
  */
 
+import type { CacheVerdict, TurnCost } from '@anyapp/core'
 import type { MessageEndEvent } from '@earendil-works/pi-coding-agent'
 
 /**
@@ -83,23 +84,13 @@ const CACHE_REUSE_TOLERANCE = 0.02
 const CACHE_REUSE_MIN_SLACK = 64
 
 /**
- * What the daemon did with the prompt prefix.
+ * Re-exported so this module's own consumers need one import.
  *
- * This is the finding of Session 25 expressed as a value: `invalidated` is anyapp
- * paying a full re-prefill because something it had already sent changed, and it is
- * the number W1 has to drive to zero.
+ * Defined in `@anyapp/core` because the UI renders it: `invalidated` is anyapp paying
+ * a full re-prefill because something it had already sent changed, and a verdict the
+ * user cannot see is the state F1 stayed in for six sessions.
  */
-export type CacheVerdict =
-  /** Nothing to reuse — the first request, or a prefix the daemon no longer holds. */
-  | 'cold'
-  /** The whole of the previous prompt was reused; this request only added to it. */
-  | 'reused'
-  /** The prefix shrank, and history had been summarized since the last request. */
-  | 'compacted'
-  /** The prefix shrank with no compaction to explain it: an already-sent byte changed. */
-  | 'invalidated'
-  /** No usage arrived, so there is nothing to say. */
-  | 'unknown'
+export type { CacheVerdict }
 
 /** How a request ended. */
 export type RequestOutcome =
@@ -195,23 +186,12 @@ export interface TelemetryTotals {
 
 /**
  * What one turn cost, for the line the UI shows when it is over.
+ *
+ * Defined in `@anyapp/core` because it now travels to the renderer on the `complete`
+ * chunk. Aliased rather than renamed at every call site: within this module the thing
+ * being summarized is a turn's requests, and `TurnSummary` is what that reads as.
  */
-export interface TurnSummary {
-  /** Provider requests in the turn. */
-  requests: number
-  /** Prompt tokens sent, prefilled and reused together. */
-  promptTokens: number
-  /** Prompt tokens the daemon had to prefill. */
-  prefilledTokens: number
-  /** Tokens generated. */
-  outputTokens: number
-  /** Of those, the ones spent thinking. 0 on Ollama — see the record's own field. */
-  reasoningTokens: number
-  /** Requests that re-prefilled a prefix they had already sent. */
-  rePrefills: number
-  /** Wall time from the turn's first request to its last measured moment. */
-  elapsedMs: number
-}
+export type TurnSummary = TurnCost
 
 /**
  * A reading of the session's request history.

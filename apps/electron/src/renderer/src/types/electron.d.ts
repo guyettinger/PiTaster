@@ -2,7 +2,7 @@
  * Type definitions for the Electron API exposed via preload script.
  */
 
-import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, ElementContext, SerializedContentBlock, Skill, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope } from '@anyapp/core'
+import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, CacheVerdict, DaemonHealth, ElementContext, SerializedContentBlock, Skill, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, TurnCost } from '@anyapp/core'
 
 /** Permission mode type for tool execution. */
 type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
@@ -37,6 +37,10 @@ interface StreamChunk {
   status?: AgentStatus
   /** Context consumed after this turn, when Pi has reported usage. */
   contextUsage?: ContextUsage
+  /** What the finished turn cost (for 'complete' type). */
+  turn?: TurnCost
+  /** What the daemon did with the prefix on the turn's last request. */
+  cache?: CacheVerdict
   /** What a write actually changed (for 'tool_end' on a file-modifying tool). */
   patches?: FilePatch[]
 }
@@ -124,6 +128,8 @@ interface ContextReport {
   blocks: ContextBlock[]
   /** The largest individual tool results, descending, at most three. */
   hotspots: ContextHotspot[]
+  /** Measured prefill rate in tokens per second, or null before there is a sample. */
+  prefillRate: number | null
 }
 
 /** Tool approval request sent to renderer. */
@@ -449,6 +455,8 @@ interface ElectronAPI {
   saveConfig: (config: AppConfig) => Promise<void>
 
   /** List the models pulled into the local Ollama daemon. */
+  /** Whether the daemon answers, and whether it still holds the selected model. */
+  getDaemonHealth: () => Promise<DaemonHealth>
   listModels: () => Promise<OllamaModel[]>
 
   /** Check whether an Ollama daemon is answering. */
@@ -551,6 +559,9 @@ export type {
   PermissionMode, 
   StreamChunk,
   AgentStatus,
+  CacheVerdict,
+  DaemonHealth,
+  TurnCost,
   ContextUsage, 
   ContextBlock,
   ContextBlockGroup,

@@ -18,14 +18,19 @@ import {
 import { useSkills } from '../hooks/useSkills'
 import { useContextReport } from '../hooks/useContextReport'
 import { useSessionChanges } from '../hooks/useSessionChanges'
+import { useDaemonHealth } from '../hooks/useDaemonHealth'
 import { ChangedFilesStrip } from './ChangedFilesStrip'
 import { ContextMeter } from './ContextMeter'
+import { TurnSummaryStrip } from './TurnSummaryStrip'
+import { DaemonHealthStrip } from './DaemonHealthStrip'
 import type { Message, ContentBlock } from './MessageBubble'
 import type {
   AgentStatus,
+  CacheVerdict,
   PermissionMode,
   StreamChunk,
   ToolApprovalRequest,
+  TurnCost,
   PersistedMessage
 } from '../types/electron'
 import type {
@@ -179,20 +184,36 @@ interface AgentStatusStripProps {
  * local model. Left unrendered they are indistinguishable from a crash, and the usual
  * response is to kill a run that was about to recover on its own.
  */
+/**
+ * How each kind of wait reads.
+ *
+ * The dot's colour is the whole point of reading `kind`: compaction, a failed request
+ * being retried, and a long prefill are three different situations with three
+ * different right responses, and they used to render identically. `retrying` is the
+ * one that earns a warning colour — it means something already went wrong.
+ */
+const STATUS_TONES: Record<AgentStatus['kind'], { tone: string; fallback: string }> = {
+  compacting: { tone: 'bg-brass', fallback: 'Summarizing the conversation…' },
+  retrying: { tone: 'bg-rust', fallback: 'Retrying…' },
+  waiting: { tone: 'bg-ash', fallback: 'Waiting on the model…' },
+  settled: { tone: 'bg-patina', fallback: 'Working…' }
+}
+
 function AgentStatusStrip({ status }: AgentStatusStripProps) {
   const attempt =
     status.attempt && status.maxAttempts
       ? ` (${status.attempt} of ${status.maxAttempts})`
       : ''
+  const { tone, fallback } = STATUS_TONES[status.kind] ?? STATUS_TONES.waiting
 
   return (
     <div className="mx-auto mb-2 flex max-w-3xl items-center gap-2 text-[12px] text-ash">
       <span
         aria-hidden
-        className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-brass"
+        className={`h-1.5 w-1.5 shrink-0 animate-pulse rounded-full ${tone}`}
       />
       <span role="status">
-        {status.detail ?? 'Working…'}
+        {status.detail ?? fallback}
         {attempt}
       </span>
     </div>
@@ -213,6 +234,10 @@ export function Chat({
   const [isStreaming, setIsStreaming] = useState(false)
   const [pendingApproval, setPendingApproval] = useState<ToolApprovalRequest | null>(null)
   const [status, setStatus] = useState<AgentStatus | null>(null)
+  // What the last finished turn cost. Held until the next turn starts, which is when
+  // the status strip takes the slot back.
+  const [lastTurn, setLastTurn] = useState<{ turn: TurnCost; cache: CacheVerdict } | null>(null)
+  const daemonHealth = useDaemonHealth()
   // Bumped when a turn ends, which is the only moment the conversation's share of the
   // window changes. The fixed share changes on things this component never sees — a
   // skill toggled off, a source connected — so the hook also refetches on mount, which
@@ -453,6 +478,7 @@ export function Chat({
       } else if (chunk.type === 'complete') {
         setIsStreaming(false)
         setStatus(null)
+        if (chunk.turn) setLastTurn({ turn: chunk.turn, cache: chunk.cache ?? 'unknown' })
         currentToolRef.current = null
         // The turn is the only moment the conversation's share of the window changes,
         // so it is the only moment worth re-reading the report. The chunk carries a
@@ -485,6 +511,9 @@ export function Chat({
       } else if (chunk.type === 'error') {
         setIsStreaming(false)
         setWritingPath(null)
+        // Without this the strip keeps saying "…retrying" after the run it described
+        // has failed, which reads as a run still in progress.
+        setStatus(null)
         
         // Add error to current tool or as text
         setMessages(prev => {
@@ -683,7 +712,12 @@ export function Chat({
 
       {/* Composer */}
       <div className="border-t border-line px-6 py-4">
-        {status && <AgentStatusStrip status={status} />}
+        <DaemonHealthStrip health={daemonHealth} />
+        {status ? (
+          <AgentStatusStrip status={status} />
+        ) : (
+          lastTurn && <TurnSummaryStrip turn={lastTurn.turn} cache={lastTurn.cache} />
+        )}
         <div className="mx-auto max-w-3xl">
           <ChangedFilesStrip
             patches={sessionChanges.patches}
