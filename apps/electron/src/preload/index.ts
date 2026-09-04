@@ -91,6 +91,78 @@ interface TurnCost {
   elapsedMs: number
 }
 
+/** How a provider request ended. */
+type RequestOutcome = 'pending' | 'ok' | 'error' | 'aborted' | 'unmeasured'
+
+/**
+ * One provider request, as far as it could be measured.
+ *
+ * Every field a request can end before populating is nullable, so a chart drawn from
+ * these never mistakes "not known" for a zero.
+ */
+interface ProviderRequestRecord {
+  /** Position in the session, 1-based and never reused. */
+  index: number
+  /** When the request was handed to the provider, epoch ms. */
+  startedAt: number
+  /** HTTP status, once the response headers arrived. */
+  status: number | null
+  /** Request to response headers. On Ollama this is the prefill. */
+  prefillMs: number | null
+  /** Request to the first content delta. */
+  firstTokenMs: number | null
+  /** Request to the finished message. */
+  totalMs: number | null
+  /** Prompt tokens, prefilled and reused together. */
+  promptTokens: number | null
+  /** Prompt tokens the daemon had to prefill. */
+  prefilledTokens: number | null
+  /** Prompt tokens the daemon reused. */
+  cachedTokens: number | null
+  /** Tokens generated, reasoning included. */
+  outputTokens: number | null
+  /** Of those, the ones spent thinking. 0 on Ollama means "not reported". */
+  reasoningTokens: number | null
+  /** What happened to the prefix. */
+  cache: CacheVerdict
+  /** How the request ended. */
+  outcome: RequestOutcome
+}
+
+/** Counts that outlive the request ring buffer. */
+interface TelemetryTotals {
+  /** Provider requests started. */
+  requests: number
+  /** Prompt tokens prefilled across the session. */
+  prefilledTokens: number
+  /** Prompt tokens reused across the session. */
+  cachedTokens: number
+  /** Tokens generated across the session. */
+  outputTokens: number
+  /** Of those, the ones spent thinking. */
+  reasoningTokens: number
+  /** Wall time spent prefilling. */
+  prefillMs: number
+  /** Requests whose prefix shrank with no compaction to explain it. */
+  invalidations: number
+  /** Requests whose prefix shrank because history had been summarized. */
+  compactions: number
+}
+
+/** A reading of the session's request history. */
+interface TelemetrySnapshot {
+  /** The recent requests, oldest first. */
+  requests: readonly ProviderRequestRecord[]
+  /** Lifetime counts. */
+  totals: TelemetryTotals
+  /** The turn in progress, or the one that just finished. */
+  turn: TurnCost
+  /** Measured prefill rate in tokens per second, or null before there is a sample. */
+  prefillRate: number | null
+  /** Measured decode rate in tokens per second, or null before there is a sample. */
+  decodeRate: number | null
+}
+
 /** Whether the daemon can answer, and whether it still holds the model. */
 interface DaemonHealth {
   /** Whether the daemon answered at all. */
@@ -576,6 +648,17 @@ const electronAPI = {
    */
   getContextReport: (): Promise<ContextReport | null> => {
     return ipcRenderer.invoke('agent:get-context-report')
+  },
+
+  /**
+   * Read what the session's provider requests actually cost.
+   *
+   * Answers without a live agent session, like the context report and for the same
+   * reason: the recorder measures the conversation and outlives the agent host, so a
+   * panel can show real numbers the moment it mounts without warming a model.
+   */
+  getTelemetry: (): Promise<TelemetrySnapshot> => {
+    return ipcRenderer.invoke('agent:get-telemetry')
   },
 
   /**

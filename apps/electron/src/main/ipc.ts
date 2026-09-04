@@ -51,7 +51,7 @@ import {
   ChatHistoryManager,
   installDependencies
 } from '@anyapp/shared'
-import type { AgentStatus, ContextReport, DaemonHealth, PermissionMode, StreamChunk, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
+import type { AgentStatus, ContextReport, DaemonHealth, TelemetrySnapshot, PermissionMode, StreamChunk, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
 import {
   DEFAULT_OLLAMA_BASE_URL,
   isOllamaReachable,
@@ -1407,6 +1407,20 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     }
   })
 
+  // What the daemon has been asked to do for the conversation on screen
+  //
+  // Deliberately not `ensureAgentHost`, for exactly the reason `agent:get-context-report`
+  // is not: building a host warms the model, and this runs whenever the Activity panel
+  // mounts. `sessionTelemetry` is module-scoped and survives `disposeAgentHost`, so
+  // answering without a host is the correct answer rather than a degraded one — the
+  // recorder measures the conversation, and the conversation is what is on screen.
+  //
+  // No arguments, so there is nothing to validate. `snapshot()` copies its records and
+  // its totals, so what crosses the bridge is already detached from the live recorder.
+  ipcMain.handle('agent:get-telemetry', async (): Promise<TelemetrySnapshot> => {
+    return sessionTelemetry.snapshot()
+  })
+
   // Summarize the conversation now rather than at the threshold
   ipcMain.handle('agent:compact', async (): Promise<void> => {
     if (!agentHost) throw new Error('No conversation to compact yet.')
@@ -2154,6 +2168,7 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('daemon:health')
   ipcMain.removeHandler('agent:abort')
   ipcMain.removeHandler('agent:get-context-report')
+  ipcMain.removeHandler('agent:get-telemetry')
   ipcMain.removeHandler('agent:compact')
   ipcMain.removeHandler('models:list')
   ipcMain.removeHandler('models:check-connection')

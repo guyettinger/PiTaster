@@ -328,3 +328,124 @@ export interface QueryOptions {
   /** Session ID for conversation continuity. */
   sessionId?: string
 }
+
+/**
+ * How a provider request ended.
+ */
+export type RequestOutcome =
+  /** Still in flight. */
+  | 'pending'
+  /** Finished with usage. */
+  | 'ok'
+  /** The provider or the model reported a failure. */
+  | 'error'
+  /** The user stopped the run. */
+  | 'aborted'
+  /**
+   * Closed without usage.
+   *
+   * Compaction issues its own provider request, which produces both provider hooks
+   * and no assistant message. Its timing is real and worth keeping — it is prefill
+   * the user waits through — but its tokens are not reported.
+   */
+  | 'unmeasured'
+
+/**
+ * One provider request, as far as it could be measured.
+ *
+ * Every token field is nullable and every duration is nullable, because a request can
+ * end at any point in the sequence that populates them. A record that claimed a zero
+ * where it meant "not known" would be averaged into the rates as if it were a
+ * measurement, and drawn in a chart as if it were one.
+ */
+export interface ProviderRequestRecord {
+  /** Position in the session, 1-based and never reused. */
+  index: number
+  /** When the request was handed to the provider, epoch ms. */
+  startedAt: number
+  /** HTTP status, once the response headers arrived. */
+  status: number | null
+  /** Request to response headers. On Ollama this is the prefill. */
+  prefillMs: number | null
+  /** Request to the first content delta. */
+  firstTokenMs: number | null
+  /** Request to the finished message. */
+  totalMs: number | null
+  /** Prompt tokens, prefilled and reused together. */
+  promptTokens: number | null
+  /** Prompt tokens the daemon had to prefill — Pi's `usage.input`. */
+  prefilledTokens: number | null
+  /** Prompt tokens the daemon reused — Pi's `usage.cacheRead`. */
+  cachedTokens: number | null
+  /** Tokens generated, reasoning included. */
+  outputTokens: number | null
+  /**
+   * Of those, the ones spent thinking — **which is 0 on Ollama, always**.
+   *
+   * Pi reads this from `completion_tokens_details.reasoning_tokens`, and Ollama's
+   * `/v1` does not emit `completion_tokens_details` at all. It *does* return a
+   * populated `reasoning` field on the message, so the model is thinking and the
+   * tokens are inside `completion_tokens` — they are simply never broken out. A zero
+   * here is "not reported", never "no thinking happened". The field is kept because
+   * Pi's `Usage` carries it and a provider that does report it should not need new
+   * plumbing.
+   */
+  reasoningTokens: number | null
+  /** What happened to the prefix. */
+  cache: CacheVerdict
+  /** How the request ended. */
+  outcome: RequestOutcome
+}
+
+/**
+ * Counts that outlive the request ring buffer.
+ *
+ * The buffer forgets, and the two numbers that settle whether the sealed prefix is
+ * holding — how many times a session re-prefilled, and how long it spent doing it —
+ * are exactly the ones a long session would forget first.
+ */
+export interface TelemetryTotals {
+  /** Provider requests started. */
+  requests: number
+  /** Prompt tokens prefilled across the session. */
+  prefilledTokens: number
+  /** Prompt tokens reused across the session. */
+  cachedTokens: number
+  /** Tokens generated across the session. */
+  outputTokens: number
+  /** Of those, the ones spent thinking. 0 on Ollama — see the record's own field. */
+  reasoningTokens: number
+  /** Wall time spent prefilling. */
+  prefillMs: number
+  /** Requests whose prefix shrank with no compaction to explain it. */
+  invalidations: number
+  /** Requests whose prefix shrank because history had been summarized. */
+  compactions: number
+}
+
+/**
+ * A reading of the session's request history.
+ *
+ * Crosses IPC whole. Its owner in main outlives the agent host, so this can be read
+ * without warming a model — which is what lets a panel show it on mount.
+ */
+export interface TelemetrySnapshot {
+  /** The recent requests, oldest first. */
+  requests: readonly ProviderRequestRecord[]
+  /** Lifetime counts. */
+  totals: TelemetryTotals
+  /** The turn in progress, or the one that just finished. */
+  turn: TurnCost
+  /**
+   * Measured prefill rate in tokens per second, or null before there is a sample.
+   *
+   * The median of the recent measurable requests, over `prefilledTokens` rather than
+   * the whole prompt — the reused part was never prefilled, and dividing by it would
+   * report a rate that rises with the cache rather than a property of the model. A
+   * median rather than a mean because a model reload lands in the buffer as one
+   * enormous outlier.
+   */
+  prefillRate: number | null
+  /** Measured decode rate in tokens per second, or null before there is a sample. */
+  decodeRate: number | null
+}

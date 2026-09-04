@@ -28,7 +28,14 @@
  * directly. The verdict and the formatting are pure functions beside it.
  */
 
-import type { CacheVerdict, TurnCost } from '@anyapp/core'
+import type {
+  CacheVerdict,
+  ProviderRequestRecord,
+  RequestOutcome,
+  TelemetrySnapshot,
+  TelemetryTotals,
+  TurnCost
+} from '@anyapp/core'
 import type { MessageEndEvent } from '@earendil-works/pi-coding-agent'
 
 /**
@@ -86,102 +93,18 @@ const CACHE_REUSE_MIN_SLACK = 64
 /**
  * Re-exported so this module's own consumers need one import.
  *
- * Defined in `@anyapp/core` because the UI renders it: `invalidated` is anyapp paying
- * a full re-prefill because something it had already sent changed, and a verdict the
- * user cannot see is the state F1 stayed in for six sessions.
+ * They live in `@anyapp/core` because the UI renders them. `CacheVerdict` is the
+ * sharpest case — `invalidated` is anyapp paying a full re-prefill because something
+ * it had already sent changed, and a verdict the user cannot see is the state F1
+ * stayed in for six sessions — but the whole record now crosses IPC for the Activity
+ * panel, and a shape drawn in the renderer cannot be defined in the main process.
  */
-export type { CacheVerdict }
-
-/** How a request ended. */
-export type RequestOutcome =
-  /** Still in flight. */
-  | 'pending'
-  /** Finished with usage. */
-  | 'ok'
-  /** The provider or the model reported a failure. */
-  | 'error'
-  /** The user stopped the run. */
-  | 'aborted'
-  /**
-   * Closed without usage.
-   *
-   * Compaction issues its own provider request, which produces both provider hooks
-   * and no assistant message. Its timing is real and worth keeping — it is prefill
-   * the user waits through — but its tokens are not reported here.
-   */
-  | 'unmeasured'
-
-/**
- * One provider request, as far as it could be measured.
- *
- * Every token field is nullable and every duration is nullable, because a request can
- * end at any point in the sequence that populates them. A record that claims a zero
- * where it means "not known" would be averaged into the rates as if it were a
- * measurement.
- */
-export interface ProviderRequestRecord {
-  /** Position in the session, 1-based and never reused. */
-  index: number
-  /** When the request was handed to the provider, epoch ms. */
-  startedAt: number
-  /** HTTP status, once the response headers arrived. */
-  status: number | null
-  /** Request to response headers. On Ollama this is the prefill. */
-  prefillMs: number | null
-  /** Request to the first content delta. */
-  firstTokenMs: number | null
-  /** Request to the finished message. */
-  totalMs: number | null
-  /** Prompt tokens, prefilled and reused together. */
-  promptTokens: number | null
-  /** Prompt tokens the daemon had to prefill — Pi's `usage.input`. */
-  prefilledTokens: number | null
-  /** Prompt tokens the daemon reused — Pi's `usage.cacheRead`. */
-  cachedTokens: number | null
-  /** Tokens generated, reasoning included. */
-  outputTokens: number | null
-  /**
-   * Of those, the ones spent thinking — **which is 0 on Ollama, always**.
-   *
-   * Pi reads this from `completion_tokens_details.reasoning_tokens`, and Ollama's
-   * `/v1` does not emit `completion_tokens_details` at all. It *does* return a
-   * populated `reasoning` field on the message, so the model is thinking and the
-   * tokens are inside `completion_tokens` — they are simply never broken out. A zero
-   * here is "not reported", not "no thinking happened", and reading it the other way
-   * is the mistake F3 is about. The field is kept because Pi's `Usage` carries it and
-   * a provider that does report it should not need new plumbing.
-   */
-  reasoningTokens: number | null
-  /** What happened to the prefix. */
-  cache: CacheVerdict
-  /** How the request ended. */
-  outcome: RequestOutcome
-}
-
-/**
- * Counts that outlive the ring buffer.
- *
- * The buffer forgets, and the two numbers that settle whether W1 worked —
- * how many times a session re-prefilled, and how long it spent doing it — are
- * exactly the ones a long session would forget first.
- */
-export interface TelemetryTotals {
-  /** Provider requests started. */
-  requests: number
-  /** Prompt tokens prefilled across the session. */
-  prefilledTokens: number
-  /** Prompt tokens reused across the session. */
-  cachedTokens: number
-  /** Tokens generated across the session. */
-  outputTokens: number
-  /** Of those, the ones spent thinking. 0 on Ollama — see the record's own field. */
-  reasoningTokens: number
-  /** Wall time spent prefilling. */
-  prefillMs: number
-  /** Requests whose prefix shrank with no compaction to explain it. */
-  invalidations: number
-  /** Requests whose prefix shrank because history had been summarized. */
-  compactions: number
+export type {
+  CacheVerdict,
+  ProviderRequestRecord,
+  RequestOutcome,
+  TelemetrySnapshot,
+  TelemetryTotals
 }
 
 /**
@@ -192,30 +115,6 @@ export interface TelemetryTotals {
  * being summarized is a turn's requests, and `TurnSummary` is what that reads as.
  */
 export type TurnSummary = TurnCost
-
-/**
- * A reading of the session's request history.
- */
-export interface TelemetrySnapshot {
-  /** The recent requests, oldest first. */
-  requests: readonly ProviderRequestRecord[]
-  /** Lifetime counts. */
-  totals: TelemetryTotals
-  /** The turn in progress, or the one that just finished. */
-  turn: TurnSummary
-  /**
-   * Measured prefill rate in tokens per second, or null before there is a sample.
-   *
-   * The median of the recent measurable requests, over `prefilledTokens` rather than
-   * the whole prompt — the reused part was never prefilled, and dividing by it
-   * would report a rate that rises with the cache rather than a property of the model.
-   * A median rather than a mean because a model reload lands in this buffer as one
-   * enormous outlier.
-   */
-  prefillRate: number | null
-  /** Measured decode rate in tokens per second, or null before there is a sample. */
-  decodeRate: number | null
-}
 
 /**
  * Records provider requests as they happen.
