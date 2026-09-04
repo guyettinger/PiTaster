@@ -47,7 +47,7 @@ The implementation is split into **6 independent sessions**, each resulting in a
 | [22. Code Intelligence](SESSION-22-CODE-INTELLIGENCE.md) | Compiler + editing surface | TypeScript service, diagnostics on every write, `code_intel`/`refactor`, diffs in the transcript and the approval prompt, a code panel | Complete | [Notes](SESSION-22-NOTES.md) |
 | [23. Context Report](SESSION-23-CONTEXT-REPORT.md) | An always-on context meter | Session-free context report, attributable breakdown on hover, compaction threshold shown, manual summarize | Complete | [Notes](SESSION-23-CONTEXT-REPORT.md) |
 | [24. Session Changes](SESSION-24-SESSION-CHANGES.md) | The files a session changed | Changed-files strip in the composer, per-file diffs, `VersionManager.diff` reads contents, restored diffs | Complete | [Notes](SESSION-24-NOTES.md) |
-| [25. Ollama Interaction](SESSION-25-OLLAMA-INTERACTION.md) | Prefill, prefix cache, thinking | Sealed prefix so the prompt is append-only, request telemetry, reasoning surfaced and controllable, model-aware sampling | In progress | [Audit](SESSION-25-AUDIT.md) |
+| [25. Ollama Interaction](SESSION-25-OLLAMA-INTERACTION.md) | Prefill, prefix cache, thinking | Sealed prefix so the prompt is append-only, request telemetry, reasoning surfaced and controllable, model-aware sampling | Complete | [Notes](SESSION-25-NOTES.md) · [Audit](SESSION-25-AUDIT.md) |
 
 ## Session 6 Sub-Sessions
 

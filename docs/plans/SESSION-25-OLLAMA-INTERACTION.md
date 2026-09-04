@@ -1,6 +1,6 @@
 # Session 25: The interaction with the daemon
 
-**Status**: In progress — W2 landed; measurements in [SESSION-25-AUDIT.md](SESSION-25-AUDIT.md)
+**Status**: Complete — W1–W6 landed. Measurements in [SESSION-25-AUDIT.md](SESSION-25-AUDIT.md), outcome in [SESSION-25-NOTES.md](SESSION-25-NOTES.md)
 
 ## Goal
 
