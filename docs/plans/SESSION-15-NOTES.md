@@ -8,7 +8,7 @@
 
 `apps/electron/src/main/agent.ts` (1223 lines) is gone. The agent is now
 [Pi](https://pi.dev/) (`@earendil-works/pi-coding-agent@0.84.4`) running entirely on
-local Ollama models, with anyapp's permission modes, path confinement, git auto-commit,
+local Ollama models, with Pi Taster's permission modes, path confinement, git auto-commit,
 and version tools layered on as Pi extension hooks. Chat history is Pi's own
 tree-structured JSONL transcript.
 
@@ -26,7 +26,7 @@ tree-structured JSONL transcript.
    tools via `defineTool()`.
 5. **`apps/electron/src/main/agent/events.ts`** (~110 lines) — Pi events → `StreamChunk`.
 6. **`apps/electron/src/main/agent/ollama.ts`** (~275 lines) — model discovery and
-   `~/.anyapp/pi/models.json` generation.
+   `~/.pitaster/pi/models.json` generation.
 7. **`apps/electron/src/main/agent/system-prompt.ts`** (~135 lines) — extracted from
    the old `agent.ts`, tool list rewritten for Pi's names.
 8. **`packages/shared/src/chat/session-paths.ts`** — where Pi's data lives.
@@ -92,7 +92,7 @@ same checklist. Findings are below.
 **Pi does not write a session file until the first assistant reply.**
 `SessionManager.create()` returns a manager whose `_persist` buffers everything until
 an assistant message exists — deliberate, so empty sessions do not litter the disk. But
-anyapp's UI creates a visible, selectable session the moment the user clicks New Chat.
+Pi Taster's UI creates a visible, selectable session the moment the user clicks New Chat.
 The bridge is a draft record in `.chat-sessions.json`, merged into `listSessions()` and
 replaced by Pi's real id via `attachSession()` once the transcript exists.
 
@@ -124,7 +124,7 @@ models fail outright. Pi's `models.md` calls this out for Ollama specifically.
 `build` cleanly, and neither could have been caught by either:
 
 *The app would not start at all.* Switching the main process to ESM broke
-`@anyapp/shared`: TypeScript with `moduleResolution: "bundler"` emits extensionless
+`@pitaster/shared`: TypeScript with `moduleResolution: "bundler"` emits extensionless
 relative imports (`from './versions/manager'`), which Node's ESM resolver rejects
 outright — `ERR_MODULE_NOT_FOUND` before the first window. The CJS bundle had
 tolerated them because `require()` does extension guessing. Fixed by adding explicit
@@ -178,7 +178,7 @@ Launched under Playwright's `_electron` (macOS, no xvfb) and driven end to end:
 | App launches; Apps list renders | ✅ |
 | Settings shows the Ollama server field and model picker; no API key field | ✅ |
 | Picker lists only tool-capable models — both embedding models excluded | ✅ |
-| Selecting a model persists to `~/.anyapp/config.json` | ✅ |
+| Selecting a model persists to `~/.pitaster/config.json` | ✅ |
 | "Ask to Edit": tool bubble renders, approval prompt appears, Allow runs it | ✅ |
 | Stop button replaces Send while streaming | ✅ |
 | "Auto Edit": write auto-approves, `write: src/lucky.ts` commit lands | ✅ |
@@ -193,7 +193,7 @@ non-boolean read as approval. Now type-checked strictly.
 
 **Reported, not fixed (pre-existing, outside this session's scope).** The `version:*`
 IPC handlers accept a renderer-supplied `appPath` and run git operations on it with no
-confinement to `~/.anyapp/apps/`. Worth a follow-up.
+confinement to `~/.pitaster/apps/`. Worth a follow-up.
 
 **Clean.** `BrowserWindow` sets `contextIsolation`/`nodeIntegration`/`sandbox`
 correctly; no raw `ipcRenderer` crosses the bridge and every listener unwraps the event;

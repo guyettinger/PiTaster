@@ -7,7 +7,7 @@ import type {
   AppLogEntry,
   AppStatusChange,
   AppRunConfig
-} from '@anyapp/core'
+} from '@pitaster/core'
 
 /** Environment variables to filter out when spawning processes. */
 const BLOCKED_ENV_VARS = [

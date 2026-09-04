@@ -2,7 +2,7 @@
 
 **Status**: Measurement record for [SESSION-25-OLLAMA-INTERACTION.md](SESSION-25-OLLAMA-INTERACTION.md)
 
-Sessions 19–24 built the machinery anyapp uses to fit an agent into a local
+Sessions 19–24 built the machinery Pi Taster uses to fit an agent into a local
 model's context window: a discovered window, scaled compaction, a trimmer, an
 edit-repair hook, a context meter. None of it had been measured against the
 daemon it manages. This document is that measurement, kept separate from the plan
@@ -40,7 +40,7 @@ Three things follow.
 
 **A cold prefill of the full served window costs ~12.8 minutes** at 85.6 tok/s.
 That is not a pathology, it is the machine's throughput. It means the context
-window has a wall clock, and no surface in anyapp currently says so.
+window has a wall clock, and no surface in Pi Taster currently says so.
 
 **Rows 1 and 2 are the same prompt.** The difference is entirely the daemon's KV
 prefix cache. Preserving a prompt prefix byte-for-byte is worth roughly 500x on
@@ -49,7 +49,7 @@ this rig — larger than any other lever in this audit by two orders of magnitud
 **Row 4 is the finding.** Changing a single message *early* in the list costs a
 full re-prefill: 124 s, against 0.24 s for leaving it alone. Row 5 confirms the
 cache then re-forms around the new bytes. Rewriting history is not cheap and not
-free — it is the most expensive thing anyapp can do to a turn.
+free — it is the most expensive thing Pi Taster can do to a turn.
 
 **Row 3 is not fully explained and should not be over-read.** Append-only growth
 of ~1 089 tokens cost 50.9 s, which is far better than a full re-prefill (row 4)
@@ -106,7 +106,7 @@ to `Usage.cacheRead` and sets `input = prompt_tokens − cacheRead − cacheWrit
 exactly what it reused — the correct numerator and denominator for a prefill rate,
 arriving in every response since Session 15 with nothing reading them. Pi sends
 `stream_options: {include_usage: true}` (`openai-completions.js:595`), which is what
-makes them arrive on the streaming path anyapp uses.
+makes them arrive on the streaming path Pi Taster uses.
 
 **Response headers are withheld until prefill completes.** Request 3's headers and its
 first chunk both landed at 17.52 s. That is what makes the gap between Pi's
@@ -116,7 +116,7 @@ an undici `headersTimeout` rather than as anything Pi can name.
 
 ### Observed in the running app
 
-Both of the above were then seen from anyapp itself, in `~/.ollama/logs/server.log`,
+Both of the above were then seen from Pi Taster itself, in `~/.ollama/logs/server.log`,
 during a turn on the author's Moon Phase sub-app:
 
 ```
@@ -132,7 +132,7 @@ block boundary and would explain §1's row 3 — but it is one sample, and the 4
 reused 4 022 and 4 003 tokens, neither of which is block-aligned. Treat the granularity as
 open, not established.
 
-**anyapp handed the daemon a 99 477-token prompt against a served window of 65 536.**
+**Pi Taster handed the daemon a 99 477-token prompt against a served window of 65 536.**
 Ollama does not refuse that; it truncates the head of the prompt silently, which is the
 failure `AGENTS.md` already warns about. Whatever the cause — and F2 says compaction is
 deciding from a number the trimmer never writes back — the app was, in ordinary use,
@@ -150,7 +150,7 @@ carried a populated `reasoning` field on the message.
 | Payload | Prompt/completion tokens | `reasoning` chars |
 |---|---|---|
 | plain | 25 / 54 | 73 |
-| `temperature: 0` (anyapp's default) | 25 / 54 | 73 |
+| `temperature: 0` (Pi Taster's default) | 25 / 54 | 73 |
 | `top_p: 0.8, temperature: 0.7` | 25 / 54 | 73 |
 | `seed`, `frequency_penalty` | 25 / 54 | 73 |
 | `keep_alive: "30m"` | 25 / 54 | 73 |
@@ -160,7 +160,7 @@ carried a populated `reasoning` field on the message.
 
 `session.ts:637` passes `thinkingLevel: 'off'`. `ollama.ts:400` sets
 `supportsReasoningEffort: false`, which strips the parameter that would carry it.
-The net effect is that anyapp believes thinking is off and it has never been off.
+The net effect is that Pi Taster believes thinking is off and it has never been off.
 
 `reasoning_effort` **is** honoured — it changes the prompt token count, so the
 daemon is injecting something into the template — but weakly and unevenly:
@@ -202,7 +202,7 @@ This was confirmed against the live telemetry: a settled turn reported
 `1 request · 4.8k prompt (707 prefilled) · 22 out · 8.9s` with no thinking figure at all.
 
 **A zero there means "not reported", not "no thinking happened".** Reading it the other
-way is the same mistake as F3 itself — anyapp believing thinking was off because the
+way is the same mistake as F3 itself — Pi Taster believing thinking was off because the
 setting said so. The cost of reasoning on this daemon is therefore not directly
 measurable; it can only be inferred from `completion_tokens` against how much text the
 model actually produced.
@@ -216,7 +216,7 @@ its own. The honoured set is the OpenAI-compatible one Ollama maps: `temperature
 schema — they were accepted silently and there is no evidence they took effect.
 Do not build on them.
 
-anyapp currently sets exactly one: `temperature`, via `createSamplingExtension`
+Pi Taster currently sets exactly one: `temperature`, via `createSamplingExtension`
 (`session.ts:338-348`), defaulting to `0`.
 
 ## 5. Two hypotheses that were disproved
@@ -239,10 +239,10 @@ Measured — clock at 14:33:08:
 
 The expiry tracks **+30 minutes** throughout. `keep_alive` is sticky per model
 *load*: whatever set it at load time governs, later requests refresh against that
-stored duration, and a `keep_alive` in a `/v1` body is ignored. anyapp's warm call
+stored duration, and a `keep_alive` in a `/v1` body is ignored. Pi Taster's warm call
 is doing its job and needs no change.
 
-The residual case is a model loaded by something other than anyapp — `ollama run`
+The residual case is a model loaded by something other than Pi Taster — `ollama run`
 in a terminal — which would carry the 5-minute default instead. Minor, and worth
 a line in the UI rather than a fix.
 
@@ -251,7 +251,7 @@ a line in the UI rather than a fix.
 ## 6. Reproducing this
 
 Both scripts assume the daemon is on `127.0.0.1:11434` and the model is pulled.
-Run them with nothing else driving Ollama — a running anyapp will contend for the
+Run them with nothing else driving Ollama — a running Pi Taster will contend for the
 same runner and inflate every number.
 
 ```python
@@ -330,7 +330,7 @@ def post(extra, label):
           f"reasoning_chars={len(reasoning)}")
 
 post({}, "plain (defaults)")
-post({"temperature": 0}, "temperature:0 (anyapp default)")
+post({"temperature": 0}, "temperature:0 (Pi Taster default)")
 post({"top_p": 0.8, "temperature": 0.7}, "top_p + temp 0.7")
 post({"seed": 42, "frequency_penalty": 0.1}, "seed + frequency_penalty")
 post({"keep_alive": "30m"}, "keep_alive on /v1")

@@ -1,5 +1,5 @@
 /**
- * Version control types for anyapp.
+ * Version control types for Pi Taster.
  *
  * These types wrap isomorphic-git operations for managing
  * source code versions, branches, and history.

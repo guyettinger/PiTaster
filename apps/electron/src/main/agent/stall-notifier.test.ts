@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, test } from 'bun:test'
-import type { StreamChunk } from '@anyapp/core'
+import type { StreamChunk } from '@pitaster/core'
 import { createStallNotifier } from './stall-notifier'
 
 /** Short timings, so a test finishes in milliseconds. */

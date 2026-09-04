@@ -65,7 +65,7 @@ export function formatTokens(value: number): string {
  * One sentence on where the window number came from.
  *
  * The fallback case is the one worth saying out loud: Ollama's `/api/show` reports a
- * model's architectural maximum, not what the daemon sized it to, so a window anyapp had
+ * model's architectural maximum, not what the daemon sized it to, so a window Pi Taster had
  * to guess at is usually smaller than advertised.
  *
  * @param source - Provenance of the window figure
@@ -77,7 +77,7 @@ export function formatTokens(value: number): string {
  * The number that predicts how long the next turn takes, and the one a token count
  * alone hides: on the audited model a full window is about thirteen minutes of
  * prefill, and a comfortable-looking `31k / 65k` says nothing about that. It is what
- * a *miss* costs, not what the next turn will cost — anyapp works to keep the prefix
+ * a *miss* costs, not what the next turn will cost — Pi Taster works to keep the prefix
  * cached, and the sentence says so.
  *
  * Null before there is a sample, because a rate invented from a constant would be the

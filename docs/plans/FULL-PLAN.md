@@ -71,7 +71,7 @@ graph TB
 ## Project Structure (electron-vite conventions)
 
 ```
-anyapp/
+PiTaster/
 ├── apps/
 │   └── electron/
 │       ├── src/
@@ -92,14 +92,14 @@ anyapp/
 │       ├── electron.vite.config.ts
 │       └── package.json
 ├── packages/
-│   ├── core/                   # @anyapp/core - Shared types
+│   ├── core/                   # @pitaster/core - Shared types
 │   │   ├── src/
 │   │   │   ├── index.ts
 │   │   │   ├── agent.ts
 │   │   │   ├── sources.ts
 │   │   │   └── skills.ts
 │   │   └── package.json
-│   └── shared/                 # @anyapp/shared - Business logic
+│   └── shared/                 # @pitaster/shared - Business logic
 │       ├── src/
 │       │   ├── agent/          # Claude Agent SDK wrapper
 │       │   ├── sources/        # MCP client, API handlers
@@ -117,11 +117,11 @@ anyapp/
 
 ```json
 {
-  "name": "anyapp",
+  "name": "Pi Taster",
   "private": true,
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "dev": "bun run --filter @anyapp/electron dev",
+    "dev": "bun run --filter @pitaster/electron dev",
     "build": "bun run --workspaces build",
     "typecheck:all": "bun run --workspaces typecheck"
   }
@@ -133,18 +133,18 @@ anyapp/
 ```json
 // packages/shared/package.json
 {
-  "name": "@anyapp/shared",
+  "name": "@pitaster/shared",
   "dependencies": {
-    "@anyapp/core": "workspace:*"
+    "@pitaster/core": "workspace:*"
   }
 }
 
 // apps/electron/package.json
 {
-  "name": "@anyapp/electron",
+  "name": "@pitaster/electron",
   "dependencies": {
-    "@anyapp/core": "workspace:*",
-    "@anyapp/shared": "workspace:*"
+    "@pitaster/core": "workspace:*",
+    "@pitaster/shared": "workspace:*"
   }
 }
 ```
@@ -225,7 +225,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 export async function connectMcpSource(config: McpSourceConfig) {
   const client = new Client({
-    name: 'anyapp-client',
+    name: 'pitaster-client',
     version: '1.0.0'
   });
 
@@ -249,7 +249,7 @@ export async function connectMcpSource(config: McpSourceConfig) {
 
 ### 3. Skills System
 
-Skills are markdown files with YAML frontmatter, stored in `~/.anyapp/workspaces/{id}/skills/`:
+Skills are markdown files with YAML frontmatter, stored in `~/.pitaster/workspaces/{id}/skills/`:
 
 ```markdown
 ---
@@ -395,7 +395,7 @@ interface MergeConflict {
 import * as git from 'isomorphic-git'
 import fs from 'node:fs'
 
-const AUTHOR = { name: 'anyapp Agent', email: 'agent@anyapp.local' }
+const AUTHOR = { name: 'Pi Taster Agent', email: 'agent@Pi Taster.local' }
 
 export class VersionManager {
   constructor(private dir: string) {}
@@ -794,7 +794,7 @@ const versionTools = [
 - Make outer Electron container immutable
 - Create AppManager for sub-app lifecycle (create, list, delete)
 - Implement app templates (React, Node CLI, Node Server, Static, Blank)
-- Each sub-app gets isolated git repository in `~/.anyapp/apps/`
+- Each sub-app gets isolated git repository in `~/.pitaster/apps/`
 - Build App Listing UI for managing sub-apps
 - Scope agent context to active sub-app only
 - Prevent path traversal outside app directory
@@ -860,10 +860,10 @@ async function handleAgentQuery(prompt: string, webContents: WebContents) {
 
 ## Configuration Storage
 
-App configuration at `~/.anyapp/`:
+App configuration at `~/.pitaster/`:
 
 ```
-~/.anyapp/
+~/.pitaster/
 ├── config.json              # App settings, API keys
 ├── preferences.json         # UI preferences
 └── workspaces/
@@ -1019,17 +1019,17 @@ Create these rules in `.cursor/rules/` to provide consistent AI guidance during 
 
 ```markdown
 ---
-description: anyapp project architecture and conventions
+description: Pi Taster project architecture and conventions
 alwaysApply: true
 ---
 
-# anyapp Architecture
+# Pi Taster Architecture
 
 ## Monorepo Structure (Bun Workspaces)
 
 - `apps/electron/` - Electron desktop app
-- `packages/core/` - Shared TypeScript types (@anyapp/core)
-- `packages/shared/` - Business logic (@anyapp/shared)
+- `packages/core/` - Shared TypeScript types (@pitaster/core)
+- `packages/shared/` - Business logic (@pitaster/shared)
 
 ## electron-vite Folder Convention
 
@@ -1044,8 +1044,8 @@ Use `"workspace:*"` for inter-package dependencies:
 \`\`\`json
 {
   "dependencies": {
-    "@anyapp/core": "workspace:*",
-    "@anyapp/shared": "workspace:*"
+    "@pitaster/core": "workspace:*",
+    "@pitaster/shared": "workspace:*"
   }
 }
 \`\`\`
@@ -1056,12 +1056,12 @@ Use `"workspace:*"` for inter-package dependencies:
 - `bun run dev` - Start development with hot reload
 - `bun run build` - Build all packages
 - `bun run typecheck:all` - Type check entire monorepo
-- `bun run --filter @anyapp/electron dev` - Run specific workspace
+- `bun run --filter @pitaster/electron dev` - Run specific workspace
 
 ## Import Conventions
 
-- Types from `@anyapp/core`
-- Business logic from `@anyapp/shared`
+- Types from `@pitaster/core`
+- Business logic from `@pitaster/shared`
 - UI components from `@/components/ui` (shadcn)
 ```
 
@@ -1316,7 +1316,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 \`\`\`typescript
 const client = new Client({
-  name: 'anyapp-client',
+  name: 'pitaster-client',
   version: '1.0.0'
 })
 
@@ -1516,7 +1516,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 // 5. Local imports - types
-import type { Message } from "@anyapp/core"
+import type { Message } from "@pitaster/core"
 \`\`\`
 
 ## Electron IPC Integration
@@ -1677,7 +1677,7 @@ async function logModification(path: string, backupPath: string) {
     action: 'update',
     success: true
   }
-  await appendJsonLine('~/.anyapp/modifications.jsonl', log)
+  await appendJsonLine('~/.pitaster/modifications.jsonl', log)
 }
 \`\`\`
 
@@ -2057,7 +2057,7 @@ Create these skills in `.cursor/skills/` to enable specialized agent behaviors:
 ```yaml
 ---
 name: self-modify
-description: Modify the anyapp app's own source code safely. Use when the user wants to change app behavior, add features, or fix bugs in the app itself.
+description: Modify the Pi Taster app's own source code safely. Use when the user wants to change app behavior, add features, or fix bugs in the app itself.
 ---
 ```
 
@@ -2089,7 +2089,7 @@ description: Connect to external data sources including MCP servers, REST APIs, 
 - For MCP: Check if server exists (npx, local binary)
 - For REST API: Look for OpenAPI spec or documentation
 - For filesystem: Get path and access permissions
-- Create source config in `~/.anyapp/workspaces/{id}/sources/`
+- Create source config in `~/.pitaster/workspaces/{id}/sources/`
 - Test connection before saving
 - Handle OAuth flows for APIs that require it
 
@@ -2102,7 +2102,7 @@ description: Connect to external data sources including MCP servers, REST APIs, 
 ```yaml
 ---
 name: enhance-ui
-description: Improve the anyapp user interface using shadcn/ui and Tailwind. Use when user requests UI changes, new components, or visual improvements.
+description: Improve the Pi Taster user interface using shadcn/ui and Tailwind. Use when user requests UI changes, new components, or visual improvements.
 ---
 ```
 
@@ -2124,13 +2124,13 @@ description: Improve the anyapp user interface using shadcn/ui and Tailwind. Use
 ```yaml
 ---
 name: debug-fix
-description: Debug issues and fix bugs in anyapp. Use when user reports errors, unexpected behavior, or needs troubleshooting help.
+description: Debug issues and fix bugs in Pi Taster. Use when user reports errors, unexpected behavior, or needs troubleshooting help.
 ---
 ```
 
 **Instructions**:
 
-- Check logs at `~/Library/Logs/anyapp/`
+- Check logs at `~/Library/Logs/Pi Taster/`
 - Read error stack traces carefully
 - Identify affected module (main, preload, renderer, shared)
 - Check IPC communication if cross-process issue
@@ -2147,14 +2147,14 @@ description: Debug issues and fix bugs in anyapp. Use when user reports errors, 
 ```yaml
 ---
 name: create-skill
-description: Create new skills for the anyapp agent. Use when user wants to add new agent capabilities or specialized behaviors.
+description: Create new skills for the Pi Taster agent. Use when user wants to add new agent capabilities or specialized behaviors.
 ---
 ```
 
 **Instructions**:
 
 - Ask user for skill purpose and trigger scenarios
-- Create skill directory in `~/.anyapp/workspaces/{id}/skills/`
+- Create skill directory in `~/.pitaster/workspaces/{id}/skills/`
 - Write SKILL.md with frontmatter and instructions
 - Keep instructions under 500 lines
 - Include concrete examples
@@ -2198,10 +2198,10 @@ description: Manage version control for app modifications. Use when user wants t
 Create a `CLAUDE.md` file in the project root for Claude Code / Agent SDK context:
 
 ```markdown
-# anyapp - Self-Modifying Electron App
+# Pi Taster - Self-Modifying Electron App
 
 ## Project Overview
-anyapp is a self-modifying Electron app built with Claude Agent SDK. The agent can read and modify its own source code.
+Pi Taster is a self-modifying Electron app built with Claude Agent SDK. The agent can read and modify its own source code.
 
 ## Architecture
 - **apps/electron/**: Electron app (main, preload, renderer)
@@ -2227,7 +2227,7 @@ The agent can modify files in this project. Always:
 4. Confirm with user before restart
 
 ## Config Location
-User data stored at `~/.anyapp/`
+User data stored at `~/.pitaster/`
 ```
 
 This documentation ensures Claude has proper context when working on the project.

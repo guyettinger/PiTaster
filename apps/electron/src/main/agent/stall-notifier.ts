@@ -7,7 +7,7 @@
  * and the usual response is to kill a run that was about to succeed.
  */
 
-import type { StreamChunk } from '@anyapp/core'
+import type { StreamChunk } from '@pitaster/core'
 
 /** Silence after which the user is told the model is still working. */
 export const STALL_NOTICE_MS = 20_000

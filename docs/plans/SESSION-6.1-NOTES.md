@@ -6,7 +6,7 @@
 
 ## Summary
 
-Session 6.1 established the foundation for the sub-apps architecture by adding type definitions to `@anyapp/core` and creating the `AppManager` class in `@anyapp/shared` for sub-app lifecycle management.
+Session 6.1 established the foundation for the sub-apps architecture by adding type definitions to `@pitaster/core` and creating the `AppManager` class in `@pitaster/shared` for sub-app lifecycle management.
 
 ## Deviations from Plan
 
@@ -38,13 +38,13 @@ The implementation followed the plan exactly. All type definitions and the `AppM
 | `SubApp` | Full app definition with metadata and git status |
 | `CreateAppParams` | Parameters for creating new apps |
 | `AppContext` | Context for scoped agent operations |
-| `AppMetadata` | Data stored in `.anyapp-meta.json` |
+| `AppMetadata` | Data stored in `.pitaster-meta.json` |
 
 ## AppManager Methods
 
 | Method | Purpose |
 |--------|---------|
-| `ensureAppsDir()` | Create `~/.anyapp/apps/` if needed |
+| `ensureAppsDir()` | Create `~/.pitaster/apps/` if needed |
 | `getAppsDir()` | Return apps directory path |
 | `listApps()` | List all sub-apps sorted by updatedAt |
 | `getApp(id)` | Get single app with git status |
@@ -53,7 +53,7 @@ The implementation followed the plan exactly. All type definitions and the `AppM
 | `generateId(name)` | Create URL-safe ID from name |
 | `getAllFiles(dir)` | Recursive file listing (excluding .git, node_modules) |
 | `initGitRepo(appPath, message)` | Initialize git and commit files |
-| `writeMetadata(appPath, meta)` | Write `.anyapp-meta.json` |
+| `writeMetadata(appPath, meta)` | Write `.pitaster-meta.json` |
 
 ## Technical Notes
 
@@ -72,15 +72,15 @@ The `AppManager` reuses `isomorphic-git` (already a dependency from version cont
 
 Sub-apps will be stored at:
 ```
-~/.anyapp/
+~/.pitaster/
 └── apps/
     ├── my-todo-app/
     │   ├── .git/
-    │   ├── .anyapp-meta.json
+    │   ├── .pitaster-meta.json
     │   └── src/
     └── my-weather-app/
         ├── .git/
-        ├── .anyapp-meta.json
+        ├── .pitaster-meta.json
         └── src/
 ```
 

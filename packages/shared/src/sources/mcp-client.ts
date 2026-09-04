@@ -4,7 +4,7 @@
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import type { McpSourceConfig, McpTool } from '@anyapp/core'
+import type { McpSourceConfig, McpTool } from '@pitaster/core'
 import { buildSubprocessEnv } from '../process/env.js'
 
 /**
@@ -30,7 +30,7 @@ export class McpClient {
 
     // Create client
     this.client = new Client({
-      name: `anyapp-${this.config.id}`,
+      name: `pitaster-${this.config.id}`,
       version: '1.0.0'
     })
 

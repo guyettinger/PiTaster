@@ -22,12 +22,12 @@ of and neither of which was visible before something tried to use them.
      *current* HEAD, so an implementation that overwrote would walk the baseline
      forward on each call and the strip would report an empty session forever
    - Prunes dead apps as it writes, caps sessions per app at 50
-   - Stored at `~/.anyapp/session-baselines.json`, beside `layouts.json`
+   - Stored at `~/.pitaster/session-baselines.json`, beside `layouts.json`
 
 2. **`apps/electron/src/renderer/src/hooks/useSessionChanges.ts`**
    - Baseline → `getVersionState` → `getDiff` → `buildPatchFromDiff`
    - Returns `patches`, `committedPaths`, `uncommitted`
-   - Filters anyapp's own bookkeeping files out of the result
+   - Filters Pi Taster's own bookkeeping files out of the result
    - Every failure reads as "nothing changed"; a stale response for a superseded
      session is discarded
 
@@ -56,7 +56,7 @@ the *user* edited by hand shows up at all. Neither is true of a list built from
 tool results. The cost is a baseline that has to be recorded and stored.
 
 **The baseline lives outside the app repo**, for a sharper version of the reason
-layouts do. `.anyapp-meta.json` is tracked and `initGitRepo` adds every file, so
+layouts do. `.pitaster-meta.json` is tracked and `initGitRepo` adds every file, so
 a baseline stored there would be rolled back by a rollback of the *code* —
 destroying the exact reference that rollback should be measured against.
 
@@ -98,7 +98,7 @@ History panel's commit expansion has been blank since Session 22** and nobody
 noticed, because a commit that expands to nothing looks like a commit with a small
 diff. It also emitted a row for every *directory*, since `git.walk` visits trees.
 
-**`.anyapp-meta.json` sits permanently modified.** It is tracked — `initGitRepo`
+**`.pitaster-meta.json` sits permanently modified.** It is tracked — `initGitRepo`
 adds every file — and rewritten whenever anything about the app changes, including
 its `updatedAt`. The first run of the strip opened every session announcing "1 file
 changed" before the agent had done anything. A strip that is never empty is a strip

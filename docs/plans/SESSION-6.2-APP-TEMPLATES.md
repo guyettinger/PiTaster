@@ -61,7 +61,7 @@ export interface AppTemplateConfig {
 ### Create packages/shared/src/apps/templates.ts
 
 ```typescript
-import type { AppTemplate, AppTemplateConfig } from '@anyapp/core'
+import type { AppTemplate, AppTemplateConfig } from '@pitaster/core'
 
 /**
  * Get all available templates.
@@ -477,7 +477,7 @@ Add the createApp method to the AppManager class:
 
 ```typescript
 import { getTemplate } from './templates'
-import type { SubApp, CreateAppParams, AppMetadata, AppTemplate } from '@anyapp/core'
+import type { SubApp, CreateAppParams, AppMetadata, AppTemplate } from '@pitaster/core'
 
 // Add to AppManager class:
 
@@ -569,7 +569,7 @@ import type { SubApp, CreateAppParams, AppMetadata, AppTemplate } from '@anyapp/
 
 ```bash
 # In Node REPL or test file:
-import { AppManager } from '@anyapp/shared'
+import { AppManager } from '@pitaster/shared'
 const manager = new AppManager()
 
 # Create a test app

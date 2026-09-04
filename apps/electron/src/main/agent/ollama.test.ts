@@ -131,7 +131,7 @@ describe('writeOllamaModelsFile', () => {
    * @returns Its path
    */
   async function agentDir(): Promise<string> {
-    return mkdtemp(join(tmpdir(), 'anyapp-models-'))
+    return mkdtemp(join(tmpdir(), 'pitaster-models-'))
   }
 
   /** One model, enough to write a file with. */
@@ -156,7 +156,7 @@ describe('writeOllamaModelsFile', () => {
     expect(written.providers.ollama.compat.supportsReasoningEffort).toBe(true)
   })
 
-  test('preserves a provider anyapp did not write', async () => {
+  test('preserves a provider Pi Taster did not write', async () => {
     // This file is rewritten on every config save and every session start. A provider
     // someone added by hand must survive that, or the re-sync silently deletes it.
     const dir = await agentDir()
@@ -190,7 +190,7 @@ describe('writeOllamaModelsFile', () => {
   })
 
   test('replaces a file that is not JSON', async () => {
-    // A file Pi cannot parse is worse than one anyapp overwrote.
+    // A file Pi cannot parse is worse than one Pi Taster overwrote.
     const dir = await agentDir()
     await writeFile(join(dir, 'models.json'), 'not json at all')
 

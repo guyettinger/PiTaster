@@ -23,7 +23,7 @@
 
 | File | Changes |
 |------|---------|
-| `apps/electron/src/renderer/src/types/electron.d.ts` | Added `listApps`, `createApp`, `deleteApp`, `getApp` methods; imported types from `@anyapp/core` |
+| `apps/electron/src/renderer/src/types/electron.d.ts` | Added `listApps`, `createApp`, `deleteApp`, `getApp` methods; imported types from `@pitaster/core` |
 
 ## Component Architecture
 

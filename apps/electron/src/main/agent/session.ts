@@ -1,9 +1,9 @@
 /**
  * Pi agent session host.
  *
- * anyapp runs one Pi `AgentSession` per active sub-app. The session owns the agent
+ * Pi Taster runs one Pi `AgentSession` per active sub-app. The session owns the agent
  * loop, the tools, the transcript, and the model connection; this module owns the
- * anyapp-specific parts bolted onto it — the permission gate, git auto-commit, the
+ * Pi Taster-specific parts bolted onto it — the permission gate, git auto-commit, the
  * version tools, and the system prompt.
  */
 
@@ -26,7 +26,7 @@ import type {
   PermissionMode,
   StreamChunk,
   SubApp
-} from '@anyapp/core'
+} from '@pitaster/core'
 import { autoCommitToolResult } from './auto-commit'
 import { createCodeTools, CODE_TOOL_NAMES } from './code-tools'
 import { createDiagnosticsNotifier, type DiagnosticsNotifier } from './diagnostics-note'
@@ -51,7 +51,7 @@ import { createContextSealer, type AgentMessage } from './context-trim'
 import { createEditRepair } from './edit-repair'
 import { createFileTools, FILE_TOOL_NAMES } from './file-tools'
 import { createLoopGuard } from './loop-guard'
-import { AnyappResourceLoader, buildPiSettings } from './pi-settings'
+import { PiTasterResourceLoader, buildPiSettings } from './pi-settings'
 import { createRetryBudget, formatSilence } from './retry-budget'
 import { createStallNotifier } from './stall-notifier'
 import {
@@ -77,7 +77,7 @@ import { loadSessionSkills } from './skills'
 import { elementContextToPrompt } from '../agent-utils'
 
 /**
- * The tools every session starts with: Pi's built-ins plus anyapp's version and
+ * The tools every session starts with: Pi's built-ins plus Pi Taster's version and
  * network tools.
  *
  * Pi's `tools` option is an allowlist that applies to custom tools too, so every
@@ -107,7 +107,7 @@ export const AGENT_TOOL_NAMES = [
  * Pi's own built-in tool names, for selecting the guidance Pi writes for them.
  *
  * Kept separate from {@link AGENT_TOOL_NAMES} because only these seven have a
- * `promptGuidelines` contribution to recover — anyapp's custom tools carry their
+ * `promptGuidelines` contribution to recover — Pi Taster's custom tools carry their
  * guidance in their own descriptions.
  */
 export const PI_BUILTIN_TOOL_NAMES = ['read', 'write', 'edit', 'bash', 'grep', 'find', 'ls']
@@ -151,7 +151,7 @@ const LEAN_PROFILE_OMITS = ['create_branch', 'switch_branch', 'list_branches', '
  * Deliberately equal to {@link FALLBACK_CONTEXT_WINDOW}, and named through it so the
  * two cannot drift apart unnoticed. The comparison is `<=`, so every session that
  * falls back — the daemon unreachable, `/api/ps` silent, or only an advertised
- * maximum to go on — runs lean. That is the intent: a window anyapp had to guess at
+ * maximum to go on — runs lean. That is the intent: a window Pi Taster had to guess at
  * is the last place to spend tokens on tool schemas the agent rarely reaches for.
  */
 const LEAN_PROFILE_WINDOW = FALLBACK_CONTEXT_WINDOW
@@ -226,12 +226,12 @@ export interface CreateAgentHostParams {
   /** Whether to shape the context sent to the model. Defaults to on. */
   trimContext?: boolean
   /**
-   * Sampling temperature: a number to pin, `null` to send none, `'auto'` for anyapp's
+   * Sampling temperature: a number to pin, `null` to send none, `'auto'` for Pi Taster's
    * recommendation for this model.
    *
    * Defaults to {@link DEFAULT_SAMPLING_TEMPERATURE}. See `agent/sampling.ts` for why
    * the recommendation differs by model, and {@link createSamplingExtension} for why
-   * anyapp sets this at all.
+   * Pi Taster sets this at all.
    */
   samplingTemperature?: SamplingSetting
   /**
@@ -321,11 +321,11 @@ export interface SendPromptParams {
 /**
  * Resolve the directory holding one sub-app's session transcripts.
  *
- * Pi defaults this to `~/.pi/agent/sessions/`, which would scatter anyapp's data
- * outside `~/.anyapp/`. The `--<escaped cwd>--` naming mirrors Pi's own scheme so
+ * Pi defaults this to `~/.pi/agent/sessions/`, which would scatter Pi Taster's data
+ * outside `~/.pitaster/`. The `--<escaped cwd>--` naming mirrors Pi's own scheme so
  * the directories stay recognisable.
  *
- * @param agentDir - The Pi agent directory, for example `~/.anyapp/pi`
+ * @param agentDir - The Pi agent directory, for example `~/.pitaster/pi`
  * @param appPath - Absolute path to the sub-app root
  * @returns Absolute path to the session directory for that app
  */
@@ -366,7 +366,7 @@ export const REASONING_LEVELS: readonly ReasoningLevel[] = ['unset', 'low', 'med
 /**
  * Default reasoning level.
  *
- * `unset` preserves what anyapp did before the control existed — it passed
+ * `unset` preserves what Pi Taster did before the control existed — it passed
  * `thinkingLevel: 'off'`, which sends nothing — so enabling the parameter does not
  * silently change how every existing install behaves.
  */
@@ -395,7 +395,7 @@ export function toThinkingLevel(level: ReasoningLevel): 'off' | 'low' | 'medium'
  * spreading a field onto it is how a host sets one.
  *
  * The payload is the provider's own request body, typed `unknown` by Pi because its
- * shape is provider-specific. anyapp only ever talks to Ollama's OpenAI-compatible
+ * shape is provider-specific. Pi Taster only ever talks to Ollama's OpenAI-compatible
  * endpoint, where `temperature` is a documented top-level field, and the spread leaves
  * everything else untouched — so a payload shape Pi changes later still passes through
  * intact.
@@ -405,7 +405,7 @@ export function toThinkingLevel(level: ReasoningLevel): 'off' | 'low' | 'medium'
  */
 function createSamplingExtension(sampling: ResolvedSampling): InlineExtension {
   return {
-    name: 'anyapp-sampling',
+    name: 'pitaster-sampling',
     factory: (pi: ExtensionAPI) => {
       pi.on('before_provider_request', async (event) => {
         if (typeof event.payload !== 'object' || event.payload === null) return undefined
@@ -423,7 +423,7 @@ function createSamplingExtension(sampling: ResolvedSampling): InlineExtension {
 }
 
 /**
- * Build the inline extension carrying anyapp's permission gate and auto-commit.
+ * Build the inline extension carrying Pi Taster's permission gate and auto-commit.
  *
  * With Pi's built-in tools adopted unmodified, the `tool_call` handler below is the
  * only boundary between the model and the filesystem.
@@ -431,7 +431,7 @@ function createSamplingExtension(sampling: ResolvedSampling): InlineExtension {
  * @param params - The app root and the host callbacks
  * @returns A named inline extension for the resource loader
  */
-function createAnyappExtension(params: {
+function createPiTasterExtension(params: {
   /** Absolute path to the sub-app root. */
   rootPath: string
   /** The session's context budget. */
@@ -470,13 +470,13 @@ function createAnyappExtension(params: {
   })
 
   return {
-    name: 'anyapp-guard',
+    name: 'pitaster-guard',
     factory: (pi: ExtensionAPI) => {
-      // The two ends of a provider request, and the only place anyapp can time one.
+      // The two ends of a provider request, and the only place Pi Taster can time one.
       //
       // Ollama sends no response headers until the first token, so the gap between
       // these two hooks is the prefill — the cost that dominates a turn on a local
-      // model and the one the audit found anyapp paying twice over. Returning
+      // model and the one the audit found Pi Taster paying twice over. Returning
       // `undefined` leaves the payload alone; the runner chains handlers and only
       // replaces the payload for a handler that returns one
       // (`extensions/runner.js:832-836`), so this coexists with the sampling
@@ -701,10 +701,10 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
 
   const settingsManager = SettingsManager.create(app.path, agentDir)
   // Held as a function because every reload discards it and has to re-run it.
-  const applyAnyappSettings = (): void => {
+  const applyPiTasterSettings = (): void => {
     settingsManager.applyOverrides(buildPiSettings(budget))
   }
-  applyAnyappSettings()
+  applyPiTasterSettings()
 
   const skills = await loadSessionSkills(app)
 
@@ -733,7 +733,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
    */
   let readLiveMessages: (() => AgentMessage[]) | null = null
 
-  const loader = new AnyappResourceLoader({
+  const loader = new PiTasterResourceLoader({
     cwd: app.path,
     agentDir,
     settingsManager,
@@ -747,12 +747,12 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     // Pi's own manifest is suppressed, not extended. It tells the model to open a
     // skill's `<location>` with `read`, and every path it would print is outside the
     // app root, where `checkConfinement` refuses it — so it advertised skills that
-    // could never be loaded. `getSystemPrompt` renders anyapp's instead, naming
+    // could never be loaded. `getSystemPrompt` renders Pi Taster's instead, naming
     // `load_skill`. Pi's diagnostics are kept; only its prompt section is dropped.
     skillsOverride: (current) => ({ skills: [], diagnostics: current.diagnostics }),
     agentsFilesOverride: confineContextFiles(app.path),
     extensionFactories: [
-      createAnyappExtension({
+      createPiTasterExtension({
         rootPath: app.path,
         budget,
         trimEnabled,
@@ -767,7 +767,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
       }),
       ...(hasSampling(sampling) ? [createSamplingExtension(sampling)] : [])
     ]
-  }, applyAnyappSettings)
+  }, applyPiTasterSettings)
 
   await loader.reload()
 
@@ -967,6 +967,9 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
       void session
         .sendCustomMessage(
           {
+            // Deliberately not rebranded. This type is written into Pi's session
+            // transcripts on disk, so renaming it would orphan every notice already
+            // recorded in a conversation the user can still open and resume.
             customType: 'anyapp-compaction-notice',
             content: COMPACTION_NOTICE,
             display: false

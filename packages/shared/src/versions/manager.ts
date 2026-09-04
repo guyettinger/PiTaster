@@ -7,10 +7,10 @@
 
 import * as git from 'isomorphic-git'
 import fs from 'node:fs'
-import type { Commit, Branch, VersionState, FileDiff, MergeResult } from '@anyapp/core'
+import type { Commit, Branch, VersionState, FileDiff, MergeResult } from '@pitaster/core'
 
-/** Default author for commits. */
-const AUTHOR = { name: 'anyapp Agent', email: 'agent@anyapp.local' }
+/** Default author for commits. Also used by the workspace migration. */
+export const COMMIT_AUTHOR = { name: 'Pi Taster Agent', email: 'agent@pitaster.local' }
 
 /**
  * The largest blob whose contents a diff carries, in bytes.
@@ -146,7 +146,7 @@ export class VersionManager {
       fs,
       dir: this.dir,
       message: options.message,
-      author: AUTHOR
+      author: COMMIT_AUTHOR
     })
 
     return this.getCommit(oid)
@@ -288,7 +288,7 @@ export class VersionManager {
         fs,
         dir: this.dir,
         theirs: branchName,
-        author: AUTHOR
+        author: COMMIT_AUTHOR
       })
       return { success: true }
     } catch (error: unknown) {

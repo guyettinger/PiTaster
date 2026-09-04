@@ -28,7 +28,7 @@ import {
 let root: string
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 'anyapp-ts-service-'))
+  root = await mkdtemp(join(tmpdir(), 'pitaster-ts-service-'))
 })
 
 /**

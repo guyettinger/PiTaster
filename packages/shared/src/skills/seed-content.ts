@@ -1,7 +1,7 @@
 /**
  * The runtime skills a fresh install starts with.
  *
- * `SkillsLoader` reads `~/.anyapp/skills`, and for a long time nothing ever wrote it.
+ * `SkillsLoader` reads `~/.pitaster/skills`, and for a long time nothing ever wrote it.
  * The copies under `docs/skills/` were exactly that — copies, with no install step — so
  * on any machine where they had not been placed by hand the agent ran with **no skills
  * at all**. That is worse than it sounds: `working-notes` is the `NOTES.md` convention
@@ -54,7 +54,7 @@ In the app root — the same place as \`package.json\`. That is inside the direc
 can write to, and it is committed with the app, so the skill is versioned alongside the
 code it describes.
 
-Do not try to write to \`~/.anyapp/skills\`. That is the user's own library, shared by
+Do not try to write to \`~/.pitaster/skills\`. That is the user's own library, shared by
 every app, and it is outside your reach.
 
 ## The File

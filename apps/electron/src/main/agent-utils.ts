@@ -3,7 +3,7 @@
  */
 
 import type { ImageContent } from '@earendil-works/pi-ai'
-import type { ElementContext } from '@anyapp/core'
+import type { ElementContext } from '@pitaster/core'
 
 /**
  * A prompt assembled from user text plus any attached UI element context.

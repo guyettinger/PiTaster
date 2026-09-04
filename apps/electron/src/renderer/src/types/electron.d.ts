@@ -2,13 +2,13 @@
  * Type definitions for the Electron API exposed via preload script.
  */
 
-import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, CacheVerdict, DaemonHealth, ElementContext, SerializedContentBlock, Skill, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, ProviderRequestRecord, RequestOutcome, TelemetrySnapshot, TelemetryTotals, TurnCost } from '@anyapp/core'
+import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, CacheVerdict, DaemonHealth, ElementContext, SerializedContentBlock, Skill, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, ProviderRequestRecord, RequestOutcome, TelemetrySnapshot, TelemetryTotals, TurnCost } from '@pitaster/core'
 
 /**
  * A sampling value as the user configured it.
  *
  * A number pins it; `null` sends nothing and leaves the model's Modelfile default
- * alone; `'auto'` asks anyapp to choose from what it knows about the model.
+ * alone; `'auto'` asks Pi Taster to choose from what it knows about the model.
  */
 type SamplingSetting = number | 'auto' | null
 
@@ -286,7 +286,7 @@ interface OllamaModel {
   sizeBytes?: number
   /** Context window the model's metadata advertises: its architectural maximum. */
   contextWindow: number
-  /** The window anyapp actually configures, probed from the daemon when it can be. */
+  /** The window Pi Taster actually configures, probed from the daemon when it can be. */
   effectiveContextWindow: number
   /** Where the effective window came from. */
   contextWindowSource: 'user' | 'daemon' | 'fallback'

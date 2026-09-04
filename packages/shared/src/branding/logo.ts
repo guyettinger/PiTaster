@@ -1,10 +1,9 @@
 /**
- * The anyapp mark.
+ * The Pi Taster mark.
  *
- * A rounded-square aperture with a second, offset square breaking through its
- * lower-right corner: an app that contains and reshapes apps. The aperture's
- * stroke is cut away where the inner square crosses it, so the inner square
- * reads as sitting in front of — and extending past — its container.
+ * A brass π on flared feet, holding a patina drop. The π is the agent — this app is
+ * a place to taste Pi running on local models — and the splay of its feet, with the
+ * bar above, reads as a footed vessel holding the drop. The drop is the sample.
  *
  * The renderer draws the bare mark as JSX in `components/Logo.tsx`. This module
  * builds the macOS dock tile: the same geometry, on a rounded app tile with HIG
@@ -16,9 +15,9 @@
  * and must be kept in step with them; the main process cannot read that file.
  */
 export const LOGO_COLORS = {
-  /** The aperture stroke. `--color-brass`. */
+  /** The π stroke. `--color-brass`. */
   brass: '#d2a24c',
-  /** The inner square. `--color-patina`. */
+  /** The drop. `--color-patina`. */
   patina: '#6fa292',
   /** The dock tile ground. `--color-panel`. */
   tile: '#191b1f'
@@ -47,8 +46,10 @@ export function dockIconSvg({ size = 1024 }: DockIconOptions = {}): string {
   const tileSize = size - tileInset * 2
   const tileRadius = tileSize * 0.225
 
-  // Mark geometry, centred in the tile and sized to about 54% of it.
-  const mark = tileSize * 0.54
+  // Mark geometry, centred in the tile and sized to about 64% of it. The unit is
+  // one step of `Logo.tsx`'s 24-unit viewBox, so every number below is that file's
+  // number unchanged — which is what keeps the two drawings identical.
+  const mark = tileSize * 0.64
   const unit = mark / 24
   const originX = tileInset + (tileSize - mark) / 2
   const originY = tileInset + (tileSize - mark) / 2
@@ -58,14 +59,14 @@ export function dockIconSvg({ size = 1024 }: DockIconOptions = {}): string {
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`,
-    `<mask id="anyapp-aperture">`,
-    `<rect width="${size}" height="${size}" fill="#fff"/>`,
-    `<rect x="${at(11.35)}" y="${av(11.35)}" width="${u(10.8)}" height="${u(10.8)}" rx="${u(3.55)}" fill="#000"/>`,
-    `</mask>`,
     `<rect x="${tileInset}" y="${tileInset}" width="${tileSize}" height="${tileSize}" rx="${tileRadius}" fill="${LOGO_COLORS.tile}"/>`,
-    `<rect x="${at(2.5)}" y="${av(2.5)}" width="${u(15)}" height="${u(15)}" rx="${u(4)}"`,
-    ` fill="none" stroke="${LOGO_COLORS.brass}" stroke-width="${u(2.5)}" mask="url(#anyapp-aperture)"/>`,
-    `<rect x="${at(12.5)}" y="${av(12.5)}" width="${u(8.5)}" height="${u(8.5)}" rx="${u(2.4)}" fill="${LOGO_COLORS.patina}"/>`,
+    `<g fill="none" stroke="${LOGO_COLORS.brass}" stroke-width="${u(2.5)}"`,
+    ` stroke-linecap="round" stroke-linejoin="round">`,
+    `<path d="M${at(4.6)} ${av(7)}H${at(19.4)}"/>`,
+    `<path d="M${at(8.6)} ${av(8.8)}C${at(8.6)} ${av(13)} ${at(8.2)} ${av(15.6)} ${at(7.3)} ${av(17.6)}"/>`,
+    `<path d="M${at(15.4)} ${av(8.8)}C${at(15.4)} ${av(13)} ${at(15.8)} ${av(15.6)} ${at(16.7)} ${av(17.6)}"/>`,
+    `</g>`,
+    `<circle cx="${at(12)}" cy="${av(14.1)}" r="${u(2.7)}" fill="${LOGO_COLORS.patina}"/>`,
     `</svg>`
   ].join('')
 }

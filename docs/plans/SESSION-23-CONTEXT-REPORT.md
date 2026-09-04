@@ -50,7 +50,7 @@ which would warm the model. Caches the last live report so `disposeAgentHost` de
 `stale` rather than to nothing, and recomputes the fixed blocks fresh so a toggled skill
 shows a smaller manifest immediately.
 
-**`agent:compact`** — the first thing in anyapp to call Pi's `session.compact()`.
+**`agent:compact`** — the first thing in Pi Taster to call Pi's `session.compact()`.
 Refused mid-turn.
 
 **`ContextMeter.tsx` / `ContextBreakdown.tsx` / `useContextReport.ts`** — the meter moved
@@ -71,7 +71,7 @@ the MCP section and the tool guidance. Measuring the whole and the parts would c
 user twice per skill, and turning one off would appear to shrink two blocks.
 
 **Price images by difference.** Subtracting the image-stripped estimate from the whole
-recovers Pi's per-image charge exactly, without anyapp restating a constant that is not
+recovers Pi's per-image charge exactly, without Pi Taster restating a constant that is not
 its to know.
 
 **Build tool definitions, never run them.** Sizing a schema calls every factory with

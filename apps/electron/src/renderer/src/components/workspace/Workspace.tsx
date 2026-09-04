@@ -4,14 +4,14 @@ import { WorkspaceBar } from '../shell/WorkspaceBar'
 import { WorkspaceProvider } from './WorkspaceContext'
 import { EmptyDock } from './EmptyDock'
 import { WORKSPACE_COMPONENTS } from './panels'
-import { ANYAPP_DOCKVIEW_THEME } from './theme'
+import { PITASTER_DOCKVIEW_THEME } from './theme'
 import { openCodePanel, openSingletonPanel } from './actions'
 import { WORKSPACE_PANEL_KINDS } from './catalog'
 import { useWorkspaceLayout } from '../../hooks/useWorkspaceLayout'
 import type { WorkspaceContextValue } from './WorkspaceContext'
 import type { WorkspacePanelName } from './catalog'
 import type { PermissionMode } from '../../types/electron'
-import type { SubApp } from '@anyapp/core'
+import type { SubApp } from '@pitaster/core'
 
 /**
  * Props for the Workspace component.
@@ -174,7 +174,7 @@ export function Workspace({
       */}
       <div className="isolate min-h-0 flex-1 overflow-clip">
         <DockviewReact
-          theme={ANYAPP_DOCKVIEW_THEME}
+          theme={PITASTER_DOCKVIEW_THEME}
           components={WORKSPACE_COMPONENTS}
           onReady={onReady}
           watermarkComponent={EmptyDock}

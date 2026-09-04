@@ -17,7 +17,7 @@ import { SUPERSEDED_SEEDS } from './superseded-seeds.js'
 let skillsDir: string
 
 beforeEach(async () => {
-  skillsDir = await mkdtemp(join(tmpdir(), 'anyapp-skills-'))
+  skillsDir = await mkdtemp(join(tmpdir(), 'pitaster-skills-'))
 })
 
 describe('SEED_SKILLS', () => {
@@ -88,7 +88,7 @@ describe('seed content stays in step with docs/skills', () => {
 })
 
 describe('superseded seeds', () => {
-  test('replaces a body anyapp shipped and has since corrected', async () => {
+  test('replaces a body Pi Taster shipped and has since corrected', async () => {
     const stale = SUPERSEDED_SEEDS.find((seed) => !seed.removed)!
     await mkdir(join(skillsDir, stale.name), { recursive: true })
     await writeFile(

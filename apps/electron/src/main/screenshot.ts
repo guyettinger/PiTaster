@@ -4,7 +4,7 @@
 
 import { screen, desktopCapturer, BrowserWindow } from 'electron'
 import sharp from 'sharp'
-import type { ElementContext } from '@anyapp/core'
+import type { ElementContext } from '@pitaster/core'
 
 /**
  * Element info from inspector overlay.

@@ -2,13 +2,13 @@
  * Skills Loader for managing reusable agent instructions.
  *
  * One loader owns one directory. There are two — the open app's `skills/` and the
- * workspace's `~/.anyapp/skills` — and {@link buildSkillLibrary} is what puts them
+ * workspace's `~/.pitaster/skills` — and {@link buildSkillLibrary} is what puts them
  * together; nothing here knows the other root exists.
  */
 
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
-import type { Skill, SkillDraft, SkillMention, SkillScope } from '@anyapp/core'
+import type { Skill, SkillDraft, SkillMention, SkillScope } from '@pitaster/core'
 import { estimateTokens } from './tokens.js'
 import { renderSkillEntry } from './manifest.js'
 
@@ -77,7 +77,7 @@ function parseSkillFrontmatter(content: string): ParsedFrontmatter {
 /**
  * The body of a skill file, parsed the way {@link SkillsLoader} parses it.
  *
- * Exported so the seed migration can compare an on-disk skill against a body anyapp
+ * Exported so the seed migration can compare an on-disk skill against a body Pi Taster
  * shipped without re-implementing the frontmatter split — the two comparing differently
  * would mean the migration silently skipping every file.
  *

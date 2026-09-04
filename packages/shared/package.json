@@ -1,5 +1,5 @@
 {
-  "name": "@anyapp/shared",
+  "name": "@pitaster/shared",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anyapp/core": "workspace:*",
+    "@pitaster/core": "workspace:*",
     "@earendil-works/pi-coding-agent": "^0.84.4",
     "@modelcontextprotocol/sdk": "^1.25.0",
     "isomorphic-git": "^1.27.0"

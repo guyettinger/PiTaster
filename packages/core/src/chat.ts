@@ -1,5 +1,5 @@
 /**
- * Chat history type definitions for anyapp.
+ * Chat history type definitions for Pi Taster.
  *
  * These types define the structure of persisted chat messages stored
  * as JSON files in each app's .chat-history/ directory.

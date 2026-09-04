@@ -101,12 +101,12 @@ export function PreviewPanel({ appId, isVisible }: PreviewPanelProps) {
     try {
       if (isInspecting) {
         // Deactivate
-        await webviewRef.current.executeJavaScript('window.__anyappInspector?.deactivate()')
+        await webviewRef.current.executeJavaScript('window.__piTasterInspector?.deactivate()')
         setIsInspecting(false)
       } else {
         // Load inspector script if not already loaded
         const hasInspector = await webviewRef.current.executeJavaScript(
-          'typeof window.__anyappInspector !== "undefined"'
+          'typeof window.__piTasterInspector !== "undefined"'
         )
 
         if (!hasInspector) {
@@ -116,7 +116,7 @@ export function PreviewPanel({ appId, isVisible }: PreviewPanelProps) {
         }
 
         // Activate
-        await webviewRef.current.executeJavaScript('window.__anyappInspector?.activate()')
+        await webviewRef.current.executeJavaScript('window.__piTasterInspector?.activate()')
         setIsInspecting(true)
       }
     } catch (err) {
@@ -150,7 +150,7 @@ export function PreviewPanel({ appId, isVisible }: PreviewPanelProps) {
    */
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
-      if (event.data?.type === 'anyapp:element-selected') {
+      if (event.data?.type === 'pitaster:element-selected') {
         const elementInfo = event.data.data
 
         try {
@@ -163,7 +163,7 @@ export function PreviewPanel({ appId, isVisible }: PreviewPanelProps) {
           // Exit inspect mode
           setIsInspecting(false)
           if (webviewRef.current) {
-            await webviewRef.current.executeJavaScript('window.__anyappInspector?.deactivate()')
+            await webviewRef.current.executeJavaScript('window.__piTasterInspector?.deactivate()')
           }
         } catch (err) {
           console.error('Failed to capture element:', err)

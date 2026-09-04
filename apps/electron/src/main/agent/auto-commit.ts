@@ -13,12 +13,12 @@
 
 import { stat } from 'node:fs/promises'
 import { join, relative } from 'node:path'
-import { VersionManager } from '@anyapp/shared'
+import { VersionManager } from '@pitaster/shared'
 
 /**
  * Tools whose successful execution should produce a commit.
  *
- * `replace_lines` is anyapp's own, but it modifies a file through the same `path`
+ * `replace_lines` is Pi Taster's own, but it modifies a file through the same `path`
  * argument the built-ins use, so it commits by the same route. A file-modifying tool
  * left out of this set writes changes that `rollback` cannot undo.
  */
@@ -196,7 +196,7 @@ export async function autoCommitSkillChange(params: {
 /**
  * Commit the files a compiler-driven refactor rewrote.
  *
- * `refactor` is the first tool anyapp has that changes more than one file in a single
+ * `refactor` is the first tool Pi Taster has that changes more than one file in a single
  * call, and {@link autoCommitToolResult} commits exactly one — it keys on `input.path`,
  * which for a rename names only the file the symbol was pointed at. Routing a rename
  * through it would commit that file and leave the other seven writes untracked, so a

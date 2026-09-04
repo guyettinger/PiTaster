@@ -172,7 +172,7 @@ let selectedElement: Element | null = null
  */
 function createOverlay(): HTMLDivElement {
   const overlay = document.createElement('div')
-  overlay.id = 'anyapp-inspector-highlight'
+  overlay.id = 'pitaster-inspector-highlight'
   overlay.style.cssText = `
     position: fixed;
     pointer-events: none;
@@ -235,7 +235,7 @@ function handleClick(e: MouseEvent): void {
 
     // Send to parent via postMessage
     window.parent.postMessage({
-      type: 'anyapp:element-selected',
+      type: 'pitaster:element-selected',
       data: info
     }, '*')
 
@@ -272,7 +272,7 @@ export function activate(): void {
   // Change cursor
   document.body.style.cursor = 'crosshair'
 
-  console.log('[anyapp] Inspector mode activated')
+  console.log('[Pi Taster] Inspector mode activated')
 }
 
 /**
@@ -292,7 +292,7 @@ export function deactivate(): void {
   // Hide overlay
   hideOverlay()
 
-  console.log('[anyapp] Inspector mode deactivated')
+  console.log('[Pi Taster] Inspector mode deactivated')
 }
 
 /**
@@ -303,7 +303,7 @@ export function isActiveMode(): boolean {
 }
 
 // Expose global API for injection via executeJavaScript
-;(window as any).__anyappInspector = {
+;(window as any).__piTasterInspector = {
   activate,
   deactivate,
   isActive: isActiveMode
@@ -406,12 +406,12 @@ const toggleInspector = useCallback(async () => {
   try {
     if (isInspecting) {
       // Deactivate
-      await webviewRef.current.executeJavaScript('window.__anyappInspector?.deactivate()')
+      await webviewRef.current.executeJavaScript('window.__piTasterInspector?.deactivate()')
       setIsInspecting(false)
     } else {
       // Load inspector script if not already loaded
       const hasInspector = await webviewRef.current.executeJavaScript(
-        'typeof window.__anyappInspector !== "undefined"'
+        'typeof window.__piTasterInspector !== "undefined"'
       )
 
       if (!hasInspector) {
@@ -421,7 +421,7 @@ const toggleInspector = useCallback(async () => {
       }
 
       // Activate
-      await webviewRef.current.executeJavaScript('window.__anyappInspector?.activate()')
+      await webviewRef.current.executeJavaScript('window.__piTasterInspector?.activate()')
       setIsInspecting(true)
     }
   } catch (err) {
@@ -434,14 +434,14 @@ const toggleInspector = useCallback(async () => {
  */
 useEffect(() => {
   const handleMessage = (event: MessageEvent) => {
-    if (event.data?.type === 'anyapp:element-selected') {
+    if (event.data?.type === 'pitaster:element-selected') {
       const elementInfo = event.data.data
       console.log('Element selected:', elementInfo)
 
       // Auto-exit inspect mode after selection
       setIsInspecting(false)
       if (webviewRef.current) {
-        webviewRef.current.executeJavaScript('window.__anyappInspector?.deactivate()')
+        webviewRef.current.executeJavaScript('window.__piTasterInspector?.deactivate()')
       }
     }
   }

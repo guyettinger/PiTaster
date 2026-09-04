@@ -20,7 +20,7 @@ import {
 import { isMcpToolName, parseMcpToolName, summarizeMcpInput } from '../lib/mcpToolDisplay'
 import { PatchList } from './DiffView'
 import type { ComponentType } from 'react'
-import type { FilePatch } from '@anyapp/core'
+import type { FilePatch } from '@pitaster/core'
 import type { IconProps } from './icons'
 
 /**
@@ -52,7 +52,7 @@ interface ToolDisplay {
 }
 
 /**
- * Every built-in tool Pi exposes, plus anyapp's own code, version-control and network
+ * Every built-in tool Pi exposes, plus Pi Taster's own code, version-control and network
  * tools.
  */
 const TOOL_DISPLAY: Record<string, ToolDisplay> = {

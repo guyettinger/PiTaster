@@ -89,7 +89,7 @@ export interface AppContext {
 }
 
 /**
- * Metadata stored in .anyapp-meta.json
+ * Metadata stored in .pitaster-meta.json
  */
 export interface AppMetadata {
   id: string
@@ -122,10 +122,10 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import * as git from 'isomorphic-git'
 import fs from 'node:fs'
-import type { SubApp, CreateAppParams, AppMetadata } from '@anyapp/core'
+import type { SubApp, CreateAppParams, AppMetadata } from '@pitaster/core'
 
-const APPS_DIR = join(homedir(), '.anyapp', 'apps')
-const AUTHOR = { name: 'anyapp Agent', email: 'agent@anyapp.local' }
+const APPS_DIR = join(homedir(), '.Pi Taster', 'apps')
+const AUTHOR = { name: 'Pi Taster Agent', email: 'agent@Pi Taster.local' }
 
 /**
  * Manages sub-app lifecycle: creation, listing, deletion, and metadata.
@@ -171,7 +171,7 @@ export class AppManager {
    */
   async getApp(id: string): Promise<SubApp | null> {
     const appPath = join(APPS_DIR, id)
-    const metaPath = join(appPath, '.anyapp-meta.json')
+    const metaPath = join(appPath, '.pitaster-meta.json')
     
     try {
       const metaContent = await readFile(metaPath, 'utf-8')
@@ -234,7 +234,7 @@ export class AppManager {
     }
     
     await writeFile(
-      join(app.path, '.anyapp-meta.json'),
+      join(app.path, '.pitaster-meta.json'),
       JSON.stringify(meta, null, 2)
     )
     
@@ -298,7 +298,7 @@ export class AppManager {
    */
   async writeMetadata(appPath: string, meta: AppMetadata): Promise<void> {
     await writeFile(
-      join(appPath, '.anyapp-meta.json'),
+      join(appPath, '.pitaster-meta.json'),
       JSON.stringify(meta, null, 2)
     )
   }
@@ -336,10 +336,10 @@ export { AppManager } from './apps/manager'
 git add -A
 git commit -m "feat(6.1): add sub-app types and AppManager base
 
-- Add SubApp, AppTemplate, CreateAppParams types to @anyapp/core
+- Add SubApp, AppTemplate, CreateAppParams types to @pitaster/core
 - Create AppManager with list, get, delete, update operations
 - Add git repo initialization helper
-- Set up ~/.anyapp/apps/ directory structure"
+- Set up ~/.pitaster/apps/ directory structure"
 ```
 
 ---

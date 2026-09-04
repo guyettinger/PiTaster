@@ -3,7 +3,7 @@
  *
  * The approval preview is the part worth being strict about. It is shown to a person
  * who then takes responsibility for the change, so the property under test is not
- * "produces a nice diff" but **accurate or absent**: every case where anyapp cannot know
+ * "produces a nice diff" but **accurate or absent**: every case where Pi Taster cannot know
  * exactly what a write will do must return nothing rather than a plausible guess.
  */
 
@@ -16,7 +16,7 @@ import { buildPatch, createPatchRecorder, previewPatch } from './patch'
 let root: string
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 'anyapp-patch-'))
+  root = await mkdtemp(join(tmpdir(), 'pitaster-patch-'))
 })
 
 /**
@@ -182,7 +182,7 @@ describe('previewPatch — absent rather than wrong', () => {
   test('says nothing when an edit’s text is not in the file', async () => {
     await write('a.ts', 'const a = 1\n')
 
-    // Pi's matcher may still land this through its fuzzy fallback. anyapp does not
+    // Pi's matcher may still land this through its fuzzy fallback. Pi Taster does not
     // reimplement that fallback, so it shows nothing rather than a diff that might not
     // be the one about to be approved.
     expect(await preview('edit', { path: 'a.ts', edits: [{ oldText: '  const a = 1', newText: 'x' }] })).toEqual([])

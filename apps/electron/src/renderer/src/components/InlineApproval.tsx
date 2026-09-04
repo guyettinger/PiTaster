@@ -28,7 +28,7 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
 
   // Get a user-friendly summary of what the tool wants to do
   const getSummary = (): string => {
-    // MCP tools run inside a server anyapp does not control and are never
+    // MCP tools run inside a server Pi Taster does not control and are never
     // auto-approved, so this prompt is the only boundary. Name the server and the
     // tool rather than falling through to a bare `Use mcp__x__y`.
     if (mcp) {

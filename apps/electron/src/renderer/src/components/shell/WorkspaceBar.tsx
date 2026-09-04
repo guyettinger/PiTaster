@@ -1,7 +1,7 @@
 import { PanelsMenu } from './PanelsMenu'
 import { BranchIcon, CloseIcon } from '../icons'
 import type { DockviewApi } from 'dockview-react'
-import type { SubApp } from '@anyapp/core'
+import type { SubApp } from '@pitaster/core'
 
 /**
  * Props for the WorkspaceBar component.

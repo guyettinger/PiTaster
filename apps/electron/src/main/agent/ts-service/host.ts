@@ -6,7 +6,7 @@
  * {@link TsProject.resolve} joins it and refuses anything that escapes. What the host
  * itself serves is the app's own sources, whatever those sources import from the app's
  * `node_modules`, and TypeScript's bundled `lib.*.d.ts` — the last of which lives inside
- * anyapp's own dependency tree rather than the user's, and without which nothing type
+ * Pi Taster's own dependency tree rather than the user's, and without which nothing type
  * checks at all.
  *
  * A missing or unparseable `tsconfig.json` is not an error. Two of the five sub-app
@@ -34,7 +34,7 @@ const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs',
 /**
  * Compiler options used when the sub-app has no `tsconfig.json`.
  *
- * Deliberately permissive. An inferred config means anyapp is guessing at the project's
+ * Deliberately permissive. An inferred config means Pi Taster is guessing at the project's
  * intent, and a guess that reports a hundred errors the author never asked for would
  * flood the model's context with noise it cannot act on. `strict` stays off, JSX is
  * assumed React, and `allowJs` is on so a plain JavaScript template still gets syntax
@@ -116,7 +116,7 @@ function scanSourceFiles(rootPath: string): string[] {
  *
  * Only the root's own config is considered. Pi discovers `AGENTS.md` by walking *up*
  * from the cwd and `context-files.ts` exists to undo that; the same reasoning applies
- * here, and more sharply — a `tsconfig.json` above `~/.anyapp/apps/` would silently
+ * here, and more sharply — a `tsconfig.json` above `~/.pitaster/apps/` would silently
  * change how every sub-app compiles.
  *
  * @param rootPath - Absolute path to the sub-app root
@@ -179,7 +179,7 @@ export function createTsProject(rootPath: string): TsProject {
 
   // Where TypeScript's own `lib.*.d.ts` live. Reads are allowed here as well as inside
   // the app root, because nothing type checks without them — and this directory is inside
-  // anyapp's dependency tree, not the user's project, so it is ours rather than content
+  // Pi Taster's dependency tree, not the user's project, so it is ours rather than content
   // the agent can influence. Same shape as `SHELL_READONLY_PREFIXES` in the permission
   // gate: a narrow, named exception rather than an open door.
   const libDir = dirname(ts.getDefaultLibFilePath({}))

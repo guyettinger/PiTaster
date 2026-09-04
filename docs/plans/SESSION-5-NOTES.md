@@ -6,7 +6,7 @@
 
 ## Summary
 
-Session 5 completed the anyapp application with enhanced chat UI, skills integration, settings panel, and polished sidebar navigation layout.
+Session 5 completed the Pi Taster application with enhanced chat UI, skills integration, settings panel, and polished sidebar navigation layout.
 
 ## Deviations from Plan
 
@@ -23,15 +23,15 @@ Session 5 completed the anyapp application with enhanced chat UI, skills integra
 **Plan:** Add skills integration to `agent.ts`.
 
 **Actual:** Implemented as planned. Added:
-- `SkillsLoader` initialization with `~/.anyapp/skills`
+- `SkillsLoader` initialization with `~/.pitaster/skills`
 - `extractSkillMentions()` to parse `@skill-name` from prompts
 - `buildSystemPrompt()` to inject skill content into base prompt
 
-**Note:** The `@anyapp/shared` package already had these utilities exported, so integration was straightforward.
+**Note:** The `@pitaster/shared` package already had these utilities exported, so integration was straightforward.
 
 ### Part 3: Skills Files
 
-**Plan:** Create skills at `~/.anyapp/skills/`.
+**Plan:** Create skills at `~/.pitaster/skills/`.
 
 **Actual:** Created three skills as planned:
 - `connect-source/SKILL.md`
@@ -90,8 +90,8 @@ Initial implementation had a TypeScript error with `RefObject<HTMLInputElement>`
 
 ### 2. Config Storage
 
-- Main config (theme, autoCommit) stored in `~/.anyapp/config.json`
-- API key stored separately in `~/.anyapp/.apikey` using Electron's encrypted storage
+- Main config (theme, autoCommit) stored in `~/.pitaster/config.json`
+- API key stored separately in `~/.pitaster/.apikey` using Electron's encrypted storage
 - API key also set as environment variable for the running process
 
 ### 3. Controlled vs Uncontrolled Input
@@ -124,7 +124,7 @@ From the plan's "Next Steps" section:
 
 1. **Preserve existing patterns:** The existing codebase had consistent patterns (dark theme, naming conventions). Following these rather than the plan's code snippets produced better results.
 
-2. **Skills directory location:** User-specific data like skills belongs in `~/.anyapp/`, not the repo.
+2. **Skills directory location:** User-specific data like skills belongs in `~/.pitaster/`, not the repo.
 
 3. **Ref typing in React 19:** The newer React versions with stricter ref typing required updating types to handle null explicitly.
 

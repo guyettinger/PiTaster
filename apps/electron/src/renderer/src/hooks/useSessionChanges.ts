@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { buildPatchFromDiff } from '../lib/commitPatches'
-import type { FilePatch } from '@anyapp/core'
+import type { FilePatch } from '@pitaster/core'
 
 /**
  * What {@link useSessionChanges} gives its caller.
@@ -31,21 +31,31 @@ const NOTHING: SessionChanges = {
 }
 
 /**
- * Files anyapp writes into a sub-app that are not the sub-app's code.
+ * Files Pi Taster writes into a sub-app that are not the sub-app's code.
  *
- * `.anyapp-meta.json` is tracked — `initGitRepo` adds every file — and rewritten
+ * `.pitaster-meta.json` is tracked — `initGitRepo` adds every file — and rewritten
  * whenever anything about the app changes, including its `updatedAt`. So it sits
  * permanently modified, and without this the strip opens every session announcing
  * one changed file before the agent has done anything. A strip that is never empty
  * is a strip nobody reads. `.chat-sessions.json` is the same kind of bookkeeping.
  *
+ * `.anyapp-meta.json` is the same file under its pre-rebrand name, and it stays in
+ * this set permanently. The strip diffs a *commit range*, so a session whose
+ * baseline predates the rebrand still sees the old path — as a delete, paired with
+ * the add of the new one. Dropping it would make every such session open announcing
+ * two phantom changed files, which is the exact bug this set exists to prevent.
+ *
  * This hides them from the *strip*, not from git: the History panel still reports
  * them, which is the right place for a file that genuinely is committed.
  */
-const HOUSEKEEPING_FILES = new Set(['.anyapp-meta.json', '.chat-sessions.json'])
+const HOUSEKEEPING_FILES = new Set([
+  '.pitaster-meta.json',
+  '.anyapp-meta.json',
+  '.chat-sessions.json'
+])
 
 /**
- * Whether a path is the sub-app's own content rather than anyapp's bookkeeping.
+ * Whether a path is the sub-app's own content rather than Pi Taster's bookkeeping.
  * @param path - A path relative to the app root
  * @returns True when the file belongs in the strip
  */

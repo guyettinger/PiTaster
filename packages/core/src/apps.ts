@@ -74,7 +74,7 @@ export interface AppContext {
 }
 
 /**
- * Metadata stored in .anyapp-meta.json
+ * Metadata stored in .pitaster-meta.json
  */
 export interface AppMetadata {
   /** Unique identifier, matching the directory name. */

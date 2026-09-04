@@ -1,5 +1,5 @@
 /**
- * @anyapp/shared - Business logic for anyapp
+ * @pitaster/shared - Business logic for Pi Taster
  *
  * This package contains shared business logic including:
  * - Chat session storage over Pi transcripts
@@ -10,6 +10,7 @@
  */
 
 export { VersionManager } from './versions/manager.js'
+export { COMMIT_AUTHOR } from './versions/manager.js'
 export type { CommitOptions, CreateBranchOptions, HistoryOptions } from './versions/manager.js'
 
 // Process

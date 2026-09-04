@@ -114,5 +114,5 @@ does not warm: opening Settings should not page a 20GB model into memory. That i
 why Settings shows the conservative default until a session has run once.
 
 **Runtime skills are not seeded automatically.** `docs/skills/*/SKILL.md` are
-copies; `SkillsLoader` reads `~/.anyapp/skills`. `lookup-docs` from Session 18 was
+copies; `SkillsLoader` reads `~/.pitaster/skills`. `lookup-docs` from Session 18 was
 never copied there either — there is no install step, and probably should be.

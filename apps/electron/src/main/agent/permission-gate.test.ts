@@ -21,7 +21,7 @@ import {
 } from './permission-gate'
 
 /** A plausible sub-app root; nothing here touches the filesystem. */
-const ROOT = '/Users/someone/.anyapp/apps/my-app'
+const ROOT = '/Users/someone/.Pi Taster/apps/my-app'
 
 describe('inspectCommand — still refuses', () => {
   const refused = [
@@ -29,7 +29,7 @@ describe('inspectCommand — still refuses', () => {
     ['a home-relative path', 'cat ~/.ssh/id_rsa'],
     ['a relative traversal', 'ls ../..'],
     ['a traversal mid-path', 'cat ../other-app/src/index.ts'],
-    ['a sibling app root', 'cat /Users/someone/.anyapp/apps/other-app/x.ts'],
+    ['a sibling app root', 'cat /Users/someone/.Pi Taster/apps/other-app/x.ts'],
     ['a path that only shares a prefix with the root', `cat ${ROOT}-other/secret`]
   ] as const
 
@@ -242,7 +242,7 @@ describe('checkPermission', () => {
     }
   })
 
-  test('plan denies MCP tools, which act in a process anyapp does not control', () => {
+  test('plan denies MCP tools, which act in a process Pi Taster does not control', () => {
     expect(checkPermission('plan', 'mcp__github__create_issue').behavior).toBe('deny')
   })
 

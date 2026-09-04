@@ -2,7 +2,7 @@ import { app, BrowserWindow, nativeImage } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import sharp from 'sharp'
-import { dockIconSvg } from '@anyapp/shared'
+import { dockIconSvg } from '@pitaster/shared'
 import {
   setupIpcHandlers,
   cleanupIpcHandlers,
@@ -10,6 +10,7 @@ import {
   initializeSkills,
   initializeSources
 } from './ipc'
+import { migrateWorkspace } from './migrate-workspace'
 import { configureHttpDispatcher } from './agent/http-dispatcher'
 import { isSafeExternalUrl, openExternalUrl } from './external-links'
 
@@ -152,7 +153,7 @@ function createWindow(): void {
 }
 
 /**
- * Rasterises the anyapp mark and installs it as the macOS dock icon.
+ * Rasterises the Pi Taster mark and installs it as the macOS dock icon.
  *
  * There is no packaging config and no `resources/` directory in this repo, so
  * the icon is rendered from the shared SVG at startup rather than read from
@@ -176,9 +177,23 @@ async function setDockIcon(): Promise<void> {
 }
 
 // Handle app lifecycle
-app.setName('anyapp')
+app.setName('Pi Taster')
 
 app.whenReady().then(async () => {
+  // Move the workspace to its post-rebrand home before anything reads it. Every
+  // path constant below — config, skills, apps, chat transcripts — is built from
+  // `~/.pitaster`, so an install that predates the rename would otherwise open with
+  // no apps, no history and no settings while its data sat intact next door. Await
+  // it: this is the one startup step everything else depends on.
+  //
+  // Non-fatal by design. A failed migration means the user's data is still where it
+  // was, which is recoverable; a main process that dies before `createWindow` is not.
+  try {
+    await migrateWorkspace()
+  } catch (error) {
+    console.error('Workspace migration failed:', error)
+  }
+
   // Load persisted settings before the first message. Earlier versions only reached
   // loadConfig() from the config:get handler, so a fresh launch never saw them.
   await initializeConfig()

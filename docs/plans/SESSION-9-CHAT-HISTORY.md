@@ -39,7 +39,7 @@ flowchart TB
     end
     
     subgraph Storage
-        HistoryDir["~/.anyapp/apps/{id}/.chat-history/"]
+        HistoryDir["~/.pitaster/apps/{id}/.chat-history/"]
         Msg1["2024-01-15T10-30-00-000Z_abc123.json"]
         Msg2["2024-01-15T10-30-05-500Z_def456.json"]
         Msg3["2024-01-15T10-31-00-000Z_ghi789.json"]
@@ -60,8 +60,8 @@ flowchart TB
 Each app stores messages as individual JSON files in a `.chat-history/` directory:
 
 ```
-~/.anyapp/apps/{app-id}/
-├── .anyapp-meta.json
+~/.pitaster/apps/{app-id}/
+├── .pitaster-meta.json
 ├── .chat-history/
 │   ├── 2024-01-15T10-30-00-000Z_abc123.json
 │   ├── 2024-01-15T10-30-05-500Z_def456.json
@@ -95,7 +95,7 @@ Create type definitions for persisted chat messages:
 
 ```typescript
 /**
- * Chat history type definitions for anyapp.
+ * Chat history type definitions for Pi Taster.
  */
 
 /**
@@ -166,7 +166,7 @@ export interface PersistedMessage {
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import type { PersistedMessage } from '@anyapp/core'
+import type { PersistedMessage } from '@pitaster/core'
 
 /**
  * Manages chat history storage for sub-apps.
@@ -175,7 +175,7 @@ export class ChatHistoryManager {
   private appsDir: string
 
   constructor() {
-    this.appsDir = join(homedir(), '.anyapp', 'apps')
+    this.appsDir = join(homedir(), '.Pi Taster', 'apps')
   }
 
   /**
@@ -283,8 +283,8 @@ Add new IPC handlers for chat history operations:
 
 ```typescript
 // Add import
-import { ChatHistoryManager } from '@anyapp/shared'
-import type { PersistedMessage } from '@anyapp/core'
+import { ChatHistoryManager } from '@pitaster/shared'
+import type { PersistedMessage } from '@pitaster/core'
 
 // Add instance
 const chatHistoryManager = new ChatHistoryManager()
@@ -380,7 +380,7 @@ offChatHistoryLoaded: () => {
 Add type definitions for the new API methods:
 
 ```typescript
-import type { PersistedMessage } from '@anyapp/core'
+import type { PersistedMessage } from '@pitaster/core'
 
 interface ElectronAPI {
   // ... existing methods ...
@@ -403,7 +403,7 @@ interface ElectronAPI {
 Add history loading and message saving:
 
 ```typescript
-import type { PersistedMessage, SerializedContentBlock } from '@anyapp/core'
+import type { PersistedMessage, SerializedContentBlock } from '@pitaster/core'
 
 // Add effect to listen for history loaded
 useEffect(() => {

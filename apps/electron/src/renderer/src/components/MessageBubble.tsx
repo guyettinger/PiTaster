@@ -7,7 +7,7 @@ import { TextBubble } from './TextBubble'
 import { ThinkingBubble } from './ThinkingBubble'
 import { ApprovalRecord } from './ApprovalRecord'
 import { ElementContextBubble } from './ElementContextBubble'
-import type { ElementContext, FilePatch } from '@anyapp/core'
+import type { ElementContext, FilePatch } from '@pitaster/core'
 
 /**
  * Tool block within a message.

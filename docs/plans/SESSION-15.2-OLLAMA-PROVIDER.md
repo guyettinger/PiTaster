@@ -14,12 +14,12 @@ the end of it — 15.3 does the swap.
 **Estimated scope**: Small (~1 hour)
 **Prerequisites**: Session 15.1 complete
 **Deliverable**: Settings lists the models pulled into the local Ollama daemon and
-persists the selection; `~/.anyapp/pi/models.json` describes them to Pi.
+persists the selection; `~/.pitaster/pi/models.json` describes them to Pi.
 
 ## Objectives
 
 1. Discover locally pulled Ollama models.
-2. Generate `~/.anyapp/pi/models.json` with the right OpenAI-compatibility flags.
+2. Generate `~/.pitaster/pi/models.json` with the right OpenAI-compatibility flags.
 3. Replace `AppConfig.anthropicApiKey` with `ollamaBaseUrl` + `ollamaModel`.
 4. Delete the `safeStorage` / `.apikey` plumbing.
 5. Fix the startup bug where `loadConfig()` is never called.
@@ -59,7 +59,7 @@ export interface OllamaModel {
  * Parameters for {@link writeOllamaModelsFile}.
  */
 export interface WriteOllamaModelsFileParams {
-  /** Pi agent directory, e.g. `~/.anyapp/pi`. */
+  /** Pi agent directory, e.g. `~/.pitaster/pi`. */
   agentDir: string
   /** Ollama daemon base URL, without the `/v1` suffix. */
   baseUrl: string
@@ -140,7 +140,7 @@ Replace with:
 
 ```typescript
 /**
- * Persisted application configuration, stored at `~/.anyapp/config.json`.
+ * Persisted application configuration, stored at `~/.pitaster/config.json`.
  */
 interface AppConfig {
   /** Ollama daemon base URL, without the `/v1` suffix. */
@@ -156,12 +156,12 @@ interface AppConfig {
 
 Delete, in `loadConfig`/`saveConfig`:
 
-- the `apiKeyPath` constant (`ipc.ts:76`) and the `~/.anyapp/.apikey` read/write
+- the `apiKeyPath` constant (`ipc.ts:76`) and the `~/.pitaster/.apikey` read/write
 - both `safeStorage` calls (`ipc.ts:110-112`, `141`)
 - `process.env.ANTHROPIC_API_KEY = anthropicApiKey` (`ipc.ts:144`)
 - the `safeStorage` import (`ipc.ts:5`)
 
-Unlink a stale `~/.anyapp/.apikey` on load so the ciphertext does not linger.
+Unlink a stale `~/.pitaster/.apikey` on load so the ciphertext does not linger.
 
 There are no secrets left to store, so `.claude/rules/electron-security.md`'s
 `safeStorage` requirement no longer has a subject. Record that in the notes rather than
@@ -205,10 +205,10 @@ line 52) with:
 
 - [ ] `bun run typecheck:all` passes
 - [ ] With `ollama serve` running and a model pulled, Settings lists it
-- [ ] Selecting a model writes `ollamaModel` to `~/.anyapp/config.json`
-- [ ] `~/.anyapp/pi/models.json` exists and lists the same models
+- [ ] Selecting a model writes `ollamaModel` to `~/.pitaster/config.json`
+- [ ] `~/.pitaster/pi/models.json` exists and lists the same models
 - [ ] With Ollama stopped, Settings shows the unreachable state and does not throw
-- [ ] `~/.anyapp/.apikey` is removed and no `safeStorage` call remains in `src/main/`
+- [ ] `~/.pitaster/.apikey` is removed and no `safeStorage` call remains in `src/main/`
 - [ ] Chat still works (still Anthropic, via an ambient `ANTHROPIC_API_KEY`)
 
 ---
@@ -235,12 +235,12 @@ git add -A
 git commit -m "$(cat <<'EOF'
 feat(agent): add Ollama provider discovery and model selection
 
-Generates ~/.anyapp/pi/models.json from the local Ollama daemon's /api/tags,
+Generates ~/.pitaster/pi/models.json from the local Ollama daemon's /api/tags,
 with supportsDeveloperRole and supportsReasoningEffort disabled as Ollama's
 OpenAI-compatible endpoint requires.
 
 - AppConfig gains ollamaBaseUrl and ollamaModel, loses anthropicApiKey
-- safeStorage and ~/.anyapp/.apikey removed; no secrets left to store
+- safeStorage and ~/.pitaster/.apikey removed; no secrets left to store
 - loadConfig() now runs at startup, not only from the config:get handler
 - Settings replaces the API key field with a model picker
 EOF

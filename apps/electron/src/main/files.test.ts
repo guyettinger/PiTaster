@@ -17,7 +17,7 @@ import { listAppFiles, readAppFile } from './files'
 let root: string
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 'anyapp-files-'))
+  root = await mkdtemp(join(tmpdir(), 'pitaster-files-'))
 })
 
 /**

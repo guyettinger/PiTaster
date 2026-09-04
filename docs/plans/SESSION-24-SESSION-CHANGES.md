@@ -34,7 +34,7 @@ and catches the user's own manual edits, neither of which a transcript can do.
 ## Scope
 
 - `main/session-baselines.ts` — the commit each session started from, stored in
-  `~/.anyapp/`, first-write-wins.
+  `~/.pitaster/`, first-write-wins.
 - `changes:session-baseline` IPC, and baseline capture on session activation.
 - `hooks/useSessionChanges.ts` — baseline → diff → patches.
 - `components/ChangedFilesStrip.tsx` — the strip, its list, and its diffs.

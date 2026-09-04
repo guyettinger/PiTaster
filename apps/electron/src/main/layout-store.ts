@@ -1,7 +1,7 @@
 /**
  * Where a sub-app's workspace layout is kept.
  *
- * Per-app, but deliberately *not* in the app's own directory. `.anyapp-meta.json`
+ * Per-app, but deliberately *not* in the app's own directory. `.pitaster-meta.json`
  * is the obvious home and the wrong one: it is not in `DEFAULT_GITIGNORE`, and
  * `AppManager.initGitRepo` adds every file, so it is tracked and committed. In a
  * repo where every agent write auto-commits, a layout written on each drag would
@@ -9,7 +9,7 @@
  * worst — a rollback of the *code* also rolling back the *layout*. Where the
  * panels sit is not a fact about a commit.
  *
- * So layouts live beside `config.json` under `~/.anyapp`, keyed by app id.
+ * So layouts live beside `config.json` under `~/.pitaster`, keyed by app id.
  */
 
 import { promises as fs } from 'fs'

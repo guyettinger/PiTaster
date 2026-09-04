@@ -18,7 +18,7 @@ const [replaceLines] = createFileTools({ rootPath: '/placeholder' })
 let root: string
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 'anyapp-file-tools-'))
+  root = await mkdtemp(join(tmpdir(), 'pitaster-file-tools-'))
 })
 
 /**

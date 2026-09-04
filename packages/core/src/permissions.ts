@@ -1,5 +1,5 @@
 /**
- * Permission-related type definitions for anyapp.
+ * Permission-related type definitions for Pi Taster.
  */
 
 import type { FilePatch } from './agent.js'
@@ -37,7 +37,7 @@ export interface ToolApprovalRequest {
   /**
    * What the write would change, where that can be known exactly.
    *
-   * Absent for `bash`, for an MCP tool, and for an `edit` whose text anyapp could not
+   * Absent for `bash`, for an MCP tool, and for an `edit` whose text Pi Taster could not
    * match — see `previewPatch`. A preview shown here is approved on, so it is either
    * accurate or missing; there is no "probably".
    */

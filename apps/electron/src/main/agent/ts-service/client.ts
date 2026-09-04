@@ -11,13 +11,13 @@
  *
  * The worker is spawned through Electron's `utilityProcess` rather than
  * `child_process.fork`, because a packaged app ships no `node` binary. Its environment
- * is filtered by `buildSubprocessEnv` like every other spawn site anyapp owns.
+ * is filtered by `buildSubprocessEnv` like every other spawn site Pi Taster owns.
  */
 
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { utilityProcess, type UtilityProcess } from 'electron'
-import { buildSubprocessEnv } from '@anyapp/shared'
+import { buildSubprocessEnv } from '@pitaster/shared'
 import type { ServiceRequest, ServiceResponse, WorkerResponseEnvelope } from './protocol'
 
 /**

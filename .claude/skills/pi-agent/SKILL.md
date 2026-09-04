@@ -1,11 +1,11 @@
 ---
 name: pi-agent
-description: Reference for how anyapp embeds Pi (@earendil-works/pi-coding-agent) on Ollama - the SDK surface, event shapes, tool schemas, and the anyapp-specific hooks layered on top. Use when changing anything under apps/electron/src/main/agent/.
+description: Reference for how Pi Taster embeds Pi (@earendil-works/pi-coding-agent) on Ollama - the SDK surface, event shapes, tool schemas, and the Pi Taster-specific hooks layered on top. Use when changing anything under apps/electron/src/main/agent/.
 ---
 
 # Pi Agent Integration
 
-anyapp's agent is [Pi](https://pi.dev/), embedded via `@earendil-works/pi-coding-agent`
+Pi Taster's agent is [Pi](https://pi.dev/), embedded via `@earendil-works/pi-coding-agent`
 and running on local Ollama models. The integration lives in
 `apps/electron/src/main/agent/`.
 
@@ -17,13 +17,13 @@ which differ in places.
 | File | Responsibility |
 |------|----------------|
 | `session.ts` | Builds one `AgentSession` per sub-app; owns the tool allowlist |
-| `events.ts` | Pi session events → anyapp's `StreamChunk` |
+| `events.ts` | Pi session events → Pi Taster's `StreamChunk` |
 | `permission-gate.ts` | `tool_call` handler: permission modes + path confinement |
 | `auto-commit.ts` | `tool_result` handler: git commit after `write`/`edit` |
 | `version-tools.ts` | The six git tools, via `defineTool()` |
 | `mcp-tools.ts` | Bridges connected MCP sources' tools into Pi custom tools |
 | `system-prompt.ts` | `getSystemPrompt(app)` and the per-template hints |
-| `ollama.ts` | Model discovery and `~/.anyapp/pi/models.json` generation |
+| `ollama.ts` | Model discovery and `~/.pitaster/pi/models.json` generation |
 | `tool-guidance.ts` | Recovers Pi's per-tool `promptGuidelines`, which `systemPromptOverride` drops |
 | `edit-repair.ts` | `tool_result` handler: turns a failed `edit` into the file's real text |
 | `file-tools.ts` | `replace_lines`, the line-addressed edit that cannot fail on whitespace |
@@ -100,7 +100,7 @@ single lookup.
   place, with **no re-validation afterwards**. `tool_result` *can* return replacements for
   `content`, `details`, `isError` and `usage`, chained across extensions.
 - **Pi discovers `AGENTS.md` by walking up from `cwd`**, and also reads `agentDir`. Pass
-  `agentsFilesOverride` or a sub-app inherits whatever is above `~/.anyapp/apps/`.
+  `agentsFilesOverride` or a sub-app inherits whatever is above `~/.pitaster/apps/`.
 
 - **`tools` is an allowlist that covers custom tools too.** A `defineTool()` tool
   missing from the session's `tools` array is silently dropped. `AGENT_TOOL_NAMES`
@@ -114,7 +114,7 @@ single lookup.
   and string→number coercion all work. Do **not** wrap it in `Type.Unsafe` — that
   adds the brand and forces the TypeBox path instead.
 - **Sessions default to `~/.pi/agent/`.** Pass an explicit `sessionDir` to
-  `SessionManager.create/open/list` or transcripts land outside `~/.anyapp/`.
+  `SessionManager.create/open/list` or transcripts land outside `~/.pitaster/`.
 - **Pi defers writing a transcript until the first assistant reply.** An empty
   session does not exist on disk, which is why `ChatHistoryManager` keeps a draft
   record and adopts Pi's real session id once the run materializes the file.

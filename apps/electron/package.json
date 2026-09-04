@@ -1,5 +1,5 @@
 {
-  "name": "@anyapp/electron",
+  "name": "@pitaster/electron",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,8 +11,8 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@anyapp/core": "workspace:*",
-    "@anyapp/shared": "workspace:*",
+    "@pitaster/core": "workspace:*",
+    "@pitaster/shared": "workspace:*",
     "@earendil-works/pi-ai": "^0.84.4",
     "@earendil-works/pi-coding-agent": "^0.84.4",
     "@fontsource-variable/archivo": "5.3.0",

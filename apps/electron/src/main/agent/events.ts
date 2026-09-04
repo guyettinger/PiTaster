@@ -1,9 +1,9 @@
 /**
- * Adapts Pi's session event stream to anyapp's {@link StreamChunk} protocol.
+ * Adapts Pi's session event stream to Pi Taster's {@link StreamChunk} protocol.
  */
 
 import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent'
-import type { AgentStatus, FilePatch, StreamChunk } from '@anyapp/core'
+import type { AgentStatus, FilePatch, StreamChunk } from '@pitaster/core'
 
 /** Maximum characters of tool output forwarded to the renderer. */
 const MAX_OUTPUT_CHARS = 500
@@ -56,7 +56,7 @@ function renderResult(result: unknown): string {
 /**
  * Lift the diffs a write produced out of the tool result's `details`.
  *
- * `details` is where anyapp puts everything the UI needs and the model must not pay
+ * `details` is where Pi Taster puts everything the UI needs and the model must not pay
  * for. It is also whatever the tool chose to put there, so every field is checked
  * rather than asserted — a tool that returns a differently-shaped `details` should
  * render without a diff, not crash the event pump mid-turn.
@@ -111,7 +111,7 @@ export function toStreamChunk(event: AgentSessionEvent): StreamChunk | null {
       if (inner.type === 'text_delta') {
         return { type: 'text', text: inner.delta }
       }
-      // Ollama's models reason on every request whatever anyapp asks for — the
+      // Ollama's models reason on every request whatever Pi Taster asks for — the
       // OpenAI-compatible endpoint has no working off switch, only `reasoning_effort`
       // — so dropping this left the user watching a pulsing ellipsis through the
       // longest part of a turn. The reasoning is the one thing arriving during it.

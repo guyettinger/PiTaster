@@ -24,8 +24,8 @@ Add app management handlers:
 
 ```typescript
 import { ipcMain } from 'electron'
-import { AppManager } from '@anyapp/shared'
-import type { CreateAppParams } from '@anyapp/core'
+import { AppManager } from '@pitaster/shared'
+import type { CreateAppParams } from '@pitaster/core'
 
 const appManager = new AppManager()
 
@@ -125,7 +125,7 @@ Add app management API:
 
 ```typescript
 import { contextBridge, ipcRenderer } from 'electron'
-import type { SubApp, CreateAppParams } from '@anyapp/core'
+import type { SubApp, CreateAppParams } from '@pitaster/core'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // ... existing API methods ...
@@ -172,7 +172,7 @@ import type {
   PermissionMode,
   StreamChunk,
   ToolApprovalRequest 
-} from '@anyapp/core'
+} from '@pitaster/core'
 
 interface ElectronAPI {
   // Agent communication
@@ -238,7 +238,7 @@ export {}
 Make version control handlers app-aware:
 
 ```typescript
-import { VersionManager } from '@anyapp/shared'
+import { VersionManager } from '@pitaster/shared'
 
 // Update version control handlers to accept optional appPath
 ipcMain.handle('version:get-state', async (_, appPath?: string) => {

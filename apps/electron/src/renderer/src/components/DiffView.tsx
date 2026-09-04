@@ -15,7 +15,7 @@
  */
 
 import { useMemo } from 'react'
-import type { FilePatch } from '@anyapp/core'
+import type { FilePatch } from '@pitaster/core'
 
 /** One rendered row of a diff. */
 interface DiffRow {

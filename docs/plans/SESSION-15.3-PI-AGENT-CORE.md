@@ -93,7 +93,7 @@ history in `session.agent.state.messages` and persists it through `SessionManage
 ```typescript
 const { session } = await createAgentSession({
   cwd: app.path,
-  agentDir: join(homedir(), '.anyapp', 'pi'),
+  agentDir: join(homedir(), '.Pi Taster', 'pi'),
   model,
   modelRuntime,
   thinkingLevel: 'off',
@@ -132,7 +132,7 @@ Export a small host with `sendPrompt`, `abort`, `dispose`, and `getMessages`. Ca
 
 First make `StreamChunk` single-source. It is currently duplicated four times and has
 already drifted — `packages/core/src/agent.ts:24` and `preload/index.ts:7` are missing
-`input` and `output`. Keep the `@anyapp/core` copy, delete the rest, add `toolCallId`:
+`input` and `output`. Keep the `@pitaster/core` copy, delete the rest, add `toolCallId`:
 
 ```typescript
 /**
@@ -274,7 +274,7 @@ This also unifies two implementations that exist today: the scoped tools call
 `git.add`/`git.commit` from `isomorphic-git` directly (`agent.ts:213-220`, `290-297`)
 while the dead `write_source` uses `VersionManager.commit` (`agent.ts:698`). Standardise
 on `VersionManager`, keeping
-`AUTHOR = { name: 'anyapp Agent', email: 'agent@anyapp.local' }` (`agent.ts:22`).
+`AUTHOR = { name: 'Pi Taster Agent', email: 'agent@Pi Taster.local' }` (`agent.ts:22`).
 
 This is the first time the `autoCommit` setting is actually read — it has been rendered
 in Settings and ignored since it was added.
@@ -283,13 +283,13 @@ in Settings and ignored since it was added.
 
 ## Task 6: agent/version-tools.ts
 
-Pi has no equivalent for anyapp's git tools, so they are ported rather than dropped.
+Pi has no equivalent for Pi Taster's git tools, so they are ported rather than dropped.
 `defineTool` takes a single options object.
 
 ```typescript
 import { Type } from 'typebox'
 import { defineTool, type ToolDefinition } from '@earendil-works/pi-coding-agent'
-import { VersionManager } from '@anyapp/shared'
+import { VersionManager } from '@pitaster/shared'
 
 /**
  * Build the git/version tools for one sub-app.
@@ -334,8 +334,8 @@ Tool names are hardcoded in five places today: `createScopedTools`, that markdow
 the `checkPermission` allow-lists, `InlineApproval.getSummary()`, and `ToolBubble`. All
 five need Pi's names.
 
-**Skills** — keep anyapp's `SkillsLoader` (`~/.anyapp/skills/<name>/SKILL.md`) and feed
-the result through `DefaultResourceLoader({ skillsOverride })`, mapping `@anyapp/core`'s
+**Skills** — keep Pi Taster's `SkillsLoader` (`~/.pitaster/skills/<name>/SKILL.md`) and feed
+the result through `DefaultResourceLoader({ skillsOverride })`, mapping `@pitaster/core`'s
 `Skill` (`{name, description, content, filepath}`) to Pi's
 (`{name, description, filePath, baseDir, source: 'custom'}`). This preserves the
 `docs/skills/` seed content and retires `buildSystemPrompt`'s string concatenation
@@ -372,7 +372,7 @@ With `ollama serve` running and a tool-capable model selected:
 2. [ ] Ask it to read two files at once — parallel blocks resolve to the correct
        bubbles (this fails today)
 3. [ ] `default` mode + a write — approval prompt appears; approve; `git log` in
-       `~/.anyapp/apps/<id>` shows the commit
+       `~/.pitaster/apps/<id>` shows the commit
 4. [ ] Deny — the agent reports the block and keeps going
 5. [ ] `plan` mode — every tool denied
 6. [ ] `acceptEdits` — writes auto-approve, `bash` still prompts
@@ -437,7 +437,7 @@ Deletes agent.ts (1223 lines) in favour of a Pi AgentSession per sub-app.
 - per-write git auto-commit moves into a tool_result handler, and now honours
   the autoCommit setting for the first time
 - the six version tools are ported to defineTool()
-- StreamChunk is single-source in @anyapp/core and gains toolCallId, fixing
+- StreamChunk is single-source in @pitaster/core and gains toolCallId, fixing
   tool_end mis-association under parallel tool use
 - cancellation is wired end to end for the first time
 

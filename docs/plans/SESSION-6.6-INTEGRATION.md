@@ -33,7 +33,7 @@ import { AppListing } from './components/AppListing'
 import { AppHeader } from './components/AppHeader'
 import { NoAppSelected } from './components/NoAppSelected'
 import type { PermissionMode } from './types/electron'
-import type { SubApp } from '@anyapp/core'
+import type { SubApp } from '@pitaster/core'
 
 interface Skill {
   name: string
@@ -455,7 +455,7 @@ git commit -m "feat: complete sub-apps architecture (Session 6)
 
 Session 6 implements sandboxed self-modification:
 - Outer Electron container is immutable
-- Sub-apps in ~/.anyapp/apps/ are fully modifiable
+- Sub-apps in ~/.pitaster/apps/ are fully modifiable
 - Each app has isolated git versioning
 - Agent tools scoped to active app only
 - Path traversal prevention for security

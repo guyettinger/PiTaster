@@ -62,7 +62,7 @@ silently renaming an exported key.
 3. In `Ask to edit`, the approval prompt showed `+1 −1` and the two changed lines *before*
    Allow/Deny.
 4. The code panel listed the sub-app's real tree with `node_modules` hidden, opened
-   `src/App.tsx` in Monaco with the anyapp theme, and reported `⚠ 1 error` on a file with
+   `src/App.tsx` in Monaco with the Pi Taster theme, and reported `⚠ 1 error` on a file with
    a type error — over IPC, from the shared service.
 
 ## What the security review caught

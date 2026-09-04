@@ -1,7 +1,7 @@
 # Session 20: The Editing Loop
 
 **Goal**: Make the agent able to edit a TypeScript file repeatedly across a long
-session without whitespace roulette — by giving back the editing guidance anyapp
+session without whitespace roulette — by giving back the editing guidance Pi Taster
 was silently throwing away, turning a failed edit into a grounded next attempt,
 and letting a shell command redirect to `/dev/null`.
 
@@ -13,7 +13,7 @@ long TypeScript task actually spends its turns in — read, edit, typecheck, edi
 again. Two symptoms reported from real use, both defects rather than model
 weakness.
 
-### 1. anyapp discards Pi's editing guidance
+### 1. Pi Taster discards Pi's editing guidance
 
 Pi assembles its system prompt from per-tool contributions: each tool definition
 carries a `promptSnippet` and a `promptGuidelines` array, and `buildSystemPrompt`
@@ -29,11 +29,11 @@ Each edits[].oldText is matched against the original file, not after earlier
 Keep edits[].oldText as small as possible while still being unique in the file.
 ```
 
-anyapp supplies `systemPromptOverride`, so `buildSystemPrompt` takes its
+Pi Taster supplies `systemPromptOverride`, so `buildSystemPrompt` takes its
 `customPrompt` early return (`dist/core/system-prompt.js:13-34`). That branch
 appends the append-prompt, project context files, the skills block and the cwd —
 and **drops `toolSnippets` and `promptGuidelines` entirely**. Every one of those
-bullets is discarded, for every tool. anyapp's own prompt says only "prefer
+bullets is discarded, for every tool. Pi Taster's own prompt says only "prefer
 `edit` over `write`" (`system-prompt.ts:148`). The model is never told that
 `edits[]` is an array of disjoint replacements resolved against the *original*
 file, and never told the uniqueness rule.
@@ -66,7 +66,7 @@ Two structural aggravators:
   identical replacements must write N uniquely-anchored edits. Pi's own guideline
   pushes anchors to be *minimal*, which is exactly what makes them collide:
   `Found 3 occurrences of the text in … The text must be unique.`
-- **Nothing in anyapp reacts to a failed edit.** `agent/loop-guard.ts` blocks a
+- **Nothing in Pi Taster reacts to a failed edit.** `agent/loop-guard.ts` blocks a
   third *byte-identical* call. A model retrying with a slightly different
   `oldText` each time never trips it and loops until the user stops it.
 
@@ -89,7 +89,7 @@ to do instead, which is all the model gets.
 
 ### 4. Three gaps found while auditing the rest
 
-**Runtime skills are never installed.** `loadPiSkills` reads `~/.anyapp/skills`
+**Runtime skills are never installed.** `loadPiSkills` reads `~/.pitaster/skills`
 (`session.ts:498`); nothing in the app ever writes it. `docs/skills/*/SKILL.md`
 are copies with no install step, and `ipc.ts:93` only *reads* the same directory
 for the UI. On a fresh machine the agent has zero skills — which means
@@ -100,13 +100,13 @@ taught. Session 19's own gotcha list flagged this; it is still true.
 **`AGENTS.md` ancestry leaks into every sub-app prompt.** Pi's
 `loadProjectContextFiles` (`dist/core/resource-loader.js:32-51`) walks *up* from
 `cwd` and also reads `agentDir`, wrapping what it finds in `<project_context>`.
-anyapp passes neither `noContextFiles` nor `agentsFilesOverride`, so a stray
-`~/AGENTS.md` or `~/.anyapp/AGENTS.md` silently enters every session — unbounded
+Pi Taster passes neither `noContextFiles` nor `agentsFilesOverride`, so a stray
+`~/AGENTS.md` or `~/.pitaster/AGENTS.md` silently enters every session — unbounded
 text against a 32–65k window, and invisible in the UI.
 
 **Sampling is unpinned.** Pi exposes no temperature and `models.json` carries
 none, so every request inherits the model's Modelfile default — 0.7 to 1.0 on the
-qwen builds anyapp targets. Reproducing a code region's exact whitespace is
+qwen builds Pi Taster targets. Reproducing a code region's exact whitespace is
 precisely the task that default ruins.
 
 ## What Ships

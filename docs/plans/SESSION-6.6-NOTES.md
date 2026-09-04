@@ -32,7 +32,7 @@
 import { AppListing } from './components/AppListing'
 import { AppHeader } from './components/AppHeader'
 import { NoAppSelected } from './components/NoAppSelected'
-import type { SubApp } from '@anyapp/core'
+import type { SubApp } from '@pitaster/core'
 ```
 
 ### Updated State
@@ -168,7 +168,7 @@ All sub-sessions are now complete:
 
 The sub-apps architecture is fully integrated with:
 - Immutable outer container
-- Sandboxed sub-apps in `~/.anyapp/apps/`
+- Sandboxed sub-apps in `~/.pitaster/apps/`
 - Per-app git versioning
 - Agent tools scoped to active app
 - Path traversal prevention
