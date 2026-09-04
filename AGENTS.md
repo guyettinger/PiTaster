@@ -517,9 +517,12 @@ not: the strip kept saying "…retrying" after the run it described had failed.
 
 **And when a turn ends, it says what it cost.** `TurnSummaryStrip` takes the slot the
 status strip was using — `2 requests · 12.2k prompt (2.3k prefilled) · 152 out · 43s ·
-prefix reused` — off the `TurnCost` and `CacheVerdict` that now ride the `complete`
-chunk beside `contextUsage`, for the same reason that one does: the end of a turn is
-when all three become final. The gap between the prompt figure and the prefilled figure
+prefix reused` — off the `TurnCost` and `CacheVerdict` that ride the `complete`
+chunk, because the end of a turn is when both become final. The meter deliberately does
+*not* ride it: the chunk could carry a usage number but not the attribution, and taking
+half the answer from the stream and half from `getContextReport` is how the two drift.
+It used to carry a `contextUsage` nobody read for exactly that reason, and a
+`rate_limit` variant nothing has ever produced; both are gone. The gap between the prompt figure and the prefilled figure
 *is* W1's saving, which is why both are shown rather than the total alone. The cache
 verdict is the quietest when it is `reused` — a healthy turn should not decorate
 itself — and coloured only for `invalidated`, which is anyapp having re-sent a prompt

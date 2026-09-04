@@ -125,6 +125,55 @@ export interface ListOllamaModelsParams {
   selectedModel?: string | null
   /** The user's context-window override from Settings, when they set one. */
   contextWindowOverride?: number | null
+  /**
+   * The selected model's loaded window, when the caller has already read it.
+   *
+   * `/api/ps` is a probe, and a session start used to run it twice: once in
+   * {@link prepareModelForSession} and again in here, for the same model, moments
+   * apart. Passing the first answer in is how the second call is avoided without
+   * either caller having to know about the other's timing.
+   */
+  daemonWindow?: number | null
+}
+
+/**
+ * Concurrent `/api/show` requests while describing the pulled models.
+ *
+ * The listing used to fan out one request per model at once, so a machine with thirty
+ * models opened Settings by hitting a single local daemon with thirty simultaneous
+ * requests — each of which Ollama answers by reading a manifest off disk. Four is
+ * enough to hide the round trips without making the daemon queue.
+ */
+const DESCRIBE_CONCURRENCY = 4
+
+/**
+ * Map over items with a bounded number in flight.
+ *
+ * Order is preserved, so the caller can still pair results with inputs by index.
+ *
+ * @param items - The inputs
+ * @param limit - Maximum concurrent calls
+ * @param run - The per-item work
+ * @returns The results, in the input's order
+ */
+async function mapWithLimit<In, Out>(
+  items: In[],
+  limit: number,
+  run: (item: In) => Promise<Out>
+): Promise<Out[]> {
+  const results = new Array<Out>(items.length)
+  let next = 0
+
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next
+      next += 1
+      results[index] = await run(items[index])
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
 }
 
 /**
@@ -209,10 +258,14 @@ export async function listOllamaModels(params: ListOllamaModelsParams): Promise<
   const normalized = normalizeOllamaBaseUrl(baseUrl)
 
   // Only the selected model is worth probing: `/api/ps` answers for loaded models,
-  // and loading every pulled model to ask would be absurd.
-  const daemonWindow = selectedModel
-    ? await getLoadedContextLength({ baseUrl: normalized, modelId: selectedModel })
-    : null
+  // and loading every pulled model to ask would be absurd. A caller that has just
+  // warmed the model has already asked, and passes the answer in.
+  const daemonWindow =
+    params.daemonWindow !== undefined
+      ? params.daemonWindow
+      : selectedModel
+        ? await getLoadedContextLength({ baseUrl: normalized, modelId: selectedModel })
+        : null
 
   let entries: OllamaTagEntry[]
   try {
@@ -229,8 +282,10 @@ export async function listOllamaModels(params: ListOllamaModelsParams): Promise<
     return []
   }
 
-  const described = await Promise.all(
-    entries.map(async (entry): Promise<OllamaModel | null> => {
+  const described = await mapWithLimit(
+    entries,
+    DESCRIBE_CONCURRENCY,
+    async (entry): Promise<OllamaModel | null> => {
       const id = typeof entry.name === 'string' ? entry.name : entry.model
       if (typeof id !== 'string' || id.length === 0) return null
 
@@ -253,7 +308,7 @@ export async function listOllamaModels(params: ListOllamaModelsParams): Promise<
         effectiveContextWindow: budget.window,
         contextWindowSource: budget.source
       }
-    })
+    }
   )
 
   return described
@@ -488,11 +543,36 @@ export async function writeOllamaModelsFile(
   }
 
   await fs.mkdir(agentDir, { recursive: true })
-  await fs.writeFile(
-    join(agentDir, 'models.json'),
-    `${JSON.stringify(config, null, 2)}\n`,
-    'utf-8'
-  )
+  const modelsPath = join(agentDir, 'models.json')
+
+  // Merge rather than clobber. anyapp owns the `ollama` provider and nothing else in
+  // this file, so a provider a user added by hand — or one a future anyapp writes —
+  // must survive a re-sync, which happens on every config save and every session
+  // start. An unreadable or malformed file is replaced, because a file Pi cannot parse
+  // is worse than one anyapp overwrote.
+  let existing: Record<string, unknown> = {}
+  try {
+    const parsed: unknown = JSON.parse(await fs.readFile(modelsPath, 'utf-8'))
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      existing = parsed as Record<string, unknown>
+    }
+  } catch {
+    // No file yet, or one that is not JSON. Either way there is nothing to preserve.
+  }
+
+  const existingProviders =
+    typeof existing.providers === 'object' &&
+    existing.providers !== null &&
+    !Array.isArray(existing.providers)
+      ? (existing.providers as Record<string, unknown>)
+      : {}
+
+  const merged = {
+    ...existing,
+    providers: { ...existingProviders, ...config.providers }
+  }
+
+  await fs.writeFile(modelsPath, `${JSON.stringify(merged, null, 2)}\n`, 'utf-8')
 }
 
 /**
@@ -507,11 +587,14 @@ export async function writeOllamaModelsFile(
  * @param params - Agent directory, daemon URL, selected model, and any user override
  * @returns The discovered models, each carrying its effective context window
  */
-export async function syncOllamaModels(params: SyncOllamaModelsParams): Promise<OllamaModel[]> {
+export async function syncOllamaModels(
+  params: SyncOllamaModelsParams & { daemonWindow?: number | null }
+): Promise<OllamaModel[]> {
   const models = await listOllamaModels({
     baseUrl: params.baseUrl,
     selectedModel: params.selectedModel,
-    contextWindowOverride: params.contextWindowOverride
+    contextWindowOverride: params.contextWindowOverride,
+    daemonWindow: params.daemonWindow
   })
   await writeOllamaModelsFile({ agentDir: params.agentDir, baseUrl: params.baseUrl, models })
   return models
@@ -536,7 +619,9 @@ export async function prepareModelForSession(
     baseUrl: params.baseUrl,
     modelId: params.selectedModel
   })
-  const models = await syncOllamaModels(params)
+  // Handed on rather than re-probed: the listing would otherwise ask `/api/ps` the
+  // same question about the same model a moment later.
+  const models = await syncOllamaModels({ ...params, daemonWindow })
   const selected = models.find((model) => model.id === params.selectedModel)
 
   // Derived from the raw inputs rather than from the already-resolved window, so the

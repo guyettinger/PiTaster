@@ -495,19 +495,6 @@ export function Chat({
         // Compaction, retries and long prefills are most of the wall-clock time on a
         // local model. Without this they render as a hang.
         setStatus(chunk.status?.kind === 'settled' ? null : (chunk.status ?? null))
-      } else if (chunk.type === 'rate_limit') {
-        // Show rate-limit notice as a text block in the assistant message
-        setMessages(prev => {
-          const last = prev[prev.length - 1]
-          if (last?.role !== 'assistant') return prev
-          
-          const blocks = last.blocks ?? []
-          const newBlocks: ContentBlock[] = [...blocks, {
-            type: 'text' as const,
-            content: `\n*Rate limited by API. Retrying in ${chunk.retryAfterSeconds}s...*`
-          }]
-          return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
-        })
       } else if (chunk.type === 'error') {
         setIsStreaming(false)
         setWritingPath(null)

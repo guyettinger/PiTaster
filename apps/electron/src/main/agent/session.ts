@@ -641,19 +641,16 @@ function createAnyappExtension(params: {
 }
 
 /**
- * Read how full the context window is, in anyapp's shape.
+ * Read the provider's own token count for the conversation.
  *
  * Pi reports null tokens immediately after a compaction, before the next response
- * re-establishes usage; there is nothing honest to show until then, so the field is
- * simply absent.
+ * re-establishes usage; there is nothing honest to report until then.
  *
  * @param session - The live Pi session
- * @returns A partial chunk carrying usage, or an empty object when it is unknown
+ * @returns The measured tokens, or null when Pi has none
  */
-function readContextUsage(session: AgentSession): { contextUsage?: ContextUsage } {
-  const usage = session.getContextUsage()
-  if (!usage || usage.tokens === null) return {}
-  return { contextUsage: { used: usage.tokens, window: usage.contextWindow } }
+function readMeasuredTokens(session: AgentSession): number | null {
+  return session.getContextUsage()?.tokens ?? null
 }
 
 /**
@@ -946,10 +943,11 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     const chunk = toStreamChunk(event)
     if (!chunk) return
 
-    // The end of a turn is the only moment context usage changes, so the meter rides
-    // the chunk that already marks it rather than a polling channel of its own. The
-    // turn's cost and the daemon's cache verdict ride with it for the same reason:
-    // both are answers to "what did that just cost", and both are final exactly here.
+    // The end of a turn is the only moment any of this changes, so the turn's cost and
+    // the daemon's cache verdict ride the chunk that already marks it rather than a
+    // polling channel of their own. The context meter deliberately does *not*: the
+    // chunk could carry a usage number but not the attribution, and taking half the
+    // answer from the stream and half from `getContextReport` is how the two drift.
     if (chunk.type !== 'complete') {
       callbacks.onStream(chunk)
       return
@@ -958,7 +956,6 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     const measured = telemetry.snapshot()
     callbacks.onStream({
       ...chunk,
-      ...readContextUsage(session),
       turn: measured.turn,
       // The last request is the one whose prefix the daemon most recently judged.
       // An unmeasured turn — every request aborted, or the daemon reporting no usage
@@ -990,7 +987,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
         builtinToolNames: PI_BUILTIN_TOOL_NAMES,
         mcpSources,
         messages: session.state.messages,
-        measured: readContextUsage(session).contextUsage?.used ?? null,
+        measured: readMeasuredTokens(session),
         prefillRate: telemetry.snapshot().prefillRate
       }),
 

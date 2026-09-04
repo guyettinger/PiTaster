@@ -915,6 +915,21 @@ function requireSourceString(value: unknown, field: string): string {
  * @throws {Error} If any field is missing, mistyped, or out of bounds
  */
 /**
+ * Whether a string parses as an `http(s)` URL.
+ *
+ * @param value - The candidate URL
+ * @returns True when it parses and uses an http scheme
+ */
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+/**
  * Whether a sampling setting is one the daemon will accept.
  *
  * The renderer is untrusted and this value ends up in a provider request body, so the
@@ -1779,6 +1794,13 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       throw new Error('Invalid config')
     }
     if (typeof config.ollamaBaseUrl !== 'string' || config.ollamaBaseUrl.length > 2048) {
+      throw new Error('Invalid Ollama base URL')
+    }
+    // A length check is not a URL check. This value is joined with `/api/...` paths and
+    // fetched, so anything that is not http(s) — a `file:` URL, a `javascript:` one, or
+    // a string that does not parse at all — is refused here rather than becoming a
+    // request whose failure looks like an unreachable daemon.
+    if (!isHttpUrl(config.ollamaBaseUrl)) {
       throw new Error('Invalid Ollama base URL')
     }
     if (

@@ -328,7 +328,7 @@ Verified on the running app: the three-state control renders for both settings, 
 pinned 0 carries the recommendation note, and a turn on `temperature 0.6` +
 `top_p 0.95` completed in 9s — so the daemon accepts the pair.
 
-### W6 — Stability cleanups
+### W6 — Stability cleanups — **landed**
 
 Independent of the above, listed so they are not rediscovered:
 
@@ -346,6 +346,41 @@ Independent of the above, listed so they are not rediscovered:
 - `auto-commit.ts` runs a full isomorphic-git commit synchronously in that same
   hook, once per write.
 - `rate_limit` has no producer; `contextUsage` on `complete` has no consumer.
+
+Every item is closed. `config:save` disposal landed early, in W3, because the
+reasoning-effort control depended on it. The rest:
+
+- **One `/api/ps` per session start.** `prepareModelForSession` reads the loaded window
+  and now hands it to `syncOllamaModels`, which used to ask the same question about the
+  same model a moment later.
+- **`describeModel` is capped at four in flight.** A machine with thirty models opened
+  Settings by hitting one local daemon with thirty simultaneous `/api/show` requests,
+  each answered by reading a manifest off disk.
+- **`writeOllamaModelsFile` merges.** It owns the `ollama` provider and nothing else, so
+  a provider added by hand survives the re-sync that runs on every config save and every
+  session start. Its *own* provider is replaced rather than merged — a stale model list
+  merged with a fresh one would offer models that are no longer pulled. A file that does
+  not parse is replaced, because one Pi cannot read is worse than one anyapp overwrote.
+- **`ollamaBaseUrl` is parsed.** A length check is not a URL check; this value is joined
+  with `/api/…` paths and fetched, and anything that is not `http(s)` is now refused
+  rather than becoming a request whose failure looks like an unreachable daemon.
+- **`ollama.ts` has a test file** — 15 tests, over `readDaemonHealth`, the merge, and
+  URL normalization.
+- **The dependent scan is bounded by a wall clock.** One request per referencing file,
+  awaited in turn inside the `tool_result` hook, is unbounded on a widely-imported
+  module. Stopping early is safe because of what `errorCounts` means: a file left
+  unchecked is simply compared on the next write instead.
+- **`rate_limit` and `contextUsage` are gone** from the chunk, along with the dead
+  renderer branch.
+
+**`auto-commit.ts` stays synchronous, deliberately.** It was listed as an observation and
+the observation is correct — a full isomorphic-git commit runs inside the `tool_result`
+hook, once per write — but every obvious fix breaks something load-bearing. The commit
+is what makes a write roll-back-able, and `rollback` is a `git checkout`, which restores
+tracked files and leaves untracked ones in place: a write whose commit is still in flight
+when a rollback runs survives it. The hook also appends the commit's failure note to the
+tool result, which requires the result. Recording the decision here is the point of the
+list — so the next person measures it rather than rediscovering the idea and shipping it.
 
 ## Sequencing
 

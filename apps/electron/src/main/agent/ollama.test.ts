@@ -7,7 +7,10 @@
  */
 
 import { afterEach, describe, expect, test } from 'bun:test'
-import { readDaemonHealth } from './ollama'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { normalizeOllamaBaseUrl, readDaemonHealth, writeOllamaModelsFile } from './ollama'
 
 const realFetch = globalThis.fetch
 
@@ -109,5 +112,91 @@ describe('readDaemonHealth', () => {
       modelLoaded: false,
       expiresAt: null
     })
+  })
+})
+
+describe('normalizeOllamaBaseUrl', () => {
+  test('trims whitespace and trailing slashes', () => {
+    expect(normalizeOllamaBaseUrl('  http://localhost:11434///  ')).toBe('http://localhost:11434')
+  })
+
+  test('falls back to the default on an empty value', () => {
+    expect(normalizeOllamaBaseUrl('   ')).toBe('http://localhost:11434')
+  })
+})
+
+describe('writeOllamaModelsFile', () => {
+  /**
+   * A temporary agent directory.
+   * @returns Its path
+   */
+  async function agentDir(): Promise<string> {
+    return mkdtemp(join(tmpdir(), 'anyapp-models-'))
+  }
+
+  /** One model, enough to write a file with. */
+  const models = [
+    {
+      id: 'qwen',
+      contextWindow: 65536,
+      effectiveContextWindow: 65536,
+      contextWindowSource: 'daemon' as const,
+      supportsTools: true,
+      supportsVision: false,
+      supportsThinking: true
+    }
+  ]
+
+  test('writes the ollama provider', async () => {
+    const dir = await agentDir()
+    await writeOllamaModelsFile({ agentDir: dir, baseUrl: 'http://localhost:11434', models })
+
+    const written = JSON.parse(await readFile(join(dir, 'models.json'), 'utf-8'))
+    expect(written.providers.ollama.models[0].id).toBe('qwen')
+    expect(written.providers.ollama.compat.supportsReasoningEffort).toBe(true)
+  })
+
+  test('preserves a provider anyapp did not write', async () => {
+    // This file is rewritten on every config save and every session start. A provider
+    // someone added by hand must survive that, or the re-sync silently deletes it.
+    const dir = await agentDir()
+    await writeFile(
+      join(dir, 'models.json'),
+      JSON.stringify({ providers: { custom: { name: 'Mine' } }, other: 1 })
+    )
+
+    await writeOllamaModelsFile({ agentDir: dir, baseUrl: 'http://localhost:11434', models })
+
+    const written = JSON.parse(await readFile(join(dir, 'models.json'), 'utf-8'))
+    expect(written.providers.custom).toEqual({ name: 'Mine' })
+    expect(written.providers.ollama).toBeDefined()
+    expect(written.other).toBe(1)
+  })
+
+  test('replaces its own provider rather than merging into it', async () => {
+    // A stale model list merged with a fresh one would offer models that are no longer
+    // pulled, and Pi would surface them as available.
+    const dir = await agentDir()
+    await writeFile(
+      join(dir, 'models.json'),
+      JSON.stringify({ providers: { ollama: { name: 'old', models: [{ id: 'gone' }] } } })
+    )
+
+    await writeOllamaModelsFile({ agentDir: dir, baseUrl: 'http://localhost:11434', models })
+
+    const written = JSON.parse(await readFile(join(dir, 'models.json'), 'utf-8'))
+    expect(written.providers.ollama.models).toHaveLength(1)
+    expect(written.providers.ollama.models[0].id).toBe('qwen')
+  })
+
+  test('replaces a file that is not JSON', async () => {
+    // A file Pi cannot parse is worse than one anyapp overwrote.
+    const dir = await agentDir()
+    await writeFile(join(dir, 'models.json'), 'not json at all')
+
+    await writeOllamaModelsFile({ agentDir: dir, baseUrl: 'http://localhost:11434', models })
+
+    const written = JSON.parse(await readFile(join(dir, 'models.json'), 'utf-8'))
+    expect(written.providers.ollama).toBeDefined()
   })
 })

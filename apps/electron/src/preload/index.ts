@@ -13,7 +13,6 @@ interface StreamChunk {
     | 'tool_end'
     | 'complete'
     | 'error'
-    | 'rate_limit'
     | 'status'
   /** Text content (for 'text' and 'thinking' types). */
   text?: string
@@ -27,12 +26,8 @@ interface StreamChunk {
   output?: string
   /** Error message (for 'error' type, or a failed 'tool_end'). */
   error?: string
-  /** Seconds until retry (for 'rate_limit' type). */
-  retryAfterSeconds?: number
   /** What the agent is doing (for 'status' type). */
   status?: AgentStatus
-  /** Context consumed after this turn, when Pi has reported usage. */
-  contextUsage?: ContextUsage
   /** What the finished turn cost (for 'complete' type). */
   turn?: TurnCost
   /** What the daemon did with the prefix on the turn's last request. */
