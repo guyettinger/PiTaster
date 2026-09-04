@@ -292,7 +292,7 @@ the cache misses` on the meter card, and `daemon:health` answering
 strip renders during compaction, a retry, or a long prefill, none of which a
 short healthy turn produces on demand.
 
-### W5 — Model-aware sampling defaults
+### W5 — Model-aware sampling defaults — **landed**
 
 Default thinking models to their documented sampling (temperature ~0.6, `top_p`
 ~0.95) rather than greedy, keeping `0` available. Extend `createSamplingExtension`
@@ -305,6 +305,28 @@ error and there is no evidence they are honoured.
 
 Land this after W2 so the change can be judged on measured repetition and
 tool-call validity rather than on the release notes.
+
+`agent/sampling.ts` is a module of its own because the decision is testable and
+`session.ts` is long enough. A setting has **three** states — a pinned number, `null`
+for "send nothing", and `'auto'` for anyapp's recommendation — because two were not
+enough: a number input's empty state already meant "the model's own default", leaving
+nowhere to say "choose for me", which is how one baked-in number came to be sent to
+every model regardless of whether it reasons. `RECOMMENDED_SAMPLING` lives in
+`@anyapp/core` so the sentence Settings shows and the number the request carries come
+from the same constant.
+
+Two things fell out of building it that the plan did not anticipate. `'auto'` `top_p`
+sends nothing whenever the temperature in effect is 0 — a nucleus cutoff modifying a
+greedy temperature has nothing to do, and without this an install carrying anyapp's old
+pinned 0 would have started sending exactly that pair the moment the field appeared. And
+that old pinned 0 is **flagged rather than migrated**: it is indistinguishable on disk
+from a 0 someone chose, so Settings shows *Recommended for this model: 0.6* instead of
+silently changing it. F6 therefore reaches a fresh install by default and an existing one
+by a visible one-click change.
+
+Verified on the running app: the three-state control renders for both settings, the
+pinned 0 carries the recommendation note, and a turn on `temperature 0.6` +
+`top_p 0.95` completed in 9s — so the daemon accepts the pair.
 
 ### W6 — Stability cleanups
 

@@ -38,6 +38,14 @@ import {
   type ContextBudget
 } from './context-budget'
 import { confineContextFiles } from './context-files'
+import {
+  DEFAULT_SAMPLING_TEMPERATURE,
+  DEFAULT_SAMPLING_TOP_P,
+  hasSampling,
+  resolveSampling,
+  type ResolvedSampling,
+  type SamplingSetting
+} from './sampling'
 import { buildContextReport } from './context-report'
 import { createContextSealer, type AgentMessage } from './context-trim'
 import { createEditRepair } from './edit-repair'
@@ -217,12 +225,20 @@ export interface CreateAgentHostParams {
   /** Whether to shape the context sent to the model. Defaults to on. */
   trimContext?: boolean
   /**
-   * Sampling temperature to pin, or null to leave the model's own default alone.
+   * Sampling temperature: a number to pin, `null` to send none, `'auto'` for anyapp's
+   * recommendation for this model.
    *
-   * Defaults to {@link DEFAULT_SAMPLING_TEMPERATURE}. See
-   * {@link createSamplingExtension} for why anyapp sets this at all.
+   * Defaults to {@link DEFAULT_SAMPLING_TEMPERATURE}. See `agent/sampling.ts` for why
+   * the recommendation differs by model, and {@link createSamplingExtension} for why
+   * anyapp sets this at all.
    */
-  samplingTemperature?: number | null
+  samplingTemperature?: SamplingSetting
+  /**
+   * Nucleus cutoff, in the same three states as {@link samplingTemperature}.
+   *
+   * Defaults to {@link DEFAULT_SAMPLING_TOP_P}.
+   */
+  samplingTopP?: SamplingSetting
   /**
    * How hard to ask the model to think.
    *
@@ -329,27 +345,6 @@ const COMPACTION_NOTICE =
   'the app root, read it before continuing — it holds the goal and the remaining steps.'
 
 /**
- * Temperature anyapp asks for unless the user says otherwise.
- *
- * Zero, because the task that dominates a coding session is reproducing text that
- * already exists — an `oldText` that has to match a file byte for byte, an import path,
- * a type name. Ollama takes its default from the model's Modelfile, which is 0.7 to 1.0
- * on the qwen builds anyapp targets, and at that setting a model that knows the right
- * indentation will still sometimes not emit it.
- */
-export const DEFAULT_SAMPLING_TEMPERATURE = 0
-
-/**
- * Bounds on that temperature, as the OpenAI-compatible endpoint defines them.
- *
- * Exported because the IPC validator and the Settings field both bound the user's
- * value, and a bound that disagrees with this one is accepted, persisted, shown back,
- * and then rejected by the daemon — the same reasoning as `MIN_CONTEXT_WINDOW`.
- */
-export const MIN_SAMPLING_TEMPERATURE = 0
-export const MAX_SAMPLING_TEMPERATURE = 2
-
-/**
  * How hard to ask the model to think.
  *
  * A subset of Pi's seven `ThinkingLevel`s, because on Ollama only three of them are
@@ -407,13 +402,20 @@ export function toThinkingLevel(level: ReasoningLevel): 'off' | 'low' | 'medium'
  * @param temperature - The temperature to request
  * @returns A named inline extension
  */
-function createSamplingExtension(temperature: number): InlineExtension {
+function createSamplingExtension(sampling: ResolvedSampling): InlineExtension {
   return {
     name: 'anyapp-sampling',
     factory: (pi: ExtensionAPI) => {
       pi.on('before_provider_request', async (event) => {
         if (typeof event.payload !== 'object' || event.payload === null) return undefined
-        return { ...(event.payload as Record<string, unknown>), temperature }
+        // Spread only what resolved. An absent field means "send nothing", which is a
+        // different instruction from sending zero: `temperature: 0` is greedy decoding,
+        // no `temperature` is whatever the Modelfile says.
+        return {
+          ...(event.payload as Record<string, unknown>),
+          ...(sampling.temperature === undefined ? {} : { temperature: sampling.temperature }),
+          ...(sampling.topP === undefined ? {} : { top_p: sampling.topP })
+        }
       })
     }
   }
@@ -669,6 +671,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     toolProfile = 'auto',
     trimContext: trimEnabled = true,
     samplingTemperature = DEFAULT_SAMPLING_TEMPERATURE,
+    samplingTopP = DEFAULT_SAMPLING_TOP_P,
     reasoningLevel = DEFAULT_REASONING_LEVEL,
     sessionFile,
     mcpSources = [],
@@ -687,6 +690,16 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
       `Model "${modelId}" is not available from Ollama. Pull it with \`ollama pull ${modelId}\`, or pick another model in Settings.`
     )
   }
+
+  // What `'auto'` means depends on the model, and `model.reasoning` is the same flag
+  // the reasoning-effort control is gated on — `writeOllamaModelsFile` sets it from
+  // Ollama's `thinking` capability — so a model cannot be treated as reasoning by one
+  // and not the other.
+  const sampling = resolveSampling({
+    temperature: samplingTemperature,
+    topP: samplingTopP,
+    supportsThinking: model.reasoning === true
+  })
 
   const settingsManager = SettingsManager.create(app.path, agentDir)
   // Held as a function because every reload discards it and has to re-run it.
@@ -754,9 +767,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
         getLiveMessages: () => readLiveMessages?.() ?? null,
         callbacks
       }),
-      ...(samplingTemperature === null
-        ? []
-        : [createSamplingExtension(samplingTemperature)])
+      ...(hasSampling(sampling) ? [createSamplingExtension(sampling)] : [])
     ]
   }, applyAnyappSettings)
 

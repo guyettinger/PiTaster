@@ -277,12 +277,41 @@ Both modules go through `agent/file-lines.ts`, and must keep doing so. If the nu
 repair hook prints stop meaning what `replace_lines` accepts, the recovery path edits the
 wrong lines silently.
 
-Sampling is pinned too, because none of the above helps a model that knows the right
-indentation and does not emit it. Pi exposes no temperature — not in `models.json`, not
-in `SettingsManager`, not on `createAgentSession` — so `session.ts` sets it through the
-`before_provider_request` hook, whose handler's *return value replaces* the request
-payload. Ollama otherwise takes its default from the model's Modelfile, which is 0.7 or
-higher on the models anyapp targets.
+Sampling is set too, because none of the above helps a model that knows the right
+indentation and does not emit it. Pi exposes no sampling controls — not in
+`models.json`, not in `SettingsManager`, not on `createAgentSession` — so `session.ts`
+sets them through the `before_provider_request` hook, whose handler's *return value
+replaces* the request payload. Ollama otherwise takes its default from the model's
+Modelfile, which is 0.7 or higher on the models anyapp targets.
+
+**But one number cannot serve both jobs, and anyapp shipped one number.** A temperature
+of 0 is right for reproducing an `oldText` byte for byte and wrong for a Qwen3 thinking
+model, which is documented to degrade and loop under greedy decoding — the symptom
+`agent/loop-guard.ts` exists to catch, which raises the question of whether the guard
+was treating a cause anyapp introduced. `agent/sampling.ts` resolves per model instead:
+`RECOMMENDED_SAMPLING` in `@anyapp/core` gives a reasoning model Qwen3's documented
+0.6/0.95 and everything else greedy with no `top_p` at all.
+
+A setting has **three** states, because two were not enough: a number pins it, `null`
+sends nothing and leaves the Modelfile default alone, and `'auto'` asks anyapp to
+choose. A number input alone cannot express that — empty has to mean *something*, and
+when it meant "the model's own default" there was nowhere left to say "choose for me".
+
+The recommendation never produces an incoherent pair: `'auto'` `top_p` sends nothing
+whenever the temperature in effect is 0, from either source, because a nucleus cutoff
+modifying a greedy temperature has nothing to do. A `top_p` the *user* pinned is still
+sent — the suppression is a property of the recommendation, not a rule imposed on them.
+
+**An old pinned 0 is flagged, not overwritten.** anyapp's previous default was a pinned
+0 written into `config.json`, which on disk is indistinguishable from a 0 someone chose,
+so an install that predates this keeps decoding greedily. Settings says so — *Recommended
+for this model: 0.6* — rather than silently changing a value the user may have meant.
+
+Only the parameters Ollama's OpenAI-compatible endpoint actually maps are here:
+`temperature`, `top_p`, `seed`, `frequency_penalty`, `presence_penalty`. `top_k`,
+`min_p` and `repeat_penalty` are Ollama-native `options` with no place in the `/v1`
+schema — the audit found them accepted without an error and found no evidence they were
+honoured, which is exactly the shape of a control that does nothing.
 
 ## The compiler is a tool, and mostly not one
 

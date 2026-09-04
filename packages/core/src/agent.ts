@@ -101,6 +101,27 @@ export interface TurnCost {
 }
 
 /**
+ * The sampling anyapp recommends, by whether the model reasons.
+ *
+ * Defined here because two places need the same numbers: `agent/sampling.ts` sends
+ * them, and Settings tells the user what `Recommended` resolved to. A field labelled
+ * "Recommended" that silently means 0.6 on one model and 0 on another is the same
+ * class of problem as a control that does nothing — and two copies of the numbers
+ * would eventually disagree about which.
+ *
+ * The split is not a preference. Qwen3 thinking models are documented to degrade and
+ * loop under greedy decoding, and `agent/loop-guard.ts` exists to catch exactly that
+ * symptom; a model reproducing an `oldText` byte for byte wants the opposite. One
+ * number cannot serve both, and anyapp shipped one number.
+ */
+export const RECOMMENDED_SAMPLING = {
+  /** Qwen3's documented values for thinking mode. */
+  thinking: { temperature: 0.6, topP: 0.95 },
+  /** Greedy, with no nucleus cutoff: it is meaningless under greedy decoding. */
+  plain: { temperature: 0, topP: null }
+} as const
+
+/**
  * Whether the local daemon can answer, and whether it still has the model in memory.
  *
  * Both halves matter and they fail differently. An unreachable daemon fails the next

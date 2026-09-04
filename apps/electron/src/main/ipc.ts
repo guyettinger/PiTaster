@@ -11,15 +11,21 @@ import { promises as fs } from 'node:fs'
 import {
   createAgentHost,
   resolveToolNames,
-  DEFAULT_SAMPLING_TEMPERATURE,
-  MAX_SAMPLING_TEMPERATURE,
-  MIN_SAMPLING_TEMPERATURE,
   REASONING_LEVELS,
   DEFAULT_REASONING_LEVEL,
   type ReasoningLevel,
   PI_BUILTIN_TOOL_NAMES,
   type AgentHost
 } from './agent/session'
+import {
+  DEFAULT_SAMPLING_TEMPERATURE,
+  DEFAULT_SAMPLING_TOP_P,
+  MAX_SAMPLING_TEMPERATURE,
+  MAX_SAMPLING_TOP_P,
+  MIN_SAMPLING_TEMPERATURE,
+  MIN_SAMPLING_TOP_P,
+  type SamplingSetting
+} from './agent/sampling'
 import { buildContextReport } from './agent/context-report'
 import { createTelemetry, type Telemetry } from './agent/telemetry'
 import { readWorkspaceLayout, writeWorkspaceLayout } from './layout-store'
@@ -507,7 +513,16 @@ interface AppConfig {
    * is reproducing text that already exists, so anyapp pins 0; null restores the
    * model's default for anyone who wants it.
    */
-  samplingTemperature: number | null
+  samplingTemperature: SamplingSetting
+  /**
+   * Nucleus cutoff, in the same three states as {@link samplingTemperature}.
+   *
+   * `top_p` is one of the five parameters Ollama's OpenAI-compatible endpoint actually
+   * maps. `top_k`, `min_p` and `repeat_penalty` are Ollama-native options with no place
+   * in that schema and are deliberately absent: the audit found them accepted without
+   * an error and found no evidence they were honoured.
+   */
+  samplingTopP: SamplingSetting
   /**
    * How hard to ask the model to think.
    *
@@ -528,6 +543,7 @@ const defaultConfig: AppConfig = {
   toolProfile: 'auto',
   trimContext: true,
   samplingTemperature: DEFAULT_SAMPLING_TEMPERATURE,
+  samplingTopP: DEFAULT_SAMPLING_TOP_P,
   reasoningLevel: DEFAULT_REASONING_LEVEL
 }
 
@@ -898,6 +914,23 @@ function requireSourceString(value: unknown, field: string): string {
  * @returns A validated MCP source configuration
  * @throws {Error} If any field is missing, mistyped, or out of bounds
  */
+/**
+ * Whether a sampling setting is one the daemon will accept.
+ *
+ * The renderer is untrusted and this value ends up in a provider request body, so the
+ * check is on the shape as well as the range: anything that is not a finite number in
+ * bounds, `null`, or the literal `'auto'` is refused rather than coerced.
+ *
+ * @param value - The configured value
+ * @param min - Lowest number the endpoint accepts
+ * @param max - Highest number the endpoint accepts
+ * @returns True when the value may be persisted
+ */
+function isValidSampling(value: unknown, min: number, max: number): value is SamplingSetting {
+  if (value === null || value === 'auto') return true
+  return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
+}
+
 function validateMcpSourceConfig(config: unknown): McpSourceConfig {
   if (typeof config !== 'object' || config === null) {
     throw new Error('Invalid source configuration')
@@ -1141,6 +1174,7 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
     toolProfile: config.toolProfile,
     trimContext: config.trimContext,
     samplingTemperature: config.samplingTemperature,
+    samplingTopP: config.samplingTopP,
     reasoningLevel: config.reasoningLevel,
     sessionFile: sessionFile ?? undefined,
     mcpSources: sourceManager.getConnectedSources().filter((source) => source.connected),
@@ -1780,16 +1814,13 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (typeof config.trimContext !== 'boolean') {
       throw new Error('Invalid trimContext')
     }
-    // Bounded by what the OpenAI-compatible endpoint accepts. Null is the deliberate
-    // "leave the model alone" value and is not the same as 0.
-    if (
-      config.samplingTemperature !== null &&
-      (typeof config.samplingTemperature !== 'number' ||
-        !Number.isFinite(config.samplingTemperature) ||
-        config.samplingTemperature < MIN_SAMPLING_TEMPERATURE ||
-        config.samplingTemperature > MAX_SAMPLING_TEMPERATURE)
-    ) {
+    // Bounded by what the OpenAI-compatible endpoint accepts. `null` is the deliberate
+    // "send nothing" value and is not the same as 0; `'auto'` asks anyapp to choose.
+    if (!isValidSampling(config.samplingTemperature, MIN_SAMPLING_TEMPERATURE, MAX_SAMPLING_TEMPERATURE)) {
       throw new Error('Invalid sampling temperature')
+    }
+    if (!isValidSampling(config.samplingTopP, MIN_SAMPLING_TOP_P, MAX_SAMPLING_TOP_P)) {
+      throw new Error('Invalid sampling top_p')
     }
     // An allowlist rather than a string check: this value reaches Pi as a
     // `thinkingLevel` and then the daemon as `reasoning_effort`, and the renderer is

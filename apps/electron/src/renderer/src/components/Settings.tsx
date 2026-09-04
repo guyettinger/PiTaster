@@ -6,7 +6,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { SourcesPanel } from './SourcesPanel'
 import { PermissionModeControl, describePermissionMode } from './PermissionModeControl'
 import { WarningIcon, CheckIcon } from './icons'
-import type { PermissionMode } from '../types/electron'
+import { RECOMMENDED_SAMPLING } from '@anyapp/core'
+import type { PermissionMode, SamplingSetting } from '../types/electron'
 
 /**
  * Application configuration.
@@ -29,7 +30,9 @@ export interface AppConfig {
   /** Whether to shape the context sent to the model. */
   trimContext: boolean
   /** Sampling temperature for the model, or null for the model's own default. */
-  samplingTemperature: number | null
+  samplingTemperature: SamplingSetting
+  /** Nucleus cutoff, in the same three states as {@link samplingTemperature}. */
+  samplingTopP: SamplingSetting
   /** How hard to ask the model to think; `unset` sends no `reasoning_effort`. */
   reasoningLevel: 'unset' | 'low' | 'medium' | 'high'
 }
@@ -74,7 +77,8 @@ const DEFAULT_CONFIG: AppConfig = {
   contextWindow: null,
   toolProfile: 'auto',
   trimContext: true,
-  samplingTemperature: 0,
+  samplingTemperature: 'auto',
+  samplingTopP: 'auto',
   reasoningLevel: 'unset'
 }
 
@@ -105,6 +109,101 @@ function Field({ label, hint, children }: FieldProps) {
       {hint && <p className="mt-1.5 text-[12px] text-ash">{hint}</p>}
     </div>
   )
+}
+
+/**
+ * Props for the SamplingControl component.
+ */
+interface SamplingControlProps {
+  /** The configured value. */
+  value: SamplingSetting
+  /** Lowest number the endpoint accepts. */
+  min: number
+  /** Highest number the endpoint accepts. */
+  max: number
+  /** Step for the number input. */
+  step: number
+  /** Report a new value. */
+  onChange: (value: SamplingSetting) => void
+}
+
+/**
+ * A sampling setting in its three states.
+ *
+ * A number input alone cannot express them: empty has to mean *something*, and when it
+ * meant "the model's own default" there was nowhere left to say "let anyapp choose".
+ * That is how one baked-in number came to be sent to every model regardless of whether
+ * it reasons. The mode is chosen explicitly and the number appears only when it is
+ * being pinned.
+ */
+function SamplingControl({ value, min, max, step, onChange }: SamplingControlProps) {
+  const mode = value === 'auto' ? 'auto' : value === null ? 'none' : 'pinned'
+
+  return (
+    <div className="flex gap-2">
+      <select
+        value={mode}
+        onChange={(e) => {
+          if (e.target.value === 'auto') return onChange('auto')
+          if (e.target.value === 'none') return onChange(null)
+          // Land on the recommendation rather than on an empty box, so switching to
+          // Pinned never sends a request with a value nobody chose.
+          onChange(typeof value === 'number' ? value : min)
+        }}
+        className={FIELD_CLASS}
+      >
+        <option value="auto">Recommended</option>
+        <option value="none">Model default</option>
+        <option value="pinned">Pinned</option>
+      </select>
+      {mode === 'pinned' && (
+        <input
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={typeof value === 'number' ? value : min}
+          onChange={(e) => onChange(e.target.value === '' ? min : Number(e.target.value))}
+          className={`${FIELD_CLASS} max-w-28`}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Say what a sampling setting is currently doing.
+ *
+ * The recommendation is only useful if a person can see what it chose: a field reading
+ * "Recommended" that silently means 0.6 on one model and 0 on another is the same class
+ * of problem as a control that does nothing.
+ *
+ * @param value - The configured value
+ * @param recommended - What `Recommended` resolves to for the selected model
+ * @param pinned - What to say about a pinned value
+ * @returns One sentence
+ */
+function describeSampling(
+  value: SamplingSetting,
+  recommended: number | null,
+  pinned: string
+): string {
+  if (value === 'auto') {
+    return recommended === null
+      ? 'Recommended for this model: send nothing, and let the model use its own default.'
+      : `Recommended for this model: ${recommended}.`
+  }
+  if (value === null) {
+    return "Sending nothing. Ollama takes the value from the model's Modelfile — usually 0.7 or higher."
+  }
+  // A pinned value that disagrees with the recommendation is said out loud rather than
+  // corrected. anyapp's old default was a pinned 0, which is indistinguishable on disk
+  // from a 0 someone chose — so an install that predates this control keeps decoding
+  // greedily, including on a reasoning model, and nothing would otherwise say so.
+  if (recommended !== null && value !== recommended) {
+    return `${pinned} Recommended for this model: ${recommended}.`
+  }
+  return pinned
 }
 
 /**
@@ -226,6 +325,11 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
   )
 
   const selectedModel = models.find((model) => model.id === config.ollamaModel)
+  // What `Recommended` resolves to. Read from the same constant `agent/sampling.ts`
+  // sends, so the sentence and the request cannot disagree.
+  const recommended = selectedModel?.supportsThinking
+    ? RECOMMENDED_SAMPLING.thinking
+    : RECOMMENDED_SAMPLING.plain
 
   return (
     <div className="flex h-full flex-col">
@@ -426,31 +530,42 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
 
                 <Field
                   label="Temperature"
-                  hint={
-                    config.samplingTemperature === null
-                      ? "Using the model's own default, which Ollama takes from its Modelfile — usually 0.7 or higher."
-                      : 'Most of a coding turn is reproducing text that already exists exactly, which is what a low temperature is for. Leave empty to use the model\u2019s own default.'
-                  }
+                  hint={describeSampling(
+                    config.samplingTemperature,
+                    recommended.temperature,
+                    'Most of a coding turn is reproducing text that already exists exactly, which is what a low temperature is for.'
+                  )}
                 >
-                  <input
-                    type="number"
+                  <SamplingControl
+                    value={config.samplingTemperature}
                     // MIN_SAMPLING_TEMPERATURE and MAX_SAMPLING_TEMPERATURE in
-                    // main/agent/session.ts are the source of truth; the renderer
+                    // main/agent/sampling.ts are the source of truth; the renderer
                     // cannot import from main, so these are mirrored the way the
                     // context window bounds above are. `config:save` rejects anything
                     // outside them.
                     min={0}
                     max={2}
                     step={0.1}
-                    value={config.samplingTemperature ?? ''}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        samplingTemperature: e.target.value === '' ? null : Number(e.target.value)
-                      })
+                    onChange={(samplingTemperature) =>
+                      setConfig({ ...config, samplingTemperature })
                     }
-                    placeholder="Model default"
-                    className={FIELD_CLASS}
+                  />
+                </Field>
+
+                <Field
+                  label="Top-p"
+                  hint={describeSampling(
+                    config.samplingTopP,
+                    recommended.topP,
+                    'Nucleus sampling. It does nothing at temperature 0, which is why the recommendation only sets it for a reasoning model.'
+                  )}
+                >
+                  <SamplingControl
+                    value={config.samplingTopP}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    onChange={(samplingTopP) => setConfig({ ...config, samplingTopP })}
                   />
                 </Field>
 

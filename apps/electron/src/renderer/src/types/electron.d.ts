@@ -4,6 +4,14 @@
 
 import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, CacheVerdict, DaemonHealth, ElementContext, SerializedContentBlock, Skill, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, TurnCost } from '@anyapp/core'
 
+/**
+ * A sampling value as the user configured it.
+ *
+ * A number pins it; `null` sends nothing and leaves the model's Modelfile default
+ * alone; `'auto'` asks anyapp to choose from what it knows about the model.
+ */
+type SamplingSetting = number | 'auto' | null
+
 /** Permission mode type for tool execution. */
 type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
 
@@ -260,7 +268,9 @@ interface AppConfig {
   /** Whether to shape the context sent to the model. */
   trimContext: boolean
   /** Sampling temperature for the model, or null for the model's own default. */
-  samplingTemperature: number | null
+  samplingTemperature: SamplingSetting
+  /** Nucleus cutoff, in the same three states as {@link samplingTemperature}. */
+  samplingTopP: SamplingSetting
   /**
    * How hard to ask the model to think.
    *
@@ -557,6 +567,7 @@ declare global {
 
 export type { 
   PermissionMode, 
+  SamplingSetting,
   StreamChunk,
   AgentStatus,
   CacheVerdict,
