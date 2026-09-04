@@ -62,6 +62,7 @@ import {
   type TelemetrySnapshot
 } from './telemetry'
 import { toStreamChunk } from './events'
+import { createTurnTracker } from './turn-completion'
 import { createMcpTools, getMcpToolBindings, type CallMcpTool } from './mcp-tools'
 import {
   checkConfinement,
@@ -805,33 +806,66 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
   const stall = createStallNotifier({ onStream: callbacks.onStream })
   const retryBudget = createRetryBudget()
 
-  // Whether a turn is being measured.
+  // Where a turn begins and ends, for both the measurement and the renderer.
   //
   // Deliberately not keyed on `agent_start` alone. Pi re-emits that for every retry
   // and every overflow-compaction continuation — the reason `loop-guard` resets there
   // and `retry-budget` deliberately does not — so a turn summary anchored to it would
   // start over mid-turn and report the last continuation as the whole turn.
   // `agent_settled` fires once, after everything that could continue the run has
-  // declined to, which makes it the honest end.
-  let turnOpen = false
+  // declined to, which makes it the honest end. See `agent/turn-completion.ts` for why
+  // the `complete` chunk has to come off whichever mark arrives first.
+  const turn = createTurnTracker()
+
+  /**
+   * Send the turn's `complete` chunk, once.
+   *
+   * The turn's cost and the daemon's cache verdict ride this chunk rather than a
+   * polling channel of their own, because the end of a turn is the moment both become
+   * final. The context meter deliberately does *not*: the chunk could carry a usage
+   * number but not the attribution, and taking half the answer from the stream and half
+   * from `getContextReport` is how the two drift.
+   *
+   * Called from both ends of a turn — `agent_end` when there is one, `agent_settled`
+   * always — and idempotent, so whichever arrives first is the one the renderer sees.
+   *
+   * @param chunk - The `complete` chunk to enrich, when one came from `toStreamChunk`
+   */
+  const emitComplete = (chunk: StreamChunk = { type: 'complete' }): void => {
+    if (!turn.claimCompletion()) return
+
+    const measured = telemetry.snapshot()
+    callbacks.onStream({
+      ...chunk,
+      turn: measured.turn,
+      // The last request is the one whose prefix the daemon most recently judged.
+      // An unmeasured turn — every request aborted, or the daemon reporting no usage
+      // — leaves this `unknown`, which the UI renders as "not reported" rather than
+      // as a healthy reuse.
+      cache: measured.requests[measured.requests.length - 1]?.cache ?? 'unknown'
+    })
+  }
 
   /**
    * Record one session event against the request being measured.
    *
-   * Kept separate from the control flow below because nothing here decides anything:
-   * it only writes down what the daemon did. The request's own two ends come from
-   * Pi's provider hooks in the guard extension; everything else — the first token,
-   * the final usage, the turn boundaries — is already passing through here.
+   * Kept separate from the control flow below because it decides nothing about the
+   * run: it writes down what the daemon did and marks the turn's two ends. The
+   * request's own ends come from Pi's provider hooks in the guard extension;
+   * everything else — the first token, the final usage, the turn boundaries — is
+   * already passing through here.
+   *
+   * The one thing it sends is the turn's `complete` at `agent_settled`, and that is
+   * here rather than beside the other chunks because it has to follow
+   * `telemetry.turnEnded()` — the cost the chunk carries has to include the request
+   * that closing the turn just closed.
    *
    * @param event - The Pi session event
    */
   const recordTelemetry = (event: AgentSessionEvent): void => {
     switch (event.type) {
       case 'agent_start':
-        if (!turnOpen) {
-          turnOpen = true
-          telemetry.turnStarted()
-        }
+        if (turn.begin()) telemetry.turnStarted()
         return
 
       case 'compaction_start':
@@ -859,17 +893,21 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
       }
 
       case 'agent_settled': {
-        turnOpen = false
+        turn.settle()
         telemetry.turnEnded()
-        const { turn, totals } = telemetry.snapshot()
-        // One line per turn, and the only measurement anyapp produces until W4 gives
-        // it a home in the UI. It is here rather than behind a flag because the
+        // The honest end, and the backstop for the renderer. `agent_end` is the fast
+        // path and usually gets here first; when it does not, this is what stops the
+        // composer sitting disabled behind a run that has finished. Deliberately after
+        // `turnEnded`, so the cost the chunk carries includes the request that closed.
+        emitComplete()
+        const { turn: summary, totals } = telemetry.snapshot()
+        // One line per turn. It is here rather than behind a flag because the
         // re-prefill count is the number whose absence hid Session 25's finding for
         // six sessions.
-        if (turn.requests > 0) {
+        if (summary.requests > 0) {
           console.log(
             '[agent]',
-            formatTurnSummary(turn),
+            formatTurnSummary(summary),
             `| session: ${totals.invalidations} invalidated, ${totals.compactions} compacted`
           )
         }
@@ -943,26 +981,12 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     const chunk = toStreamChunk(event)
     if (!chunk) return
 
-    // The end of a turn is the only moment any of this changes, so the turn's cost and
-    // the daemon's cache verdict ride the chunk that already marks it rather than a
-    // polling channel of their own. The context meter deliberately does *not*: the
-    // chunk could carry a usage number but not the attribution, and taking half the
-    // answer from the stream and half from `getContextReport` is how the two drift.
     if (chunk.type !== 'complete') {
       callbacks.onStream(chunk)
       return
     }
 
-    const measured = telemetry.snapshot()
-    callbacks.onStream({
-      ...chunk,
-      turn: measured.turn,
-      // The last request is the one whose prefix the daemon most recently judged.
-      // An unmeasured turn — every request aborted, or the daemon reporting no usage
-      // — leaves this `unknown`, which the UI renders as "not reported" rather than
-      // as a healthy reuse.
-      cache: measured.requests[measured.requests.length - 1]?.cache ?? 'unknown'
-    })
+    emitComplete(chunk)
   })
 
   return {

@@ -36,7 +36,7 @@ export function DaemonPanel() {
   const { activeSessionId } = useWorkspace()
   const { turnRevision } = useAgentActivity()
   const health = useDaemonHealth()
-  const telemetry = useTelemetry()
+  const { snapshot: telemetry } = useTelemetry()
   const { report } = useContextReport(activeSessionId, turnRevision)
   const [model, setModel] = useState('')
   const [, setTick] = useState(0)
