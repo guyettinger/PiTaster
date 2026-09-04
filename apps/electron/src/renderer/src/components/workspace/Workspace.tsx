@@ -5,9 +5,11 @@ import { WorkspaceProvider } from './WorkspaceContext'
 import { EmptyDock } from './EmptyDock'
 import { WORKSPACE_COMPONENTS } from './panels'
 import { ANYAPP_DOCKVIEW_THEME } from './theme'
-import { openCodePanel } from './actions'
+import { openCodePanel, openSingletonPanel } from './actions'
+import { WORKSPACE_PANEL_KINDS } from './catalog'
 import { useWorkspaceLayout } from '../../hooks/useWorkspaceLayout'
 import type { WorkspaceContextValue } from './WorkspaceContext'
+import type { WorkspacePanelName } from './catalog'
 import type { PermissionMode } from '../../types/electron'
 import type { SubApp } from '@anyapp/core'
 
@@ -81,6 +83,17 @@ export function Workspace({
     [api]
   )
 
+  // Opening an instrument panel from the gauge that summarizes it. The gauge names a
+  // panel kind rather than holding the dock's API, so the composer stays ignorant of
+  // dockview — the same separation `openFile` already draws.
+  const openPanel = useCallback(
+    (name: WorkspacePanelName) => {
+      const kind = WORKSPACE_PANEL_KINDS.find((candidate) => candidate.name === name)
+      if (api && kind) openSingletonPanel(api, kind)
+    },
+    [api]
+  )
+
   // A rollback or a branch switch moves HEAD, which invalidates the composer's
   // changed-files strip — it is a diff against a fixed commit. Wrapping the two
   // callbacks here rather than counting in `App` keeps the whole concern beside
@@ -120,6 +133,7 @@ export function Workspace({
       onBranchCreate,
       onOpenSkills,
       openFile,
+      openPanel,
       changesRevision
     }),
     [
@@ -134,6 +148,7 @@ export function Workspace({
       onBranchCreate,
       onOpenSkills,
       openFile,
+      openPanel,
       changesRevision
     ]
   )

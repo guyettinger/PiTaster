@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { DiffView } from './DiffView'
-import { ChevronDownIcon, FileEditIcon } from './icons'
+import { GaugeCard, GaugePopover } from './GaugePopover'
+import { ChevronDownIcon } from './icons'
 import type { FilePatch } from '@anyapp/core'
-
-/** How many files the collapsed strip names before deferring to the list. */
-const INLINE_LIMIT = 3
 
 /** Width of a row's diffstat bar at full scale, in pixels. */
 const STAT_BAR_WIDTH = 64
@@ -32,7 +30,7 @@ export interface CollectChangedFilesOptions {
   /** Working-tree paths git reports as modified. */
   uncommitted: string[]
   /** Paths the agent wrote this turn, before the next git read absorbs them. */
-  pendingPaths: string[]
+  pendingPaths: readonly string[]
 }
 
 /**
@@ -103,29 +101,38 @@ export interface ChangedFilesStripProps {
   /** Working-tree paths git reports as modified. */
   uncommitted: string[]
   /** Paths the agent wrote this turn. */
-  pendingPaths: string[]
+  pendingPaths: readonly string[]
   /** The file being written right now, or null when nothing is. */
   writingPath: string | null
   /** Open a file in its own Code panel. */
   onOpenFile: (path: string) => void
+  /** Open the Changes panel. */
+  onOpenPanel: () => void
 }
 
 /**
- * What this conversation has changed, above the box you type the next thing into.
+ * What this conversation has changed, as one gauge in the instrument row.
  *
- * The transcript already shows each individual write, and the History panel shows
- * each commit. Neither answers the question a person actually has after twenty
- * turns — *what has this touched?* — without scrolling or expanding one thing at a
- * time. This is that answer, in the one place nobody has to arrange a dock to see.
+ * The transcript already shows each individual write, and the History panel shows each
+ * commit. Neither answers the question a person actually has after twenty turns —
+ * *what has this touched?* — without scrolling or expanding one thing at a time.
  *
- * It renders nothing at all when nothing has changed. That is why the composer was
- * the right home for it: an idle session pays no height for it.
+ * It used to hide itself when nothing had changed, which was right when it owned a row
+ * of its own and wrong now: a gauge that vanishes moves every gauge beside it, and the
+ * row exists to stop the composer moving. An idle session reads `no changes` instead,
+ * dimmed, and its card is suppressed rather than opened onto an empty list.
  */
 export function ChangedFilesStrip(props: ChangedFilesStripProps) {
-  const { patches, committedPaths, uncommitted, pendingPaths, writingPath, onOpenFile } = props
-  const [isOpen, setIsOpen] = useState(false)
+  const {
+    patches,
+    committedPaths,
+    uncommitted,
+    pendingPaths,
+    writingPath,
+    onOpenFile,
+    onOpenPanel
+  } = props
   const [expanded, setExpanded] = useState<string | null>(null)
-  const wrapper = useRef<HTMLDivElement>(null)
 
   const files = useMemo(
     () => collectChangedFiles({ patches, committedPaths, uncommitted, pendingPaths }),
@@ -135,110 +142,110 @@ export function ChangedFilesStrip(props: ChangedFilesStripProps) {
   const added = patches.reduce((total, patch) => total + patch.added, 0)
   const removed = patches.reduce((total, patch) => total + patch.removed, 0)
 
-  // Dismiss on a click anywhere else, and on Escape. Bound only while open, so an
-  // idle composer carries no document listeners.
-  useEffect(() => {
-    if (!isOpen) return
+  const open = useCallback((path: string) => onOpenFile(path), [onOpenFile])
 
-    const onPointerDown = (event: MouseEvent): void => {
-      if (!wrapper.current?.contains(event.target as Node)) setIsOpen(false)
-    }
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setIsOpen(false)
-    }
-
-    document.addEventListener('mousedown', onPointerDown)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [isOpen])
-
-  const open = useCallback(
-    (path: string) => {
-      onOpenFile(path)
-      setIsOpen(false)
-    },
-    [onOpenFile]
-  )
-
-  if (files.length === 0 && !writingPath) return null
-
-  const inline = files.slice(0, INLINE_LIMIT)
-  const rest = files.length - inline.length
-  // Only the names actually on screen have to be distinct from each other; the list
-  // shows every path in full, so it needs none of this.
-  const labels = shortLabels(inline.map((file) => file.path))
+  const label = writingPath
+    ? `Writing ${writingPath}`
+    : files.length === 0
+      ? 'no changes'
+      : `${files.length} file${files.length === 1 ? '' : 's'}`
 
   return (
-    <div ref={wrapper} className="relative mb-2 flex items-center gap-3 text-[11.5px]">
-      {writingPath ? (
-        <span className="flex min-w-0 items-center gap-1.5 text-brass">
-          <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-brass" />
-          <span className="shrink-0">Writing</span>
-          <span className="truncate font-mono text-[11px]">{writingPath}</span>
-        </span>
-      ) : (
-        <span className="flex shrink-0 items-center gap-1.5 text-ash">
-          <FileEditIcon size={13} />
-          <span>
-            {files.length} file{files.length === 1 ? '' : 's'} changed
-          </span>
-          {added + removed > 0 && <Stat added={added} removed={removed} />}
-        </span>
-      )}
+    <GaugePopover
+      label={`Changes: ${label}`}
+      hasCard={files.length > 0}
+      trigger={
+        writingPath ? (
+          <>
+            <span
+              aria-hidden
+              className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-brass"
+            />
+            <span className="min-w-0 truncate font-mono text-[11px] text-brass">
+              {writingPath}
+            </span>
+          </>
+        ) : (
+          <>
+            <span
+              aria-hidden
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                files.length === 0 ? 'bg-line' : 'bg-patina'
+              }`}
+            />
+            <span className={files.length === 0 ? 'opacity-60' : ''}>{label}</span>
+            {added + removed > 0 && <Stat added={added} removed={removed} />}
+          </>
+        )
+      }
+    >
+{(close) => (
+        <GaugeCard width="w-[26rem]">
+          <div className="max-h-[24rem] overflow-y-auto">
+            <ChangedFileList
+              files={files}
+              expanded={expanded}
+              onToggle={setExpanded}
+              onOpen={open}
+            />
+          </div>
 
-      {!writingPath && (
-        <div className="flex min-w-0 items-center gap-3">
-          {inline.map((file, index) => (
+          <div className="mt-2 border-t border-line px-3 pt-2">
             <button
-              key={file.path}
-              onClick={() => open(file.path)}
-              title={file.path}
-              className="flex min-w-0 items-center gap-1.5 rounded text-ash transition-colors hover:text-bone"
+              onClick={() => {
+                close()
+                onOpenPanel()
+              }}
+              className="rounded px-2 py-1 text-ash transition-colors hover:bg-raised hover:text-bone"
             >
-              <span className="max-w-[11rem] truncate font-mono text-[11px]">
-                {labels[index]}
-              </span>
-              {file.patch && <Stat added={file.patch.added} removed={file.patch.removed} />}
+              Open Changes →
             </button>
-          ))}
-        </div>
+          </div>
+        </GaugeCard>
       )}
+    </GaugePopover>
+  )
+}
 
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        aria-expanded={isOpen}
-        aria-label="Show every file this session changed"
-        className="ml-auto flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-ash transition-colors hover:bg-raised hover:text-bone"
-      >
-        {rest > 0 && !writingPath && <span>{rest} more</span>}
-        <ChevronDownIcon
-          size={13}
-          className={`transition-transform ${isOpen ? '' : 'rotate-180'}`}
-        />
-      </button>
+/**
+ * Props for {@link ChangedFileList}.
+ */
+export interface ChangedFileListProps {
+  /** The session's changed files, already ordered. */
+  files: ChangedFile[]
+  /** The path whose diff is open, if any. */
+  expanded: string | null
+  /** Open or close a file's diff. */
+  onToggle: (path: string | null) => void
+  /** Open a file in its own Code panel. */
+  onOpen: (path: string) => void
+}
 
-      {isOpen && (
-        <div className="absolute bottom-full right-0 z-20 mb-2 max-h-[26rem] w-[26rem] max-w-full overflow-y-auto rounded-lg border border-line bg-panel shadow-lg shadow-ground/60">
-          <FileGroup
-            label="Committed this session"
-            files={files.filter((file) => file.state === 'committed')}
-            expanded={expanded}
-            onToggle={setExpanded}
-            onOpen={open}
-          />
-          <FileGroup
-            label="Not yet committed"
-            files={files.filter((file) => file.state !== 'committed')}
-            expanded={expanded}
-            onToggle={setExpanded}
-            onOpen={open}
-          />
-        </div>
-      )}
-    </div>
+/**
+ * The two groups of changed files, with their diffs on request.
+ *
+ * Exported because the gauge's card and the Changes panel must show the same rows.
+ * They differ only in how much height they have to show them in, which is a property
+ * of where they are rendered rather than of what they render.
+ */
+export function ChangedFileList({ files, expanded, onToggle, onOpen }: ChangedFileListProps) {
+  return (
+    <>
+      <FileGroup
+        label="Committed this session"
+        files={files.filter((file) => file.state === 'committed')}
+        expanded={expanded}
+        onToggle={onToggle}
+        onOpen={onOpen}
+      />
+      <FileGroup
+        label="Not yet committed"
+        files={files.filter((file) => file.state !== 'committed')}
+        expanded={expanded}
+        onToggle={onToggle}
+        onOpen={onOpen}
+      />
+    </>
   )
 }
 
@@ -446,44 +453,4 @@ function describeNoPatch(state: ChangedFile['state']): string {
  */
 function basename(path: string): string {
   return path.slice(path.lastIndexOf('/') + 1)
-}
-
-/** Most path segments a disambiguated label will grow to. */
-const MAX_LABEL_SEGMENTS = 4
-
-/**
- * Shortest labels that still tell a set of paths apart.
- *
- * A file name alone is what a person reads, and it is enough almost always. It is
- * not enough for the case this app produces constantly: an agent moving a file
- * commits a delete and an add of the same name, and the strip would show
- * `dry-pass.md −120  dry-pass.md +120` — two rows that look like a contradiction
- * rather than a move. Each colliding label takes one more parent segment until the
- * collision is gone.
- *
- * @param paths - The paths being labelled, in display order
- * @returns One label per path, in the same order
- */
-export function shortLabels(paths: string[]): string[] {
-  const segments = paths.map((path) => path.split('/'))
-  const depth = paths.map(() => 1)
-
-  const render = (): string[] => segments.map((parts, i) => parts.slice(-depth[i]).join('/'))
-
-  for (let pass = 1; pass < MAX_LABEL_SEGMENTS; pass++) {
-    const labels = render()
-    const counts = new Map<string, number>()
-    for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1)
-
-    let grew = false
-    labels.forEach((label, i) => {
-      if ((counts.get(label) ?? 0) > 1 && depth[i] < segments[i].length) {
-        depth[i] += 1
-        grew = true
-      }
-    })
-    if (!grew) break
-  }
-
-  return render()
 }

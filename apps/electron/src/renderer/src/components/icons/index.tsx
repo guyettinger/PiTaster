@@ -370,3 +370,23 @@ export function ToolIcon(props: IconProps) {
     </Icon>
   )
 }
+
+/** A pulse trace: the agent working, and what that work has cost. */
+export function PulseIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M2.5 12h3.8l2.6-6.4 4 14.2 2.7-7.8h5.9" />
+    </Icon>
+  )
+}
+
+/** Stacked racks: the local daemon, holding a model. */
+export function DaemonIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3.5" y="4" width="17" height="6.5" rx="1.8" />
+      <rect x="3.5" y="13.5" width="17" height="6.5" rx="1.8" />
+      <path d="M7 7.25h.01M7 16.75h.01" />
+    </Icon>
+  )
+}

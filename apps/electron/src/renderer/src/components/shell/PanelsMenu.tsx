@@ -2,11 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { PanelToggle } from './PanelToggle'
 import {
   ChatIcon,
+  DaemonIcon,
+  FileEditIcon,
   FolderIcon,
   HistoryIcon,
   LayoutIcon,
   PlayIcon,
   PreviewIcon,
+  PulseIcon,
   SourceIcon,
   TerminalIcon
 } from '../icons'
@@ -35,7 +38,10 @@ const PANEL_ICONS: Record<WorkspacePanelName, ReactNode> = {
   code: <FolderIcon size={16} />,
   history: <HistoryIcon size={16} />,
   terminal: <TerminalIcon size={16} />,
-  preview: <PreviewIcon size={16} />
+  preview: <PreviewIcon size={16} />,
+  activity: <PulseIcon size={16} />,
+  daemon: <DaemonIcon size={16} />,
+  changes: <FileEditIcon size={16} />
 }
 
 /**

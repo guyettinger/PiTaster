@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
+import type { WorkspacePanelName } from './catalog'
 import type { PermissionMode } from '../../types/electron'
 import type { SubApp } from '@anyapp/core'
 
@@ -34,6 +35,13 @@ export interface WorkspaceContextValue {
   onOpenSkills: () => void
   /** Open a file as its own Code panel, focusing it if already open. */
   openFile: (path: string) => void
+  /**
+   * Open one of the instrument panels, focusing it if it is already open.
+   *
+   * Named by kind rather than handed the dock's API, so a gauge in the composer can
+   * offer to open its panel without knowing dockview exists.
+   */
+  openPanel: (panel: WorkspacePanelName) => void
   /**
    * Bumped whenever something moves HEAD from outside a conversation.
    *

@@ -21,6 +21,9 @@ import { VersionControl } from '../VersionControl'
 import { TerminalPanel } from '../TerminalPanel'
 import { PreviewPanel } from '../PreviewPanel'
 import { AppServerBlock } from '../shell/AppServerBlock'
+import { ActivityPanel } from './ActivityPanel'
+import { ChangesPanel } from './ChangesPanel'
+import { DaemonPanel } from './DaemonPanel'
 import { FileTree } from '../code/FileTree'
 import { CodeViewer } from '../code/CodeViewer'
 import { WarningIcon } from '../icons'
@@ -70,8 +73,16 @@ function ServerPanel() {
  * The conversation with the agent.
  */
 function ChatPanel() {
-  const { app, permissionMode, onModeChange, activeSessionId, onOpenSkills, openFile, changesRevision } =
-    useWorkspace()
+  const {
+    app,
+    permissionMode,
+    onModeChange,
+    activeSessionId,
+    onOpenSkills,
+    openFile,
+    openPanel,
+    changesRevision
+  } = useWorkspace()
   return (
     <Chat
       app={app}
@@ -80,6 +91,7 @@ function ChatPanel() {
       activeSessionId={activeSessionId}
       onOpenSkills={onOpenSkills}
       onOpenFile={openFile}
+      onOpenPanel={openPanel}
       changesRevision={changesRevision}
     />
   )
@@ -262,5 +274,8 @@ export const WORKSPACE_COMPONENTS: Record<
   code: CodeFilePanel,
   history: HistoryPanel,
   terminal: LogsPanel,
-  preview: PreviewDockPanel
+  preview: PreviewDockPanel,
+  activity: ActivityPanel,
+  daemon: DaemonPanel,
+  changes: ChangesPanel
 }

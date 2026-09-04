@@ -19,18 +19,22 @@ import { useSkills } from '../hooks/useSkills'
 import { useContextReport } from '../hooks/useContextReport'
 import { useSessionChanges } from '../hooks/useSessionChanges'
 import { useDaemonHealth } from '../hooks/useDaemonHealth'
-import { ChangedFilesStrip } from './ChangedFilesStrip'
-import { ContextMeter } from './ContextMeter'
-import { TurnSummaryStrip } from './TurnSummaryStrip'
-import { DaemonHealthStrip } from './DaemonHealthStrip'
+import { useTelemetry } from '../hooks/useTelemetry'
+import { AgentGaugeRow } from './AgentGaugeRow'
+import {
+  beginTurn,
+  endTurn,
+  publishActivity,
+  recordWrite,
+  resetActivity,
+  useAgentActivity
+} from '../state/agentActivity'
 import type { Message, ContentBlock } from './MessageBubble'
+import type { WorkspacePanelName } from './workspace/catalog'
 import type {
-  AgentStatus,
-  CacheVerdict,
   PermissionMode,
   StreamChunk,
   ToolApprovalRequest,
-  TurnCost,
   PersistedMessage
 } from '../types/electron'
 import type {
@@ -65,6 +69,8 @@ interface ChatProps {
   onOpenSkills: () => void
   /** Open one of the app's files in its own Code panel. */
   onOpenFile: (path: string) => void
+  /** Open one of the instrument panels, from the gauge that summarizes it. */
+  onOpenPanel: (panel: WorkspacePanelName) => void
   /**
    * Bumped when something outside this conversation moves HEAD.
    *
@@ -169,57 +175,6 @@ function toUIMessages(history: PersistedMessage[]): Message[] {
 /**
  * Main chat interface with streaming messages and tool approval.
  */
-/**
- * Props for {@link AgentStatusStrip}.
- */
-interface AgentStatusStripProps {
-  /** What the agent is doing. */
-  status: AgentStatus
-}
-
-/**
- * One line saying what the agent is doing while it is not producing tokens.
- *
- * Compaction, retries and long prefills are most of the wall-clock time on a slow
- * local model. Left unrendered they are indistinguishable from a crash, and the usual
- * response is to kill a run that was about to recover on its own.
- */
-/**
- * How each kind of wait reads.
- *
- * The dot's colour is the whole point of reading `kind`: compaction, a failed request
- * being retried, and a long prefill are three different situations with three
- * different right responses, and they used to render identically. `retrying` is the
- * one that earns a warning colour — it means something already went wrong.
- */
-const STATUS_TONES: Record<AgentStatus['kind'], { tone: string; fallback: string }> = {
-  compacting: { tone: 'bg-brass', fallback: 'Summarizing the conversation…' },
-  retrying: { tone: 'bg-rust', fallback: 'Retrying…' },
-  waiting: { tone: 'bg-ash', fallback: 'Waiting on the model…' },
-  settled: { tone: 'bg-patina', fallback: 'Working…' }
-}
-
-function AgentStatusStrip({ status }: AgentStatusStripProps) {
-  const attempt =
-    status.attempt && status.maxAttempts
-      ? ` (${status.attempt} of ${status.maxAttempts})`
-      : ''
-  const { tone, fallback } = STATUS_TONES[status.kind] ?? STATUS_TONES.waiting
-
-  return (
-    <div className="mx-auto mb-2 flex max-w-3xl items-center gap-2 text-[12px] text-ash">
-      <span
-        aria-hidden
-        className={`h-1.5 w-1.5 shrink-0 animate-pulse rounded-full ${tone}`}
-      />
-      <span role="status">
-        {status.detail ?? fallback}
-        {attempt}
-      </span>
-    </div>
-  )
-}
-
 export function Chat({
   app,
   permissionMode,
@@ -227,30 +182,48 @@ export function Chat({
   activeSessionId,
   onOpenSkills,
   onOpenFile,
+  onOpenPanel,
   changesRevision
 }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
-  const [isStreaming, setIsStreaming] = useState(false)
   const [pendingApproval, setPendingApproval] = useState<ToolApprovalRequest | null>(null)
-  const [status, setStatus] = useState<AgentStatus | null>(null)
-  // What the last finished turn cost. Held until the next turn starts, which is when
-  // the status strip takes the slot back.
-  const [lastTurn, setLastTurn] = useState<{ turn: TurnCost; cache: CacheVerdict } | null>(null)
+  const [model, setModel] = useState('')
+
+  // What the agent is doing, in the one place the instrument panels can read it too.
+  //
+  // This used to be five `useState` calls here. The panels cannot subscribe to
+  // `agent:stream` themselves — `offAgentStream` is `removeAllListeners`, so a second
+  // subscriber tears this one down on unmount — and they must not read it off
+  // `WorkspaceContext`, whose value is memoized precisely so a per-turn change does not
+  // re-render every panel including this transcript. So the stream is still consumed
+  // here, exactly once, and published into a store the panels subscribe to.
+  //
+  // `turnRevision` is the whole point of that: it is bumped when a turn completes, and
+  // it is what both this composer and the Changes panel key their git read on.
+  const activity = useAgentActivity()
+  const { isStreaming, turnRevision } = activity
+
   const daemonHealth = useDaemonHealth()
-  // Bumped when a turn ends, which is the only moment the conversation's share of the
-  // window changes. The fixed share changes on things this component never sees — a
-  // skill toggled off, a source connected — so the hook also refetches on mount, which
-  // is every return to the chat panel.
-  const [contextRevision, setContextRevision] = useState(0)
-  // What the agent has written this turn, and what it is writing right now. Both are
-  // read off the stream rather than from git, so the strip moves while the turn is
-  // still running; the git read at the end of the turn is what makes them accurate.
-  const [pendingPaths, setPendingPaths] = useState<string[]>([])
-  const [writingPath, setWritingPath] = useState<string | null>(null)
-  // Bumped when a turn ends. Paired with `changesRevision` from the dock, which is
-  // bumped when a rollback or a branch switch moves HEAD from somewhere else.
-  const [turnRevision, setTurnRevision] = useState(0)
+  const telemetry = useTelemetry()
+
+  // The model's name, for the daemon gauge's resting label. Read once: changing it
+  // goes through Settings, which disposes the agent host and remounts this panel.
+  useEffect(() => {
+    let cancelled = false
+    void window.electronAPI
+      .getConfig()
+      .then((config) => {
+        if (!cancelled) setModel(config.ollamaModel ?? '')
+      })
+      .catch(() => {
+        // A label. Not worth an error state in the composer.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const sessionChanges = useSessionChanges({
     appId: app.id,
     appPath: app.path,
@@ -262,7 +235,7 @@ export function Chat({
     compact: compactContext,
     isCompacting,
     error: compactError
-  } = useContextReport(activeSessionId, contextRevision)
+  } = useContextReport(activeSessionId, turnRevision)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   
@@ -315,12 +288,11 @@ export function Chat({
   // second changed no session id and so left the history alone.
   useEffect(() => {
     setMessages([])
-    setIsStreaming(false)
     setPendingApproval(null)
-    // The optimistic half of the strip belongs to the conversation that produced it.
-    // The committed half is re-read from git for the new session by `useSessionChanges`.
-    setPendingPaths([])
-    setWritingPath(null)
+    // The optimistic half of the gauges belongs to the conversation that produced it,
+    // and so does the last turn's cost. The committed half is re-read from git for the
+    // new session by `useSessionChanges`.
+    resetActivity()
 
     if (!activeSessionId) return
     let cancelled = false
@@ -415,7 +387,7 @@ export function Chat({
 
         const target = chunk.input?.path
         if (WRITING_TOOLS.has(chunk.tool) && typeof target === 'string') {
-          setWritingPath(target)
+          publishActivity({ writingPath: target })
         }
 
         setMessages(prev => {
@@ -469,38 +441,35 @@ export function Chat({
         // `details` for `write`, `edit` and `replace_lines`, and `refactor` builds its
         // own for every file it rewrote. Nothing else has to know which tool wrote what.
         if (chunk.patches && chunk.patches.length > 0) {
-          const written = chunk.patches.map((patch) => patch.path)
-          setPendingPaths((prev) => [...new Set([...written, ...prev])])
+          for (const patch of chunk.patches) recordWrite(patch.path)
         }
 
-        setWritingPath(null)
+        publishActivity({ writingPath: null })
         currentToolRef.current = null
       } else if (chunk.type === 'complete') {
-        setIsStreaming(false)
-        setStatus(null)
-        if (chunk.turn) setLastTurn({ turn: chunk.turn, cache: chunk.cache ?? 'unknown' })
         currentToolRef.current = null
-        // The turn is the only moment the conversation's share of the window changes,
-        // so it is the only moment worth re-reading the report. The chunk carries a
-        // usage number too, but not the attribution, and taking half the answer from
-        // one source and half from another is how the two drift apart.
-        setContextRevision((revision) => revision + 1)
-        // Reconcile the strip against git. Until now it has been showing what the
-        // stream said; from here it shows the *net* change across the whole session,
-        // which is the only version that survives the same file being written twice.
-        setWritingPath(null)
-        setTurnRevision((revision) => revision + 1)
+        // One call closes the turn, and its revision bump does three jobs that used to
+        // be three pieces of state. It re-reads the context report — the turn is the
+        // only moment the conversation's share of the window changes, and the chunk
+        // carries a usage number but not the attribution, so taking half the answer
+        // from each source is how the two drift. It reconciles the changed files
+        // against git, which is the only version that survives the same file being
+        // written twice. And it tells the Activity panel there is something new to
+        // read.
+        endTurn(chunk.turn ? { turn: chunk.turn, cache: chunk.cache ?? 'unknown' } : null)
         // The agent persists its own transcript; nothing to save here.
       } else if (chunk.type === 'status') {
         // Compaction, retries and long prefills are most of the wall-clock time on a
         // local model. Without this they render as a hang.
-        setStatus(chunk.status?.kind === 'settled' ? null : (chunk.status ?? null))
+        publishActivity({
+          status: chunk.status?.kind === 'settled' ? null : (chunk.status ?? null)
+        })
       } else if (chunk.type === 'error') {
-        setIsStreaming(false)
-        setWritingPath(null)
-        // Without this the strip keeps saying "…retrying" after the run it described
-        // has failed, which reads as a run still in progress.
-        setStatus(null)
+        // Without clearing the status the gauge keeps saying "…retrying" after the
+        // run it described has failed, which reads as a run still in progress. A
+        // failed turn has no cost to report, so nothing is shown rather than a
+        // summary of zero.
+        endTurn(null)
         
         // Add error to current tool or as text
         setMessages(prev => {
@@ -590,7 +559,7 @@ export function Chat({
 
     setMessages(prev => [...prev, userMessage, assistantMessage])
     setInput('')
-    setIsStreaming(true)
+    beginTurn()
 
     // Convert message blocks to serialized format for agent
     const serializedBlocks = convertToSerializedBlocks(userMessage.blocks || [])
@@ -606,11 +575,10 @@ export function Chat({
     } catch (err) {
       console.error('Failed to abort agent:', err)
     } finally {
-      setIsStreaming(false)
       // Aborting denies any approval still waiting in the main process, so the card
       // asking for it is answered and must not stay on screen.
       setPendingApproval(null)
-      setStatus(null)
+      endTurn(null)
     }
   }, [])
 
@@ -699,21 +667,25 @@ export function Chat({
 
       {/* Composer */}
       <div className="border-t border-line px-6 py-4">
-        <DaemonHealthStrip health={daemonHealth} />
-        {status ? (
-          <AgentStatusStrip status={status} />
-        ) : (
-          lastTurn && <TurnSummaryStrip turn={lastTurn.turn} cache={lastTurn.cache} />
-        )}
+        {/* Four gauges in one fixed-height row. Nothing in it appears or disappears,
+            which is the property the four strips it replaces did not have: each of
+            them rendered conditionally, so the box below moved as the agent worked. */}
+        <AgentGaugeRow
+          activity={activity}
+          telemetry={telemetry}
+          health={daemonHealth}
+          model={model}
+          report={contextReport}
+          changes={sessionChanges}
+          onCompact={compactContext}
+          isCompacting={isCompacting}
+          compactError={compactError}
+          onOpenSkills={onOpenSkills}
+          onOpenFile={onOpenFile}
+          onOpenPanel={onOpenPanel}
+        />
+
         <div className="mx-auto max-w-3xl">
-          <ChangedFilesStrip
-            patches={sessionChanges.patches}
-            committedPaths={sessionChanges.committedPaths}
-            uncommitted={sessionChanges.uncommitted}
-            pendingPaths={pendingPaths}
-            writingPath={writingPath}
-            onOpenFile={onOpenFile}
-          />
           <SkillMentionMenu
             skills={mentionableSkills}
             query={mentionQuery}
@@ -784,14 +756,9 @@ export function Chat({
             <PermissionModeControl mode={permissionMode} onModeChange={onModeChange} />
 
             <div className="flex items-center gap-3">
-              <ContextMeter
-                report={contextReport}
-                onOpenSkills={onOpenSkills}
-                onCompact={compactContext}
-                isCompacting={isCompacting}
-                error={compactError}
-              />
-
+              {/* The context meter used to live here. It is a gauge now, in the row
+                  above, beside the other three — this row is the two things you *do*
+                  to a conversation rather than the four you read off it. */}
               {messages.length > 0 && (
                 <button
                   onClick={clearHistory}
