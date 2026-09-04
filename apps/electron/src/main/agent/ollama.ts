@@ -8,6 +8,7 @@
 
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
+import type { DaemonHealth } from '@anyapp/core'
 import { deriveContextBudget, type ContextBudget, type ContextWindowSource } from './context-budget'
 
 /** Default address of the local Ollama daemon, without the `/v1` suffix. */
@@ -124,6 +125,55 @@ export interface ListOllamaModelsParams {
   selectedModel?: string | null
   /** The user's context-window override from Settings, when they set one. */
   contextWindowOverride?: number | null
+  /**
+   * The selected model's loaded window, when the caller has already read it.
+   *
+   * `/api/ps` is a probe, and a session start used to run it twice: once in
+   * {@link prepareModelForSession} and again in here, for the same model, moments
+   * apart. Passing the first answer in is how the second call is avoided without
+   * either caller having to know about the other's timing.
+   */
+  daemonWindow?: number | null
+}
+
+/**
+ * Concurrent `/api/show` requests while describing the pulled models.
+ *
+ * The listing used to fan out one request per model at once, so a machine with thirty
+ * models opened Settings by hitting a single local daemon with thirty simultaneous
+ * requests — each of which Ollama answers by reading a manifest off disk. Four is
+ * enough to hide the round trips without making the daemon queue.
+ */
+const DESCRIBE_CONCURRENCY = 4
+
+/**
+ * Map over items with a bounded number in flight.
+ *
+ * Order is preserved, so the caller can still pair results with inputs by index.
+ *
+ * @param items - The inputs
+ * @param limit - Maximum concurrent calls
+ * @param run - The per-item work
+ * @returns The results, in the input's order
+ */
+async function mapWithLimit<In, Out>(
+  items: In[],
+  limit: number,
+  run: (item: In) => Promise<Out>
+): Promise<Out[]> {
+  const results = new Array<Out>(items.length)
+  let next = 0
+
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next
+      next += 1
+      results[index] = await run(items[index])
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
 }
 
 /**
@@ -208,10 +258,14 @@ export async function listOllamaModels(params: ListOllamaModelsParams): Promise<
   const normalized = normalizeOllamaBaseUrl(baseUrl)
 
   // Only the selected model is worth probing: `/api/ps` answers for loaded models,
-  // and loading every pulled model to ask would be absurd.
-  const daemonWindow = selectedModel
-    ? await getLoadedContextLength({ baseUrl: normalized, modelId: selectedModel })
-    : null
+  // and loading every pulled model to ask would be absurd. A caller that has just
+  // warmed the model has already asked, and passes the answer in.
+  const daemonWindow =
+    params.daemonWindow !== undefined
+      ? params.daemonWindow
+      : selectedModel
+        ? await getLoadedContextLength({ baseUrl: normalized, modelId: selectedModel })
+        : null
 
   let entries: OllamaTagEntry[]
   try {
@@ -228,8 +282,10 @@ export async function listOllamaModels(params: ListOllamaModelsParams): Promise<
     return []
   }
 
-  const described = await Promise.all(
-    entries.map(async (entry): Promise<OllamaModel | null> => {
+  const described = await mapWithLimit(
+    entries,
+    DESCRIBE_CONCURRENCY,
+    async (entry): Promise<OllamaModel | null> => {
       const id = typeof entry.name === 'string' ? entry.name : entry.model
       if (typeof id !== 'string' || id.length === 0) return null
 
@@ -252,7 +308,7 @@ export async function listOllamaModels(params: ListOllamaModelsParams): Promise<
         effectiveContextWindow: budget.window,
         contextWindowSource: budget.source
       }
-    })
+    }
   )
 
   return described
@@ -282,6 +338,8 @@ interface OllamaRunningEntry {
   model?: unknown
   /** Context length the daemon actually loaded this model with. */
   context_length?: unknown
+  /** ISO timestamp at which the daemon will unload this model. */
+  expires_at?: unknown
 }
 
 /**
@@ -357,6 +415,60 @@ export async function warmModel(params: LoadedModelParams): Promise<boolean> {
 }
 
 /**
+ * Read whether the daemon is answering and whether it still holds the model.
+ *
+ * One request, because both answers come from `/api/ps`: a response at all proves the
+ * daemon is up, and the entry for the selected model — if there is one — carries the
+ * `expires_at` after which it is unloaded.
+ *
+ * That second number is worth surfacing because its cost is invisible until it is
+ * paid. `warmModel` asks for 30 minutes, but a model loaded by anything else carries
+ * the daemon's 5-minute default, and the first turn after an unload pays a full
+ * reload of a 32 GB model on top of its prefill — indistinguishable, from the outside,
+ * from a turn that simply hung.
+ *
+ * @param params - Daemon URL and the selected model, if any
+ * @returns The daemon's health; never throws
+ */
+export async function readDaemonHealth(params: {
+  /** Ollama daemon base URL, without the `/v1` suffix. */
+  baseUrl: string
+  /** The selected model tag, or null when none is chosen. */
+  modelId: string | null
+}): Promise<DaemonHealth> {
+  const { baseUrl, modelId } = params
+  const unreachable: DaemonHealth = { reachable: false, modelLoaded: null, expiresAt: null }
+
+  try {
+    const response = await fetch(`${normalizeOllamaBaseUrl(baseUrl)}/api/ps`, {
+      signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS)
+    })
+    if (!response.ok) return unreachable
+
+    const payload = (await response.json()) as { models?: unknown }
+    if (modelId === null) return { reachable: true, modelLoaded: null, expiresAt: null }
+    if (!Array.isArray(payload.models)) {
+      return { reachable: true, modelLoaded: false, expiresAt: null }
+    }
+
+    for (const entry of payload.models as OllamaRunningEntry[]) {
+      const id = typeof entry.name === 'string' ? entry.name : entry.model
+      if (id !== modelId) continue
+      const expires =
+        typeof entry.expires_at === 'string' ? Date.parse(entry.expires_at) : Number.NaN
+      return {
+        reachable: true,
+        modelLoaded: true,
+        expiresAt: Number.isFinite(expires) ? expires : null
+      }
+    }
+    return { reachable: true, modelLoaded: false, expiresAt: null }
+  } catch {
+    return unreachable
+  }
+}
+
+/**
  * Check whether the Ollama daemon is reachable.
  * @param baseUrl - Ollama daemon base URL, without the `/v1` suffix
  * @returns True when the daemon answered
@@ -375,9 +487,21 @@ export async function isOllamaReachable(baseUrl: string): Promise<boolean> {
 /**
  * Write `<agentDir>/models.json` describing the Ollama provider to Pi.
  *
- * Two compatibility flags are mandatory: Ollama's OpenAI-compatible endpoint does not
- * understand the `developer` role or `reasoning_effort`, and reasoning-capable models
- * fail outright without them.
+ * `supportsDeveloperRole` and `supportsStore` are off because Ollama's
+ * OpenAI-compatible endpoint does not understand either, and a reasoning-capable model
+ * fails outright with them.
+ *
+ * `supportsReasoningEffort` was off for the same stated reason and should not have
+ * been. Session 25's audit sent the parameter directly: `low`, `medium` and `high`
+ * are all accepted, and `low` and `high` measurably change both the prompt token
+ * count — so the daemon injects something into the template — and the length of the
+ * reasoning produced. `medium` is byte-identical to sending nothing. Disabling the
+ * flag stripped the one working control anyapp had over how long a model thinks.
+ *
+ * What it does *not* buy is an off switch. With `thinkingLevel: 'off'` Pi sends no
+ * `reasoning_effort` at all, and the audit found the models reasoning on every
+ * request regardless. Ollama's native `think: false` works, but that is `/api/chat`,
+ * not the `/v1` path Pi uses.
  *
  * @param params - Target directory, daemon URL, and models to register
  */
@@ -397,7 +521,7 @@ export async function writeOllamaModelsFile(
         apiKey: 'ollama',
         compat: {
           supportsDeveloperRole: false,
-          supportsReasoningEffort: false,
+          supportsReasoningEffort: true,
           supportsStore: false
         },
         models: models.map((model) => {
@@ -419,11 +543,36 @@ export async function writeOllamaModelsFile(
   }
 
   await fs.mkdir(agentDir, { recursive: true })
-  await fs.writeFile(
-    join(agentDir, 'models.json'),
-    `${JSON.stringify(config, null, 2)}\n`,
-    'utf-8'
-  )
+  const modelsPath = join(agentDir, 'models.json')
+
+  // Merge rather than clobber. anyapp owns the `ollama` provider and nothing else in
+  // this file, so a provider a user added by hand — or one a future anyapp writes —
+  // must survive a re-sync, which happens on every config save and every session
+  // start. An unreadable or malformed file is replaced, because a file Pi cannot parse
+  // is worse than one anyapp overwrote.
+  let existing: Record<string, unknown> = {}
+  try {
+    const parsed: unknown = JSON.parse(await fs.readFile(modelsPath, 'utf-8'))
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      existing = parsed as Record<string, unknown>
+    }
+  } catch {
+    // No file yet, or one that is not JSON. Either way there is nothing to preserve.
+  }
+
+  const existingProviders =
+    typeof existing.providers === 'object' &&
+    existing.providers !== null &&
+    !Array.isArray(existing.providers)
+      ? (existing.providers as Record<string, unknown>)
+      : {}
+
+  const merged = {
+    ...existing,
+    providers: { ...existingProviders, ...config.providers }
+  }
+
+  await fs.writeFile(modelsPath, `${JSON.stringify(merged, null, 2)}\n`, 'utf-8')
 }
 
 /**
@@ -438,11 +587,14 @@ export async function writeOllamaModelsFile(
  * @param params - Agent directory, daemon URL, selected model, and any user override
  * @returns The discovered models, each carrying its effective context window
  */
-export async function syncOllamaModels(params: SyncOllamaModelsParams): Promise<OllamaModel[]> {
+export async function syncOllamaModels(
+  params: SyncOllamaModelsParams & { daemonWindow?: number | null }
+): Promise<OllamaModel[]> {
   const models = await listOllamaModels({
     baseUrl: params.baseUrl,
     selectedModel: params.selectedModel,
-    contextWindowOverride: params.contextWindowOverride
+    contextWindowOverride: params.contextWindowOverride,
+    daemonWindow: params.daemonWindow
   })
   await writeOllamaModelsFile({ agentDir: params.agentDir, baseUrl: params.baseUrl, models })
   return models
@@ -467,7 +619,9 @@ export async function prepareModelForSession(
     baseUrl: params.baseUrl,
     modelId: params.selectedModel
   })
-  const models = await syncOllamaModels(params)
+  // Handed on rather than re-probed: the listing would otherwise ask `/api/ps` the
+  // same question about the same model a moment later.
+  const models = await syncOllamaModels({ ...params, daemonWindow })
   const selected = models.find((model) => model.id === params.selectedModel)
 
   // Derived from the raw inputs rather than from the already-resolved window, so the

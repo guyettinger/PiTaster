@@ -35,6 +35,22 @@ const MAX_MESSAGE_LENGTH = 240
 const MAX_NAMED_DEPENDENTS = 5
 
 /**
+ * Wall-clock budget for checking the files that import the one just written.
+ *
+ * This runs inside the `tool_result` hook, so every millisecond here is a millisecond
+ * the model waits for a result it has already earned. The loop is one request per
+ * referencing file, which on a widely-imported module — a types file, a shared util —
+ * is unbounded in exactly the direction that matters, and each request can make the
+ * language service rebuild.
+ *
+ * Stopping early is safe because of what `errorCounts` means: a file absent from it has
+ * never been checked and nothing is claimed about it, and a file left unchecked this
+ * time is simply compared on the next write instead. A note that takes eight seconds to
+ * arrive is worse than one that names four dependents instead of six.
+ */
+const DEPENDENT_BUDGET_MS = 1500
+
+/**
  * Something that can answer language-service requests.
  *
  * Narrower than the full client so tests can supply a function instead of a process.
@@ -169,7 +185,9 @@ export function createDiagnosticsNotifier(params: {
       const importers = await source.request({ kind: 'referencingFiles', path })
       const brokenDependents: string[] = []
       if (importers.kind === 'paths') {
+        const deadline = Date.now() + DEPENDENT_BUDGET_MS
         for (const dependent of importers.paths) {
+          if (Date.now() > deadline) break
           const previous = errorCounts.get(dependent)
           const current = await errorsFor(dependent)
           if (current === null) continue

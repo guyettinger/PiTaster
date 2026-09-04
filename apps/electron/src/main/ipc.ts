@@ -11,13 +11,23 @@ import { promises as fs } from 'node:fs'
 import {
   createAgentHost,
   resolveToolNames,
-  DEFAULT_SAMPLING_TEMPERATURE,
-  MAX_SAMPLING_TEMPERATURE,
-  MIN_SAMPLING_TEMPERATURE,
+  REASONING_LEVELS,
+  DEFAULT_REASONING_LEVEL,
+  type ReasoningLevel,
   PI_BUILTIN_TOOL_NAMES,
   type AgentHost
 } from './agent/session'
+import {
+  DEFAULT_SAMPLING_TEMPERATURE,
+  DEFAULT_SAMPLING_TOP_P,
+  MAX_SAMPLING_TEMPERATURE,
+  MAX_SAMPLING_TOP_P,
+  MIN_SAMPLING_TEMPERATURE,
+  MIN_SAMPLING_TOP_P,
+  type SamplingSetting
+} from './agent/sampling'
 import { buildContextReport } from './agent/context-report'
+import { createTelemetry, type Telemetry } from './agent/telemetry'
 import { readWorkspaceLayout, writeWorkspaceLayout } from './layout-store'
 import { ensureSessionBaseline, readSessionBaseline } from './session-baselines'
 import { describeNetworkUse } from './agent/permission-gate'
@@ -41,11 +51,12 @@ import {
   ChatHistoryManager,
   installDependencies
 } from '@anyapp/shared'
-import type { AgentStatus, ContextReport, PermissionMode, StreamChunk, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
+import type { AgentStatus, ContextReport, DaemonHealth, PermissionMode, StreamChunk, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@anyapp/core'
 import {
   DEFAULT_OLLAMA_BASE_URL,
   isOllamaReachable,
   listOllamaModels,
+  readDaemonHealth,
   prepareModelForSession,
   syncOllamaModels,
   type OllamaModel
@@ -127,6 +138,28 @@ let cachedReport: ContextReport | null = null
  */
 function forgetCachedReport(): void {
   cachedReport = null
+}
+
+/**
+ * What the daemon has been asked to do for the conversation on screen.
+ *
+ * Owned here rather than by the host for the same reason {@link cachedReport} is:
+ * `disposeAgentHost` runs on every skills, sources or config save, and a recorder
+ * rebuilt with the host would answer "how many times did this conversation re-prefill"
+ * with however many turns have passed since the last settings change. That number is
+ * the acceptance test for the sealed-prefix work, so it has to span the conversation.
+ */
+let sessionTelemetry: Telemetry = createTelemetry()
+
+/**
+ * Start measuring again, because the conversation changed.
+ *
+ * Paired with {@link forgetCachedReport} at every site, and always after
+ * `disposeAgentHost` — a live host holds the recorder it was built with, so replacing
+ * it while one is running would leave that host writing to a recorder nobody reads.
+ */
+function forgetSessionTelemetry(): void {
+  sessionTelemetry = createTelemetry()
 }
 
 /**
@@ -480,7 +513,23 @@ interface AppConfig {
    * is reproducing text that already exists, so anyapp pins 0; null restores the
    * model's default for anyone who wants it.
    */
-  samplingTemperature: number | null
+  samplingTemperature: SamplingSetting
+  /**
+   * Nucleus cutoff, in the same three states as {@link samplingTemperature}.
+   *
+   * `top_p` is one of the five parameters Ollama's OpenAI-compatible endpoint actually
+   * maps. `top_k`, `min_p` and `repeat_penalty` are Ollama-native options with no place
+   * in that schema and are deliberately absent: the audit found them accepted without
+   * an error and found no evidence they were honoured.
+   */
+  samplingTopP: SamplingSetting
+  /**
+   * How hard to ask the model to think.
+   *
+   * Only three levels are offered because only three are distinguishable on Ollama,
+   * and `unset` is not `off` — see `ReasoningLevel` in `agent/session.ts`.
+   */
+  reasoningLevel: ReasoningLevel
 }
 
 /** Default configuration. */
@@ -493,7 +542,9 @@ const defaultConfig: AppConfig = {
   contextWindow: null,
   toolProfile: 'auto',
   trimContext: true,
-  samplingTemperature: DEFAULT_SAMPLING_TEMPERATURE
+  samplingTemperature: DEFAULT_SAMPLING_TEMPERATURE,
+  samplingTopP: DEFAULT_SAMPLING_TOP_P,
+  reasoningLevel: DEFAULT_REASONING_LEVEL
 }
 
 /** Cached configuration, populated by {@link loadConfig}. */
@@ -863,6 +914,38 @@ function requireSourceString(value: unknown, field: string): string {
  * @returns A validated MCP source configuration
  * @throws {Error} If any field is missing, mistyped, or out of bounds
  */
+/**
+ * Whether a string parses as an `http(s)` URL.
+ *
+ * @param value - The candidate URL
+ * @returns True when it parses and uses an http scheme
+ */
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Whether a sampling setting is one the daemon will accept.
+ *
+ * The renderer is untrusted and this value ends up in a provider request body, so the
+ * check is on the shape as well as the range: anything that is not a finite number in
+ * bounds, `null`, or the literal `'auto'` is refused rather than coerced.
+ *
+ * @param value - The configured value
+ * @param min - Lowest number the endpoint accepts
+ * @param max - Highest number the endpoint accepts
+ * @returns True when the value may be persisted
+ */
+function isValidSampling(value: unknown, min: number, max: number): value is SamplingSetting {
+  if (value === null || value === 'auto') return true
+  return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
+}
+
 function validateMcpSourceConfig(config: unknown): McpSourceConfig {
   if (typeof config !== 'object' || config === null) {
     throw new Error('Invalid source configuration')
@@ -1106,8 +1189,11 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
     toolProfile: config.toolProfile,
     trimContext: config.trimContext,
     samplingTemperature: config.samplingTemperature,
+    samplingTopP: config.samplingTopP,
+    reasoningLevel: config.reasoningLevel,
     sessionFile: sessionFile ?? undefined,
     mcpSources: sourceManager.getConnectedSources().filter((source) => source.connected),
+    telemetry: sessionTelemetry,
     callbacks: {
       getPermissionMode: () => currentPermissionMode,
       denyPendingApprovals,
@@ -1199,6 +1285,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   ipcMain.handle('agent:clear-history', async (): Promise<void> => {
     await disposeAgentHost()
     forgetCachedReport()
+    forgetSessionTelemetry()
   })
 
   // Send message to agent
@@ -1530,7 +1617,10 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     // navigation — the Apps page is how a user gets back to a chat — and forgetting the
     // conversation there would drop the context meter to its fixed floor for a trip the
     // user made to return to the very conversation it describes.
-    if (id !== activeAppId) forgetCachedReport()
+    if (id !== activeAppId) {
+      forgetCachedReport()
+      forgetSessionTelemetry()
+    }
     activeAppId = id
     activeSessionId = null
     
@@ -1706,6 +1796,13 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (typeof config.ollamaBaseUrl !== 'string' || config.ollamaBaseUrl.length > 2048) {
       throw new Error('Invalid Ollama base URL')
     }
+    // A length check is not a URL check. This value is joined with `/api/...` paths and
+    // fetched, so anything that is not http(s) — a `file:` URL, a `javascript:` one, or
+    // a string that does not parse at all — is refused here rather than becoming a
+    // request whose failure looks like an unreachable daemon.
+    if (!isHttpUrl(config.ollamaBaseUrl)) {
+      throw new Error('Invalid Ollama base URL')
+    }
     if (
       config.ollamaModel !== null &&
       (typeof config.ollamaModel !== 'string' || config.ollamaModel.length > 256)
@@ -1739,18 +1836,42 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (typeof config.trimContext !== 'boolean') {
       throw new Error('Invalid trimContext')
     }
-    // Bounded by what the OpenAI-compatible endpoint accepts. Null is the deliberate
-    // "leave the model alone" value and is not the same as 0.
-    if (
-      config.samplingTemperature !== null &&
-      (typeof config.samplingTemperature !== 'number' ||
-        !Number.isFinite(config.samplingTemperature) ||
-        config.samplingTemperature < MIN_SAMPLING_TEMPERATURE ||
-        config.samplingTemperature > MAX_SAMPLING_TEMPERATURE)
-    ) {
+    // Bounded by what the OpenAI-compatible endpoint accepts. `null` is the deliberate
+    // "send nothing" value and is not the same as 0; `'auto'` asks anyapp to choose.
+    if (!isValidSampling(config.samplingTemperature, MIN_SAMPLING_TEMPERATURE, MAX_SAMPLING_TEMPERATURE)) {
       throw new Error('Invalid sampling temperature')
     }
-    return saveConfig(config)
+    if (!isValidSampling(config.samplingTopP, MIN_SAMPLING_TOP_P, MAX_SAMPLING_TOP_P)) {
+      throw new Error('Invalid sampling top_p')
+    }
+    // An allowlist rather than a string check: this value reaches Pi as a
+    // `thinkingLevel` and then the daemon as `reasoning_effort`, and the renderer is
+    // untrusted.
+    if (!REASONING_LEVELS.includes(config.reasoningLevel)) {
+      throw new Error('Invalid reasoning level')
+    }
+    await saveConfig(config)
+    // Every setting on this page is read once, when the host is built: the reasoning
+    // level and the temperature reach Pi through `createAgentSession`, the tool
+    // profile fixes the tool list, and the window override rewrites `models.json`.
+    // Without this a saved change did nothing until some unrelated action — a skills
+    // save, an app switch — happened to dispose the host, which is indistinguishable
+    // from a control that does not work. Deliberately *not* paired with
+    // `forgetCachedReport` or `forgetSessionTelemetry`: the conversation this
+    // disposes is still the one on screen, and its numbers still describe it.
+    await disposeAgentHost()
+  })
+
+  /**
+   * Whether the daemon is answering, and whether it still holds the selected model.
+   *
+   * Cheap enough to poll: one `/api/ps` against a local daemon, with the same short
+   * timeout as every other discovery call. It exists outside Settings because that is
+   * the one place a person is *not* looking when a turn fails to start.
+   */
+  ipcMain.handle('daemon:health', async (): Promise<DaemonHealth> => {
+    const config = getConfig()
+    return readDaemonHealth({ baseUrl: config.ollamaBaseUrl, modelId: config.ollamaModel })
   })
 
   /**
@@ -1792,6 +1913,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     await chatHistoryManager.clearHistory(activeAppId, activeSessionId)
     await disposeAgentHost()
     forgetCachedReport()
+    forgetSessionTelemetry()
   })
 
   // Chat session IPC handlers
@@ -1809,6 +1931,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     activeSessionId = session.id
     await disposeAgentHost()
     forgetCachedReport()
+    forgetSessionTelemetry()
 
     // Notify renderer
     sendSessionChanged(mainWindow, activeAppId, session.id, [])
@@ -1830,6 +1953,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       activeSessionId = newActiveId
       await disposeAgentHost()
       forgetCachedReport()
+      forgetSessionTelemetry()
 
       const history = newActiveId
         ? await chatHistoryManager.loadHistory(activeAppId, newActiveId)
@@ -1859,6 +1983,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     activeSessionId = sessionId
     await disposeAgentHost()
     forgetCachedReport()
+    forgetSessionTelemetry()
 
     // Load history for the new session
     const history = await chatHistoryManager.loadHistory(activeAppId, sessionId)
@@ -2026,6 +2151,7 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('permissions:set-mode')
   ipcMain.removeHandler('agent:clear-history')
   ipcMain.removeHandler('agent:message')
+  ipcMain.removeHandler('daemon:health')
   ipcMain.removeHandler('agent:abort')
   ipcMain.removeHandler('agent:get-context-report')
   ipcMain.removeHandler('agent:compact')

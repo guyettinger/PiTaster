@@ -87,11 +87,31 @@ Four things keep a long session coherent on a local model, all configurable:
 
 - **Compaction** is Pi's, with anyapp's thresholds. `compaction_end` nudges the
   agent to re-read `NOTES.md`, which is on disk and survives being summarized.
-- **`agent/context-trim.ts`** runs on Pi's `context` hook and shapes what is
-  *sent*: long tool results truncated with a pointer to resume from, a read whose
-  every line a later read returned collapsed into that later one, screenshots on
-  user messages older than two turns dropped. The transcript, git history and chat
-  UI keep everything.
+- **`agent/context-trim.ts`** shapes what is *sent*: long tool results truncated
+  with a pointer to resume from, a read whose every line a later read returned
+  collapsed into that later one, stale screenshots dropped. The transcript, git
+  history and chat UI keep everything.
+
+  **It applies all of that at a *seal*, and that timing is the whole design.**
+  Ollama caches the KV state of a prompt prefix, so resending a stable prefix is
+  nearly free — 133.5s to prefill 11431 tokens cold against 0.24s to resend the
+  same bytes. Rewriting one early message put it back to 124.4s. The trimmer used
+  to run per request and was stable only *within* one message list: the current
+  turn's exemption expired at each turn boundary, superseding rewrote an earlier
+  read the moment a later one covered it, and the screenshot cutoff advanced. Every
+  one of those is an edit in the middle of the prefix, so anyapp paid a full cold
+  prefill once per turn, on itself. `tool-guidance.ts` had carried the principle all
+  along — *"a prompt that reorders between requests defeats prefix caching"*.
+
+  The invariant now is that **once a byte has been sent it does not change until a
+  deliberate, rare reset**. Nothing is trimmed until the seal advances, which
+  happens when `sealAdvanceTokens` of new history has accumulated — one invalidation
+  anyapp chose, several turns apart, instead of one per turn it did not. The seal
+  stops at the current turn, so what rides untrimmed is bounded by one turn plus
+  that threshold, and everything past the seal still gets `hardToolResultTokens`.
+  Superseding is the one rule that can never be settled — any later read might cover
+  an earlier one — so that saving is deliberately deferred to the next advance
+  rather than taken as soon as it appears.
 
   Superseding compares **regions, not paths**. Pi's `read` caps its output at 2000
   lines or 50 KB and tells the model to "continue with offset until complete", so
@@ -101,9 +121,8 @@ Four things keep a long session coherent on a local model, all configurable:
   the loss.
 
   There are **two size caps**, and they answer different questions.
-  `maxToolResultTokens` asks whether a result still earns its space, and the
-  current turn is exempt from it — an agent that cannot see what it just did
-  repeats it. `hardToolResultTokens`, half the window, asks whether the request can
+  `maxToolResultTokens` asks whether a result still earns its space, and only a
+  sealed message pays it — an agent that cannot see what it just did repeats it. `hardToolResultTokens`, half the window, asks whether the request can
   succeed at all, and nothing is exempt: past it the result cannot coexist with the
   system prompt, the tool schemas and the surrounding history, so the request fails
   either way — as an unexplained timeout rather than as an oversized result. The
@@ -117,14 +136,31 @@ Four things keep a long session coherent on a local model, all configurable:
   added — `git_status` and `install_deps` are in the set; the other version tools
   and every MCP tool are not.
 
-  **Compaction does not see any of this.** Pi decides to compact from
-  `estimateContextTokens` over `agent.state.messages`, but the trimmer runs as
-  `transformContext`, which builds the request and never writes back. So compaction
-  fires on the *untrimmed* size, always at or above what is actually sent, and the
-  trimmer's savings can never relieve compaction pressure — on a session full of
-  large tool results the agent summarizes away history that would still have fit.
-  It is also why the trimmer must be idempotent: `transformContext` re-runs on every
-  provider request against the same stored messages.
+  **A seal is written into Pi's own messages, which is what lets compaction see it.**
+  Pi decides to compact from `estimateContextTokens` over `agent.state.messages`, so
+  a trim that only shapes the outgoing request can never relieve compaction pressure
+  — the old transform did exactly that, and a session full of large tool results
+  summarized away history that would still have fit. Mutating the stored message
+  fixes it, and is safe for four reasons, each read off Pi 0.84.4: `SessionManager`
+  entries hold the *same* message objects and `sessionEntryToContextMessages` hands
+  them straight back (`session-manager.js:166-176`), so a mutation survives the
+  rebuild compaction and branching do; the JSONL entry is written when the message
+  is appended, so a later mutation cannot rewrite it, and the seal never reaches into
+  the current turn, which keeps that true; anyapp's chat UI reads the transcript from
+  disk through its own `SessionManager`, never this list; and Pi mutates messages in
+  place itself, for the same reason (`agent-session.js:453-460`).
+
+  **The `context` hook cannot do the writing, and that is not a style preference.**
+  Pi hands it `structuredClone(messages)` (`extensions/runner.js:793`), so a write
+  there reaches a copy and is discarded with it. `session.ts` passes the hook the
+  live list instead — through a function, never a captured array, because Pi replaces
+  `state.messages` wholesale after a compaction or a branch switch
+  (`agent-session.js:1536`) and a held reference would go stale exactly when the
+  history changes most.
+
+  Sealing repeatedly must still change nothing: the hook runs on every provider
+  request, retries included, and re-walks everything it has already sealed. The
+  truncation and supersede markers are what make that idempotent.
 - **Tool profiles** (`resolveToolNames`) drop the branch tools on a small window.
   Every tool's schema is a per-request cost, and a long list makes a small model
   choose worse.
@@ -182,7 +218,15 @@ Three things the module has to keep doing:
   live session.
 
 The bar's tick is `window - reserveTokens`, which is where compaction fires and the one
-number the old meter never showed. `Summarize now` calls Pi's `session.compact()` — the
+number the old meter never showed. Beside it now sits the *time* that token count
+implies: `Summarizes at 55.3k · ~1 min to prefill if the cache misses`, from the
+prefill rate W2 measures. A token count alone hides a wall clock — a comfortable
+`31k / 65k` says nothing about the thirteen minutes a cold prefill of the full window
+costs on the audited model. The rate is passed into `buildContextReport` rather than
+derived there, because that module is deliberately buildable cold and a rate is by
+definition something only a session that has run can know; before there is a sample the
+line is absent rather than invented, for the same reason the window itself is
+discovered and not assumed. `Summarize now` calls Pi's `session.compact()` — the
 first thing in anyapp to do so — and is refused mid-turn, because compacting a
 conversation Pi is still appending to summarizes a moving target.
 
@@ -233,12 +277,41 @@ Both modules go through `agent/file-lines.ts`, and must keep doing so. If the nu
 repair hook prints stop meaning what `replace_lines` accepts, the recovery path edits the
 wrong lines silently.
 
-Sampling is pinned too, because none of the above helps a model that knows the right
-indentation and does not emit it. Pi exposes no temperature — not in `models.json`, not
-in `SettingsManager`, not on `createAgentSession` — so `session.ts` sets it through the
-`before_provider_request` hook, whose handler's *return value replaces* the request
-payload. Ollama otherwise takes its default from the model's Modelfile, which is 0.7 or
-higher on the models anyapp targets.
+Sampling is set too, because none of the above helps a model that knows the right
+indentation and does not emit it. Pi exposes no sampling controls — not in
+`models.json`, not in `SettingsManager`, not on `createAgentSession` — so `session.ts`
+sets them through the `before_provider_request` hook, whose handler's *return value
+replaces* the request payload. Ollama otherwise takes its default from the model's
+Modelfile, which is 0.7 or higher on the models anyapp targets.
+
+**But one number cannot serve both jobs, and anyapp shipped one number.** A temperature
+of 0 is right for reproducing an `oldText` byte for byte and wrong for a Qwen3 thinking
+model, which is documented to degrade and loop under greedy decoding — the symptom
+`agent/loop-guard.ts` exists to catch, which raises the question of whether the guard
+was treating a cause anyapp introduced. `agent/sampling.ts` resolves per model instead:
+`RECOMMENDED_SAMPLING` in `@anyapp/core` gives a reasoning model Qwen3's documented
+0.6/0.95 and everything else greedy with no `top_p` at all.
+
+A setting has **three** states, because two were not enough: a number pins it, `null`
+sends nothing and leaves the Modelfile default alone, and `'auto'` asks anyapp to
+choose. A number input alone cannot express that — empty has to mean *something*, and
+when it meant "the model's own default" there was nowhere left to say "choose for me".
+
+The recommendation never produces an incoherent pair: `'auto'` `top_p` sends nothing
+whenever the temperature in effect is 0, from either source, because a nucleus cutoff
+modifying a greedy temperature has nothing to do. A `top_p` the *user* pinned is still
+sent — the suppression is a property of the recommendation, not a rule imposed on them.
+
+**An old pinned 0 is flagged, not overwritten.** anyapp's previous default was a pinned
+0 written into `config.json`, which on disk is indistinguishable from a 0 someone chose,
+so an install that predates this keeps decoding greedily. Settings says so — *Recommended
+for this model: 0.6* — rather than silently changing a value the user may have meant.
+
+Only the parameters Ollama's OpenAI-compatible endpoint actually maps are here:
+`temperature`, `top_p`, `seed`, `frequency_penalty`, `presence_penalty`. `top_k`,
+`min_p` and `repeat_penalty` are Ollama-native `options` with no place in the `/v1`
+schema — the audit found them accepted without an error and found no evidence they were
+honoured, which is exactly the shape of a control that does nothing.
 
 ## The compiler is a tool, and mostly not one
 
@@ -434,6 +507,62 @@ Pi emits compaction, retry and settle events; `agent/events.ts` maps them to
 — nothing happens during it — so silence longer than 20s is timed from outside
 and reported with an elapsed count. Tool approval prompts have no timeout: a turn
 takes minutes, and a timeout does not fail safe, it silently denies.
+
+**Every wait now says which wait it is.** `AgentStatusStrip` discarded `status.kind`,
+so compaction, a retry after a failure, and an ordinary long prefill rendered
+identically — three situations with three different right responses. The dot takes its
+colour from the kind, and `retrying` is the one that earns a warning colour because it
+means something already went wrong. Status is also cleared on `error`, which it was
+not: the strip kept saying "…retrying" after the run it described had failed.
+
+**And when a turn ends, it says what it cost.** `TurnSummaryStrip` takes the slot the
+status strip was using — `2 requests · 12.2k prompt (2.3k prefilled) · 152 out · 43s ·
+prefix reused` — off the `TurnCost` and `CacheVerdict` that ride the `complete`
+chunk, because the end of a turn is when both become final. The meter deliberately does
+*not* ride it: the chunk could carry a usage number but not the attribution, and taking
+half the answer from the stream and half from `getContextReport` is how the two drift.
+It used to carry a `contextUsage` nobody read for exactly that reason, and a
+`rate_limit` variant nothing has ever produced; both are gone. The gap between the prompt figure and the prefilled figure
+*is* W1's saving, which is why both are shown rather than the total alone. The cache
+verdict is the quietest when it is `reused` — a healthy turn should not decorate
+itself — and coloured only for `invalidated`, which is anyapp having re-sent a prompt
+the daemon already held.
+
+**`DaemonHealthStrip` renders nothing when nothing is wrong.** Health was checked in
+one place, Settings, once, on mount — which is the one place a person is not looking
+when a turn fails to start. It now polls `/api/ps` beside the composer, and says only
+the two things worth saying: the daemon is not answering, or the model is about to be
+unloaded and the next turn will pay a full reload of a 32 GB model. `warmModel` asks
+for 30 minutes but a model loaded by anything else carries the daemon's 5-minute
+default, so that second warning fires on a case that costs real time. Settings' own
+`reachable` flag initialised to `true` and so opened claiming Ollama was running,
+including when it was not; it starts unknown now.
+
+**The reasoning is the thing that was actually happening in that silence.** Ollama's
+models reason on every request — `session.ts` passed `thinkingLevel: 'off'` and the
+audit found it had never been off — and `events.ts` dropped `thinking_delta`, so the
+longest part of a turn rendered as a pulsing ellipsis until the stall notifier
+apologised at 20s. It is now a `thinking` `StreamChunk` and a collapsed
+`ThinkingBubble` that streams live and folds to a one-line estimate once the answer
+starts. The estimate is chars/4, because Ollama returns no `completion_tokens_details`
+at all and Pi's `Usage.reasoning` is therefore `0` on every response — which means
+"not reported", never "no thinking happened".
+
+**`reasoning_effort` is a real control that a compat flag was disabling.**
+`supportsReasoningEffort: false` stripped the parameter; the audit sent it directly
+and found `low` and `high` changing both the prompt token count and the length of the
+reasoning. Settings exposes four levels rather than Pi's seven, because `medium` comes
+back byte-identical to sending nothing and everything above `high` collapses into it,
+and the `off` value is labelled **Unset**: Pi sends no parameter for it and the model
+reasons anyway. Turning thinking off needs Ollama's native `think: false` on
+`/api/chat`, which is not the path Pi uses.
+
+Every setting on that page is read once, when the host is built, so `config:save`
+disposes it. Without that a saved temperature, tool profile or reasoning level did
+nothing until an unrelated action happened to rebuild the session, which is
+indistinguishable from a control that does not work. It does not clear the cached
+context report or the session telemetry: the conversation it disposes is still the
+one on screen.
 
 How long a turn may stay silent is not Pi's setting to enforce. Pi applies
 `httpIdleTimeoutMs` only from its own CLI, RPC and interactive entry points,

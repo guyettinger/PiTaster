@@ -50,6 +50,99 @@ export type AgentStatusKind =
   | 'settled'
 
 /**
+ * What the daemon did with the prompt prefix it was sent.
+ *
+ * Measured, not inferred: Ollama reports `prompt_tokens_details.cached_tokens` and Pi
+ * carries it as `Usage.cacheRead`. The verdict compares that against the *previous*
+ * request's prompt rather than against this one — a turn appending a large tool result
+ * legitimately reuses a smaller share than one appending a sentence, so the fraction
+ * would report the healthy case as a degradation.
+ */
+export type CacheVerdict =
+  /** Nothing was reused; the whole prompt was prefilled. */
+  | 'cold'
+  /** Everything already sent came back. This is the state anyapp works to keep. */
+  | 'reused'
+  /** The prefix shrank because history had been summarized, which is expected. */
+  | 'compacted'
+  /** The prefix shrank with nothing to explain it — the failure W1 exists to prevent. */
+  | 'invalidated'
+  /** The daemon reported no cache figure. */
+  | 'unknown'
+
+/**
+ * What one turn cost.
+ *
+ * The unit is the turn rather than the request because a turn is what a person waits
+ * through: one prompt can become four provider requests, and the interesting number
+ * is their sum.
+ */
+export interface TurnCost {
+  /** Provider requests in the turn. */
+  requests: number
+  /** Prompt tokens sent, prefilled and reused together. */
+  promptTokens: number
+  /** Prompt tokens the daemon had to prefill. */
+  prefilledTokens: number
+  /** Tokens generated. */
+  outputTokens: number
+  /**
+   * Of those, the ones spent thinking.
+   *
+   * **0 on Ollama, always** — its `/v1` emits no `completion_tokens_details`, so Pi's
+   * `Usage.reasoning` has nothing to read. A zero here means "not reported", never
+   * "no thinking happened".
+   */
+  reasoningTokens: number
+  /** Requests that re-prefilled a prefix they had already sent. */
+  rePrefills: number
+  /** Wall time from the turn's first request to its last measured moment. */
+  elapsedMs: number
+}
+
+/**
+ * The sampling anyapp recommends, by whether the model reasons.
+ *
+ * Defined here because two places need the same numbers: `agent/sampling.ts` sends
+ * them, and Settings tells the user what `Recommended` resolved to. A field labelled
+ * "Recommended" that silently means 0.6 on one model and 0 on another is the same
+ * class of problem as a control that does nothing — and two copies of the numbers
+ * would eventually disagree about which.
+ *
+ * The split is not a preference. Qwen3 thinking models are documented to degrade and
+ * loop under greedy decoding, and `agent/loop-guard.ts` exists to catch exactly that
+ * symptom; a model reproducing an `oldText` byte for byte wants the opposite. One
+ * number cannot serve both, and anyapp shipped one number.
+ */
+export const RECOMMENDED_SAMPLING = {
+  /** Qwen3's documented values for thinking mode. */
+  thinking: { temperature: 0.6, topP: 0.95 },
+  /** Greedy, with no nucleus cutoff: it is meaningless under greedy decoding. */
+  plain: { temperature: 0, topP: null }
+} as const
+
+/**
+ * Whether the local daemon can answer, and whether it still has the model in memory.
+ *
+ * Both halves matter and they fail differently. An unreachable daemon fails the next
+ * turn immediately; a resident model that has expired costs a full reload — tens of
+ * seconds on a 32 GB model — on a turn that otherwise looks ordinary.
+ */
+export interface DaemonHealth {
+  /** Whether the daemon answered at all. */
+  reachable: boolean
+  /** Whether the selected model is resident, or null when no model is selected. */
+  modelLoaded: boolean | null
+  /**
+   * When the daemon will unload it, epoch ms, or null when it is not resident.
+   *
+   * A model anyapp warmed carries 30 minutes; one loaded by something else carries
+   * the daemon's 5-minute default.
+   */
+  expiresAt: number | null
+}
+
+/**
  * What one write changed, as a diff the UI can render.
  *
  * Travels on the tool result's `details`, which never reaches the model — so showing
@@ -77,8 +170,15 @@ export interface FilePatch {
  */
 export interface StreamChunk {
   /** Type of chunk. */
-  type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error' | 'rate_limit' | 'status'
-  /** Text content (for 'text' type). */
+  type:
+    | 'text'
+    | 'thinking'
+    | 'tool_start'
+    | 'tool_end'
+    | 'complete'
+    | 'error'
+    | 'status'
+  /** Text content (for 'text' and 'thinking' types). */
   text?: string
   /** Tool name (for 'tool_start' and 'tool_end' types). */
   tool?: string
@@ -95,12 +195,12 @@ export interface StreamChunk {
   output?: string
   /** Error message (for 'error' type, or a failed 'tool_end'). */
   error?: string
-  /** Seconds until retry (for 'rate_limit' type). */
-  retryAfterSeconds?: number
   /** What the agent is doing (for 'status' type). */
   status?: AgentStatus
-  /** Context consumed after this turn, when Pi has reported usage. */
-  contextUsage?: ContextUsage
+  /** What the finished turn cost (for 'complete' type). */
+  turn?: TurnCost
+  /** What the daemon did with the prefix on the turn's last request. */
+  cache?: CacheVerdict
   /**
    * What a write actually changed (for 'tool_end' on a file-modifying tool).
    *
@@ -206,6 +306,15 @@ export interface ContextReport {
   blocks: ContextBlock[]
   /** The largest individual tool results, descending, at most three. */
   hotspots: ContextHotspot[]
+  /**
+   * Measured prefill rate in tokens per second, or null before there is a sample.
+   *
+   * What turns a token count into a *time*. On the audited model a cold prefill of the
+   * whole window is about thirteen minutes, and until this was shown the meter could
+   * report a comfortable-looking number for a conversation whose next turn would take
+   * that long.
+   */
+  prefillRate: number | null
 }
 
 /**

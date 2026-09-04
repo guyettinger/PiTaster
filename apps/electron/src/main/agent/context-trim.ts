@@ -1,12 +1,38 @@
 /**
- * Shapes what reaches the model, without changing what is stored.
+ * Freezes history so the prompt sent to the daemon is append-only.
  *
- * Registered on Pi's `context` extension hook, which hands over the message list
- * before each provider request and accepts a replacement. Nothing here touches the
- * JSONL transcript, git history, or the chat UI — those keep the whole conversation.
- * This only decides what is worth spending a small context window on.
+ * Ollama caches the KV state of a prompt prefix, which makes a resend of a stable
+ * prefix nearly free: 133.5s to prefill 11431 tokens cold, 0.24s to resend the same
+ * bytes. Rewriting one early message put it back to 124.4s. Prefill dominates a turn
+ * on a local model, so the byte-for-byte stability of the prefix is worth far more
+ * than the tokens a cleverer trim would save.
  *
- * Everything is a pure transform of the message list so it can be tested directly.
+ * The invariant: **once a byte has been sent to the daemon it does not change until a
+ * deliberate, rare reset.** Every rule below therefore runs at a *seal*, which
+ * advances only when enough untrimmed history has accumulated to be worth one cache
+ * invalidation — instead of running per request, which is what the previous design
+ * did and why it re-prefilled the whole window on essentially every turn.
+ *
+ * Sealing is a permanent decision, so it is **written into Pi's own message objects**
+ * rather than applied as a per-request transform. That is what makes Pi's compaction
+ * check see the trimmed size: it estimates over `agent.state.messages`, and a
+ * transform that only shapes the outgoing request can never relieve compaction
+ * pressure. It is safe for four reasons, each verified against Pi 0.84.4:
+ *
+ * - `SessionManager` entries hold the *same* message objects, and
+ *   `sessionEntryToContextMessages` hands them straight back, so a mutation survives
+ *   the rebuild that compaction and branching do (`session-manager.js:166-176`).
+ * - The JSONL transcript is written when a message is appended, so a mutation
+ *   afterwards cannot rewrite it. Nothing inside the current turn is ever sealed,
+ *   which is what keeps that true — see {@link sealTarget}.
+ * - anyapp's chat UI reads the transcript from disk through its own `SessionManager`,
+ *   never this list, so the conversation a person sees keeps everything.
+ * - Pi mutates messages in place itself, for the same reason
+ *   (`agent-session.js:453-460`).
+ *
+ * What may *not* do this is the `context` hook: Pi hands it `structuredClone(messages)`
+ * (`extensions/runner.js:793`), so a write there reaches a copy and nothing else. The
+ * hook is passed the live list by its caller instead.
  */
 
 import type { ContextEvent } from '@earendil-works/pi-coding-agent'
@@ -28,13 +54,14 @@ export type AgentMessage = ContextEvent['messages'][number]
 const CHARS_PER_TOKEN = 4
 
 /**
- * Turns of history whose screenshots are kept.
+ * Tokens charged for one image when deciding whether to advance the seal.
  *
- * An element-context screenshot is worth roughly 1.2k tokens and is almost never
- * relevant two turns after it was attached — by then the agent is editing code, not
- * looking at pixels.
+ * An estimate, and only ever used to answer "has enough accumulated to be worth a
+ * cache invalidation" — never shown to anyone as a price. Pi bills an image at a flat
+ * character count anyapp has no business restating; `agent/context-report.ts` recovers
+ * that number by difference where it matters.
  */
-const IMAGE_RETENTION_TURNS = 2
+const IMAGE_TOKENS = 1200
 
 /** Tool whose repeated results supersede one another. */
 const READ_TOOL = 'read'
@@ -42,9 +69,9 @@ const READ_TOOL = 'read'
 /**
  * Sentinel identifying text this module has already shortened.
  *
- * The hook runs before every provider request, so a result is seen many times. The
- * marker makes the transform idempotent — without it each pass truncates the previous
- * pass's output and reports a smaller, wrong number of dropped lines.
+ * A seal pass re-walks everything it has sealed before, so a result is seen many
+ * times. The marker makes the transform idempotent — without it each pass truncates
+ * the previous pass's output and reports a smaller, wrong number of dropped lines.
  *
  * Matched against the *last line* only. A substring test over the whole result would
  * exempt any file that happens to contain this sentence.
@@ -98,7 +125,7 @@ const TRUNCATABLE_TOOLS = new Set([
 ])
 
 /**
- * Tools bounded only by {@link TrimContextOptions.hardToolResultTokens}.
+ * Tools bounded only by {@link ContextSealOptions.hardToolResultTokens}.
  *
  * A loaded skill is not evidence the agent gathered, it is the instructions it is
  * working from — cutting it in history is cutting the model's own brief, and a model
@@ -114,18 +141,45 @@ const TRUNCATABLE_TOOLS = new Set([
 const HARD_CAP_ONLY_TOOLS = new Set(['load_skill'])
 
 /**
- * Options for {@link trimContext}.
+ * Options for {@link createContextSealer}.
  */
-export interface TrimContextOptions {
-  /** Tokens above which one tool result is truncated, in history. */
+export interface ContextSealOptions {
+  /** Tokens above which one sealed tool result is truncated. */
   maxToolResultTokens: number
   /**
-   * Tokens above which one tool result is truncated even in the current turn.
+   * Tokens above which one tool result is truncated even before it is sealed.
    *
    * Much larger than {@link maxToolResultTokens}, and a different kind of judgement —
-   * see the note in {@link trimContext}.
+   * see {@link ContextSealer.capForRequest}.
    */
   hardToolResultTokens: number
+  /**
+   * Tokens of new, untrimmed history carried before the seal advances.
+   *
+   * The cost of one advance is one cold prefill of the whole prompt. The cost of not
+   * advancing is carrying that much untrimmed history in every request until it does.
+   */
+  sealAdvanceTokens: number
+}
+
+/**
+ * Shapes what reaches the model across a whole session.
+ */
+export interface ContextSealer {
+  /**
+   * Freeze the history that can no longer change, in place.
+   *
+   * @param messages - Pi's live message list
+   * @returns The number of messages this call rewrote
+   */
+  seal: (messages: AgentMessage[]) => number
+  /**
+   * Apply the request-viability cap, without changing what is stored.
+   *
+   * @param messages - Pi's live message list
+   * @returns The list to send, sharing every message the cap left alone
+   */
+  capForRequest: (messages: AgentMessage[]) => AgentMessage[]
 }
 
 /**
@@ -291,20 +345,10 @@ function describeRegion(region: ReadRegion): string {
 }
 
 /**
- * Replace a tool result's content, leaving every other field alone.
- * @param message - The tool result message
- * @param text - The replacement text
- * @returns A new message carrying only that text
- */
-function withText(message: AgentMessage, text: string): AgentMessage {
-  return { ...(message as object), content: [{ type: 'text', text }] } as AgentMessage
-}
-
-/**
  * Whether this module has already shortened a result.
  *
- * Only the last line is examined. The old test looked for the marker anywhere, which
- * exempted any file whose contents happened to quote it.
+ * Only the last line is examined. Looking for the marker anywhere would exempt any
+ * file whose contents happened to quote it.
  *
  * @param text - The result text
  * @returns True when the text ends with a truncation marker
@@ -418,113 +462,245 @@ function renderContent(content: unknown): string {
 }
 
 /**
- * Strip images from a message's content, leaving a placeholder in their place.
- * @param message - The message to strip
- * @returns The message, or a copy with images replaced
+ * Whether a message carries an image block.
+ *
+ * The seal writes its result back over the original, so a rule that flattens content
+ * to a single text block would destroy an image permanently. No truncatable tool
+ * returns one today; this is the guard that keeps that from becoming a silent data
+ * loss the day one does.
+ *
+ * @param message - The message to test
+ * @returns True when any content block is an image
  */
-function stripImages(message: AgentMessage): AgentMessage {
+function carriesImage(message: AgentMessage): boolean {
   const content = (message as { content?: unknown }).content
-  if (!Array.isArray(content)) return message
-  if (!content.some((block) => (block as { type?: unknown }).type === 'image')) return message
+  return (
+    Array.isArray(content) &&
+    content.some((block) => (block as { type?: unknown }).type === 'image')
+  )
+}
 
-  const stripped = content.map((block) =>
+/**
+ * Estimate what one message costs in the prompt.
+ *
+ * Only ever compared against {@link ContextSealOptions.sealAdvanceTokens} to decide
+ * whether a seal has become worthwhile, so an approximation is the right instrument.
+ *
+ * @param message - The message to measure
+ * @returns Estimated tokens
+ */
+function estimateMessageTokens(message: AgentMessage): number {
+  const content = (message as { content?: unknown }).content
+  if (typeof content === 'string') return Math.ceil(content.length / CHARS_PER_TOKEN)
+  if (!Array.isArray(content)) return 0
+
+  let chars = 0
+  let images = 0
+  for (const block of content) {
+    const typed = block as { type?: unknown; text?: unknown; arguments?: unknown }
+    if (typed.type === 'image') {
+      images += 1
+      continue
+    }
+    if (typeof typed.text === 'string') chars += typed.text.length
+    if (typed.type === 'toolCall') chars += JSON.stringify(typed.arguments ?? {}).length
+  }
+  return Math.ceil(chars / CHARS_PER_TOKEN) + images * IMAGE_TOKENS
+}
+
+/**
+ * Estimate a range of the conversation.
+ * @param messages - The conversation
+ * @param end - Index to stop before
+ * @returns Estimated tokens in `[0, end)`
+ */
+function estimateRange(messages: AgentMessage[], end: number): number {
+  let total = 0
+  for (let index = 0; index < end; index += 1) total += estimateMessageTokens(messages[index])
+  return total
+}
+
+/**
+ * Replace a message's content in place.
+ *
+ * In place, not by copy, because the point of a seal is that Pi's own stored message
+ * carries the shortened text — that is what lets its compaction check see the real
+ * size. See the module header for why this is safe.
+ *
+ * @param message - The message to rewrite
+ * @param text - The replacement text
+ */
+function setText(message: AgentMessage, text: string): void {
+  ;(message as { content: unknown }).content = [{ type: 'text', text }]
+}
+
+/**
+ * Replace a message's content, leaving the original alone.
+ * @param message - The message to copy
+ * @param text - The replacement text
+ * @returns A new message carrying only that text
+ */
+function withText(message: AgentMessage, text: string): AgentMessage {
+  return { ...(message as object), content: [{ type: 'text', text }] } as AgentMessage
+}
+
+/**
+ * Replace a message's images with a placeholder, in place.
+ * @param message - The message to strip
+ */
+function stripImagesInPlace(message: AgentMessage): void {
+  const content = (message as { content?: unknown }).content
+  if (!Array.isArray(content)) return
+  if (!content.some((block) => (block as { type?: unknown }).type === 'image')) return
+
+  ;(message as { content: unknown }).content = content.map((block) =>
     (block as { type?: unknown }).type === 'image'
       ? { type: 'text', text: '[screenshot omitted — it is older than the last few turns]' }
       : block
   )
-
-  return { ...(message as object), content: stripped } as AgentMessage
 }
 
 /**
- * Reduce a conversation to what is worth sending to a small-context model.
+ * How far the seal may advance: everything before the current turn.
  *
- * Applied in order, and never to the system prompt or a user message:
+ * The current turn is what the agent just did, and an agent that cannot see that
+ * repeats it — the reason the previous design exempted it too. Everything before it
+ * is settled: no later evidence changes whether it is the current turn, and its
+ * screenshots are stale by construction.
  *
- * 1. A `read` whose every line a later read has since returned is replaced by a
- *    pointer to the newer one. Small models re-read constantly, and this is usually
- *    the largest single saving. Skipped inside the current turn.
- * 2. Long tool results are truncated with a marker saying how to resume.
- * 3. Screenshots older than {@link IMAGE_RETENTION_TURNS} turns become placeholders.
+ * It is also the line that makes writing back safe. `SessionManager` appends a
+ * message's transcript entry when the message is created, so a message older than the
+ * user message that opened this turn is long since on disk and mutating the object
+ * cannot rewrite it.
  *
- * The current turn is what the agent just did. Dropping it as *irrelevant* makes the
- * model repeat work, which is the failure this module exists to avoid — so the
- * supersede and screenshot rules stop at the turn boundary, and so does the ordinary
- * size cap. What does not stop there is `hardToolResultTokens`: past that a single
- * result cannot coexist with the rest of the prompt even after a compaction, so the
- * request fails whatever we do, and it fails as an unexplained timeout rather than as
- * an oversized tool result. Truncating is strictly better than that. The two
- * thresholds are an order of magnitude apart and answer different questions — one is
- * "is this still worth its space", the other "can this request succeed at all".
+ * The one rule this does not settle is superseding, which stays open forever — any
+ * later read might cover an earlier one. That saving is deliberately deferred to the
+ * next advance rather than taken as soon as it appears, because taking it early is
+ * exactly the per-turn prefix rewrite this module exists to stop.
  *
- * @param messages - The conversation Pi is about to send
- * @param options - The size budgets
- * @returns A new message list; the input is not modified
+ * @param messages - The conversation
+ * @returns The number of messages that may be sealed
  */
-export function trimContext(
-  messages: AgentMessage[],
-  options: TrimContextOptions
-): AgentMessage[] {
-  const currentTurnStart = findCurrentTurnStart(messages)
-  const regions = collectCallRegions(messages)
-  const superseded = collectSupersededReads(messages, regions)
+function sealTarget(messages: AgentMessage[]): number {
+  const start = findCurrentTurnStart(messages)
+  // No user message at all means no turn has begun, and nothing is old enough to
+  // freeze. `findCurrentTurnStart` answers with the length in that case, which would
+  // otherwise seal the whole list.
+  return start >= messages.length ? 0 : start
+}
 
-  // Count user messages from the end, so "the last two turns" is well defined.
-  const userIndices: number[] = []
-  for (let index = messages.length - 1; index >= 0 && userIndices.length <= IMAGE_RETENTION_TURNS; index -= 1) {
-    const message = messages[index]
-    if (hasRole(message) && message.role === 'user') userIndices.push(index)
+/**
+ * Build the sealer for one session.
+ *
+ * @param options - The size budgets and the seal threshold
+ * @returns A sealer holding this session's seal position
+ */
+export function createContextSealer(options: ContextSealOptions): ContextSealer {
+  /**
+   * Estimated size of the sealable range as this sealer last left it.
+   *
+   * The trigger is how much has arrived since — not the range's absolute size, which
+   * would fire the seal again on every request once the conversation was long enough.
+   */
+  let sealedTokens = 0
+
+  const seal = (messages: AgentMessage[]): number => {
+    const target = sealTarget(messages)
+    if (target <= 0) return 0
+
+    const sealable = estimateRange(messages, target)
+    // Compaction and branching replace the history with something smaller, which
+    // leaves the baseline above the range it describes. Re-anchor rather than wait
+    // for the conversation to grow past a number that no longer means anything.
+    if (sealable < sealedTokens) sealedTokens = sealable
+    if (sealable - sealedTokens < options.sealAdvanceTokens) return 0
+
+    const regions = collectCallRegions(messages)
+    const superseded = collectSupersededReads(messages, regions)
+    let rewritten = 0
+
+    for (let index = 0; index < target; index += 1) {
+      const message = messages[index]
+      if (!hasRole(message)) continue
+
+      if (message.role === 'user') {
+        // A sealed user message is older than the current turn and the seal advances
+        // rarely, so by the time this runs the screenshot is several turns old — long
+        // past being about the code the agent is now editing. It is worth roughly 1.2k
+        // tokens, which is a large share of a small window to spend on stale pixels.
+        if (carriesImage(message)) {
+          stripImagesInPlace(message)
+          rewritten += 1
+        }
+        continue
+      }
+      if (message.role !== 'toolResult') continue
+
+      const result = message as {
+        toolName?: unknown
+        toolCallId?: unknown
+        content?: unknown
+        isError?: unknown
+      }
+      if (typeof result.toolName !== 'string') continue
+
+      const region =
+        typeof result.toolCallId === 'string' ? regions.get(result.toolCallId) : undefined
+
+      // A failed read is never "superseded": `collectSupersededReads` skips errors, so
+      // without that filter the newest read — the one that just failed — could be
+      // replaced by a pointer to an older successful one, and the model would treat
+      // stale contents as current.
+      if (
+        typeof result.toolCallId === 'string' &&
+        superseded.has(result.toolCallId) &&
+        region !== undefined
+      ) {
+        const marker = `${SUPERSEDED_MARKER} ${region.path}${describeRegion(region)}]`
+        if (renderContent(result.content) !== marker) {
+          setText(message, marker)
+          rewritten += 1
+        }
+        continue
+      }
+
+      const hardCapOnly = HARD_CAP_ONLY_TOOLS.has(result.toolName)
+      if (!hardCapOnly && !TRUNCATABLE_TOOLS.has(result.toolName)) continue
+      if (carriesImage(message)) continue
+
+      const text = renderContent(result.content)
+      const truncated = truncateResult({
+        text,
+        maxTokens: hardCapOnly ? options.hardToolResultTokens : options.maxToolResultTokens,
+        startLine: result.toolName === READ_TOOL ? region?.start : undefined
+      })
+      if (truncated !== text) {
+        setText(message, truncated)
+        rewritten += 1
+      }
+    }
+
+    sealedTokens = estimateRange(messages, target)
+    return rewritten
   }
-  const imageCutoff = userIndices.length > IMAGE_RETENTION_TURNS ? userIndices[IMAGE_RETENTION_TURNS] : -1
 
-  return messages.map((message, index) => {
-    if (!hasRole(message)) return message
+  const capForRequest = (messages: AgentMessage[]): AgentMessage[] =>
+    messages.map((message) => {
+      if (!hasRole(message) || message.role !== 'toolResult') return message
 
-    const inCurrentTurn = index >= currentTurnStart
+      const result = message as { toolName?: unknown; content?: unknown }
+      if (typeof result.toolName !== 'string') return message
+      if (
+        !TRUNCATABLE_TOOLS.has(result.toolName) &&
+        !HARD_CAP_ONLY_TOOLS.has(result.toolName)
+      ) {
+        return message
+      }
 
-    if (message.role === 'user') {
-      if (inCurrentTurn) return message
-      return index <= imageCutoff ? stripImages(message) : message
-    }
-
-    if (message.role !== 'toolResult') return message
-
-    const result = message as {
-      toolName?: unknown
-      toolCallId?: unknown
-      content?: unknown
-      isError?: unknown
-    }
-    if (typeof result.toolName !== 'string') return message
-
-    const region =
-      typeof result.toolCallId === 'string' ? regions.get(result.toolCallId) : undefined
-
-    // A failed read is never "superseded": `collectSupersededReads` skips errors, so
-    // without that filter the newest read — the one that just failed — could be
-    // replaced by a pointer to an older successful one, and the model would treat
-    // stale contents as current.
-    if (
-      !inCurrentTurn &&
-      typeof result.toolCallId === 'string' &&
-      superseded.has(result.toolCallId) &&
-      region !== undefined
-    ) {
-      return withText(message, `${SUPERSEDED_MARKER} ${region.path}${describeRegion(region)}]`)
-    }
-
-    const hardCapOnly = HARD_CAP_ONLY_TOOLS.has(result.toolName)
-    if (!hardCapOnly && !TRUNCATABLE_TOOLS.has(result.toolName)) return message
-
-    const text = renderContent(result.content)
-    const truncated = truncateResult({
-      text,
-      maxTokens:
-        hardCapOnly || inCurrentTurn
-          ? options.hardToolResultTokens
-          : options.maxToolResultTokens,
-      startLine: result.toolName === READ_TOOL ? region?.start : undefined
+      const text = renderContent(result.content)
+      const truncated = truncateResult({ text, maxTokens: options.hardToolResultTokens })
+      return truncated === text ? message : withText(message, truncated)
     })
-    return truncated === text ? message : withText(message, truncated)
-  })
+
+  return { seal, capForRequest }
 }

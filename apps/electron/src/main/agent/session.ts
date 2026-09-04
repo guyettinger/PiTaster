@@ -38,14 +38,29 @@ import {
   type ContextBudget
 } from './context-budget'
 import { confineContextFiles } from './context-files'
+import {
+  DEFAULT_SAMPLING_TEMPERATURE,
+  DEFAULT_SAMPLING_TOP_P,
+  hasSampling,
+  resolveSampling,
+  type ResolvedSampling,
+  type SamplingSetting
+} from './sampling'
 import { buildContextReport } from './context-report'
-import { trimContext } from './context-trim'
+import { createContextSealer, type AgentMessage } from './context-trim'
 import { createEditRepair } from './edit-repair'
 import { createFileTools, FILE_TOOL_NAMES } from './file-tools'
 import { createLoopGuard } from './loop-guard'
 import { AnyappResourceLoader, buildPiSettings } from './pi-settings'
 import { createRetryBudget, formatSilence } from './retry-budget'
 import { createStallNotifier } from './stall-notifier'
+import {
+  createTelemetry,
+  formatTurnSummary,
+  readProviderResult,
+  type Telemetry,
+  type TelemetrySnapshot
+} from './telemetry'
 import { toStreamChunk } from './events'
 import { createMcpTools, getMcpToolBindings, type CallMcpTool } from './mcp-tools'
 import {
@@ -210,16 +225,42 @@ export interface CreateAgentHostParams {
   /** Whether to shape the context sent to the model. Defaults to on. */
   trimContext?: boolean
   /**
-   * Sampling temperature to pin, or null to leave the model's own default alone.
+   * Sampling temperature: a number to pin, `null` to send none, `'auto'` for anyapp's
+   * recommendation for this model.
    *
-   * Defaults to {@link DEFAULT_SAMPLING_TEMPERATURE}. See
-   * {@link createSamplingExtension} for why anyapp sets this at all.
+   * Defaults to {@link DEFAULT_SAMPLING_TEMPERATURE}. See `agent/sampling.ts` for why
+   * the recommendation differs by model, and {@link createSamplingExtension} for why
+   * anyapp sets this at all.
    */
-  samplingTemperature?: number | null
+  samplingTemperature?: SamplingSetting
+  /**
+   * Nucleus cutoff, in the same three states as {@link samplingTemperature}.
+   *
+   * Defaults to {@link DEFAULT_SAMPLING_TOP_P}.
+   */
+  samplingTopP?: SamplingSetting
+  /**
+   * How hard to ask the model to think.
+   *
+   * Defaults to {@link DEFAULT_REASONING_LEVEL}. Only reaches the daemon on a model
+   * that advertises the `thinking` capability — `models.json` sets `reasoning` from
+   * that, and Pi sends `reasoning_effort` only for a model carrying it.
+   */
+  reasoningLevel?: ReasoningLevel
   /** Existing Pi session file to resume, or undefined to start a new one. */
   sessionFile?: string
   /** Currently connected MCP sources, whose tools join this session. */
   mcpSources?: ConnectedSource[]
+  /**
+   * Where to record what each provider request cost.
+   *
+   * Defaults to a recorder of this host's own, which is right for a measurement of one
+   * session and wrong for a measurement of one *conversation*: `disposeAgentHost` runs
+   * on every skills, sources or config save, so a caller that wants the counts to
+   * survive that has to own the recorder — the same reasoning that made `ipc.ts` cache
+   * the last context report.
+   */
+  telemetry?: Telemetry
   /** Application callbacks. */
   callbacks: AgentHostCallbacks
 }
@@ -255,6 +296,13 @@ export interface AgentHost {
    * already maps to status chunks, so the UI narrates this without further wiring.
    */
   compact: () => Promise<void>
+  /**
+   * What the daemon has been asked to do, and what it cost.
+   *
+   * Prefill dominates a turn on a local model, and Ollama reports how much of each
+   * prompt it had to prefill against how much it reused. See `agent/telemetry.ts`.
+   */
+  getTelemetry: () => TelemetrySnapshot
   /** Release the session and its listeners. */
   dispose: () => void
 }
@@ -297,25 +345,44 @@ const COMPACTION_NOTICE =
   'the app root, read it before continuing — it holds the goal and the remaining steps.'
 
 /**
- * Temperature anyapp asks for unless the user says otherwise.
+ * How hard to ask the model to think.
  *
- * Zero, because the task that dominates a coding session is reproducing text that
- * already exists — an `oldText` that has to match a file byte for byte, an import path,
- * a type name. Ollama takes its default from the model's Modelfile, which is 0.7 to 1.0
- * on the qwen builds anyapp targets, and at that setting a model that knows the right
- * indentation will still sometimes not emit it.
+ * A subset of Pi's seven `ThinkingLevel`s, because on Ollama only three of them are
+ * distinguishable: Session 25's audit measured `low` and `high` changing both the
+ * prompt token count and the length of the reasoning, and `medium` coming back
+ * byte-identical to sending nothing. Offering four more levels the daemon collapses
+ * into these would be a control that does nothing.
+ *
+ * `unset` sends no `reasoning_effort` at all. It is deliberately not called `off`:
+ * the audit found every model reasoning on every request regardless, so this asks
+ * for no particular effort rather than for none.
  */
-export const DEFAULT_SAMPLING_TEMPERATURE = 0
+export type ReasoningLevel = 'unset' | 'low' | 'medium' | 'high'
+
+/** The reasoning levels a user may choose. */
+export const REASONING_LEVELS: readonly ReasoningLevel[] = ['unset', 'low', 'medium', 'high']
 
 /**
- * Bounds on that temperature, as the OpenAI-compatible endpoint defines them.
+ * Default reasoning level.
  *
- * Exported because the IPC validator and the Settings field both bound the user's
- * value, and a bound that disagrees with this one is accepted, persisted, shown back,
- * and then rejected by the daemon — the same reasoning as `MIN_CONTEXT_WINDOW`.
+ * `unset` preserves what anyapp did before the control existed — it passed
+ * `thinkingLevel: 'off'`, which sends nothing — so enabling the parameter does not
+ * silently change how every existing install behaves.
  */
-export const MIN_SAMPLING_TEMPERATURE = 0
-export const MAX_SAMPLING_TEMPERATURE = 2
+export const DEFAULT_REASONING_LEVEL: ReasoningLevel = 'unset'
+
+/**
+ * Map a reasoning level to the `thinkingLevel` Pi takes.
+ *
+ * Pi turns anything but `off` into `reasoning_effort` on the request, and `off` into
+ * no parameter at all (`agent.js:292`) — which is exactly what `unset` means here.
+ *
+ * @param level - The configured level
+ * @returns Pi's thinking level
+ */
+export function toThinkingLevel(level: ReasoningLevel): 'off' | 'low' | 'medium' | 'high' {
+  return level === 'unset' ? 'off' : level
+}
 
 /**
  * Build the inline extension that pins sampling on every provider request.
@@ -335,13 +402,20 @@ export const MAX_SAMPLING_TEMPERATURE = 2
  * @param temperature - The temperature to request
  * @returns A named inline extension
  */
-function createSamplingExtension(temperature: number): InlineExtension {
+function createSamplingExtension(sampling: ResolvedSampling): InlineExtension {
   return {
     name: 'anyapp-sampling',
     factory: (pi: ExtensionAPI) => {
       pi.on('before_provider_request', async (event) => {
         if (typeof event.payload !== 'object' || event.payload === null) return undefined
-        return { ...(event.payload as Record<string, unknown>), temperature }
+        // Spread only what resolved. An absent field means "send nothing", which is a
+        // different instruction from sending zero: `temperature: 0` is greedy decoding,
+        // no `temperature` is whatever the Modelfile says.
+        return {
+          ...(event.payload as Record<string, unknown>),
+          ...(sampling.temperature === undefined ? {} : { temperature: sampling.temperature }),
+          ...(sampling.topP === undefined ? {} : { top_p: sampling.topP })
+        }
       })
     }
   }
@@ -365,11 +439,26 @@ function createAnyappExtension(params: {
   trimEnabled: boolean
   /** Reports the compiler errors a write introduced. */
   diagnostics: DiagnosticsNotifier
+  /** Records what each provider request cost. */
+  telemetry: Telemetry
+  /**
+   * Pi's live message list, once the session it belongs to exists.
+   *
+   * The extension is built before the session, and the `context` hook needs the real
+   * list rather than the copy Pi hands it — see the hook.
+   */
+  getLiveMessages: () => AgentMessage[] | null
   /** Application callbacks. */
   callbacks: AgentHostCallbacks
 }): InlineExtension {
-  const { rootPath, budget, trimEnabled, diagnostics, callbacks } = params
+  const { rootPath, budget, trimEnabled, diagnostics, telemetry, getLiveMessages, callbacks } =
+    params
   const loopGuard = createLoopGuard()
+  const sealer = createContextSealer({
+    maxToolResultTokens: budget.maxToolResultTokens,
+    hardToolResultTokens: budget.hardToolResultTokens,
+    sealAdvanceTokens: budget.sealAdvanceTokens
+  })
   const patches = createPatchRecorder({ rootPath })
   const editRepair = createEditRepair({
     rootPath,
@@ -382,6 +471,25 @@ function createAnyappExtension(params: {
   return {
     name: 'anyapp-guard',
     factory: (pi: ExtensionAPI) => {
+      // The two ends of a provider request, and the only place anyapp can time one.
+      //
+      // Ollama sends no response headers until the first token, so the gap between
+      // these two hooks is the prefill — the cost that dominates a turn on a local
+      // model and the one the audit found anyapp paying twice over. Returning
+      // `undefined` leaves the payload alone; the runner chains handlers and only
+      // replaces the payload for a handler that returns one
+      // (`extensions/runner.js:832-836`), so this coexists with the sampling
+      // extension, which does replace it.
+      pi.on('before_provider_request', async () => {
+        telemetry.requestStarted()
+        return undefined
+      })
+
+      pi.on('after_provider_response', async (event) => {
+        telemetry.responseHeaders(event.status)
+        return undefined
+      })
+
       // A new user prompt always breaks a loop, so the streak starts over.
       //
       // Deliberately `agent_start`, not `turn_start`. Pi emits `turn_start` once per
@@ -402,15 +510,24 @@ function createAnyappExtension(params: {
         return undefined
       })
 
-      // Shape what the model sees, never what is stored. The transcript, git history
-      // and the chat UI keep the whole conversation regardless.
+      // Keep the prompt prefix stable, because prefill is what a turn actually costs
+      // on a local model. The seal advances rarely and writes its result into Pi's own
+      // messages; everything past it is sent as it stands, under the viability cap
+      // alone. The transcript, git history and the chat UI keep the whole
+      // conversation regardless — they read the JSONL, never this list.
       if (trimEnabled) {
-        pi.on('context', async (event) => ({
-          messages: trimContext(event.messages, {
-            maxToolResultTokens: budget.maxToolResultTokens,
-            hardToolResultTokens: budget.hardToolResultTokens
-          })
-        }))
+        pi.on('context', async (event) => {
+          // Pi hands this hook `structuredClone(messages)`
+          // (`extensions/runner.js:793`), so a seal written into `event.messages`
+          // would reach a copy and be thrown away with it. The live list is both what
+          // Pi sends and what its compaction check estimates over, which is the whole
+          // reason the seal is written there. Falling back to the event's copy keeps
+          // the hook correct — only unable to relieve compaction — if the session is
+          // ever not yet attached.
+          const messages = getLiveMessages() ?? event.messages
+          sealer.seal(messages)
+          return { messages: sealer.capForRequest(messages) }
+        })
       }
 
       pi.on('tool_call', async (event) => {
@@ -524,19 +641,16 @@ function createAnyappExtension(params: {
 }
 
 /**
- * Read how full the context window is, in anyapp's shape.
+ * Read the provider's own token count for the conversation.
  *
  * Pi reports null tokens immediately after a compaction, before the next response
- * re-establishes usage; there is nothing honest to show until then, so the field is
- * simply absent.
+ * re-establishes usage; there is nothing honest to report until then.
  *
  * @param session - The live Pi session
- * @returns A partial chunk carrying usage, or an empty object when it is unknown
+ * @returns The measured tokens, or null when Pi has none
  */
-function readContextUsage(session: AgentSession): { contextUsage?: ContextUsage } {
-  const usage = session.getContextUsage()
-  if (!usage || usage.tokens === null) return {}
-  return { contextUsage: { used: usage.tokens, window: usage.contextWindow } }
+function readMeasuredTokens(session: AgentSession): number | null {
+  return session.getContextUsage()?.tokens ?? null
 }
 
 /**
@@ -554,8 +668,11 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     toolProfile = 'auto',
     trimContext: trimEnabled = true,
     samplingTemperature = DEFAULT_SAMPLING_TEMPERATURE,
+    samplingTopP = DEFAULT_SAMPLING_TOP_P,
+    reasoningLevel = DEFAULT_REASONING_LEVEL,
     sessionFile,
     mcpSources = [],
+    telemetry = createTelemetry(),
     callbacks
   } = params
 
@@ -570,6 +687,16 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
       `Model "${modelId}" is not available from Ollama. Pull it with \`ollama pull ${modelId}\`, or pick another model in Settings.`
     )
   }
+
+  // What `'auto'` means depends on the model, and `model.reasoning` is the same flag
+  // the reasoning-effort control is gated on — `writeOllamaModelsFile` sets it from
+  // Ollama's `thinking` capability — so a model cannot be treated as reasoning by one
+  // and not the other.
+  const sampling = resolveSampling({
+    temperature: samplingTemperature,
+    topP: samplingTopP,
+    supportsThinking: model.reasoning === true
+  })
 
   const settingsManager = SettingsManager.create(app.path, agentDir)
   // Held as a function because every reload discards it and has to re-run it.
@@ -596,6 +723,15 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     source: { request: tsService.client.request }
   })
 
+  /**
+   * Reads Pi's live message list, once there is a session to read it from.
+   *
+   * The extension below is constructed as an argument to the resource loader, which
+   * `createAgentSession` needs — so the session cannot exist yet when the `context`
+   * hook is registered.
+   */
+  let readLiveMessages: (() => AgentMessage[]) | null = null
+
   const loader = new AnyappResourceLoader({
     cwd: app.path,
     agentDir,
@@ -615,10 +751,20 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     skillsOverride: (current) => ({ skills: [], diagnostics: current.diagnostics }),
     agentsFilesOverride: confineContextFiles(app.path),
     extensionFactories: [
-      createAnyappExtension({ rootPath: app.path, budget, trimEnabled, diagnostics, callbacks }),
-      ...(samplingTemperature === null
-        ? []
-        : [createSamplingExtension(samplingTemperature)])
+      createAnyappExtension({
+        rootPath: app.path,
+        budget,
+        trimEnabled,
+        diagnostics,
+        telemetry,
+        // Read through a function, never captured as an array: Pi replaces
+        // `state.messages` wholesale after a compaction or a branch switch
+        // (`agent-session.js:1536`), so a held reference would go stale exactly when
+        // the history changes most.
+        getLiveMessages: () => readLiveMessages?.() ?? null,
+        callbacks
+      }),
+      ...(hasSampling(sampling) ? [createSamplingExtension(sampling)] : [])
     ]
   }, applyAnyappSettings)
 
@@ -634,7 +780,7 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     agentDir,
     model,
     modelRuntime,
-    thinkingLevel: 'off',
+    thinkingLevel: toThinkingLevel(reasoningLevel),
     noTools: 'all',
     tools: [...toolNames, ...mcpBindings.map((binding) => binding.qualifiedName)],
     customTools: [
@@ -654,10 +800,90 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     settingsManager
   })
 
+  readLiveMessages = () => session.state.messages
+
   const stall = createStallNotifier({ onStream: callbacks.onStream })
   const retryBudget = createRetryBudget()
 
+  // Whether a turn is being measured.
+  //
+  // Deliberately not keyed on `agent_start` alone. Pi re-emits that for every retry
+  // and every overflow-compaction continuation — the reason `loop-guard` resets there
+  // and `retry-budget` deliberately does not — so a turn summary anchored to it would
+  // start over mid-turn and report the last continuation as the whole turn.
+  // `agent_settled` fires once, after everything that could continue the run has
+  // declined to, which makes it the honest end.
+  let turnOpen = false
+
+  /**
+   * Record one session event against the request being measured.
+   *
+   * Kept separate from the control flow below because nothing here decides anything:
+   * it only writes down what the daemon did. The request's own two ends come from
+   * Pi's provider hooks in the guard extension; everything else — the first token,
+   * the final usage, the turn boundaries — is already passing through here.
+   *
+   * @param event - The Pi session event
+   */
+  const recordTelemetry = (event: AgentSessionEvent): void => {
+    switch (event.type) {
+      case 'agent_start':
+        if (!turnOpen) {
+          turnOpen = true
+          telemetry.turnStarted()
+        }
+        return
+
+      case 'compaction_start':
+        telemetry.compactionStarted()
+        return
+
+      case 'message_update': {
+        // Only the deltas. Pi's `done` and `error` events never reach `message_update`
+        // — the loop calls `response.result()` and emits `message_end` instead — so a
+        // request is closed there, not here.
+        const inner = event.assistantMessageEvent
+        if (inner.type === 'text_delta' || inner.type === 'thinking_delta') {
+          telemetry.firstContent()
+        }
+        return
+      }
+
+      case 'message_end': {
+        // `message_end` fires for user and tool-result messages too, and closing the
+        // open request on one of those would record a turn's worth of prefill as
+        // unmeasured. `readProviderResult` returns nothing for those.
+        const result = readProviderResult(event.message)
+        if (result) telemetry.messageFinished(result)
+        return
+      }
+
+      case 'agent_settled': {
+        turnOpen = false
+        telemetry.turnEnded()
+        const { turn, totals } = telemetry.snapshot()
+        // One line per turn, and the only measurement anyapp produces until W4 gives
+        // it a home in the UI. It is here rather than behind a flag because the
+        // re-prefill count is the number whose absence hid Session 25's finding for
+        // six sessions.
+        if (turn.requests > 0) {
+          console.log(
+            '[agent]',
+            formatTurnSummary(turn),
+            `| session: ${totals.invalidations} invalidated, ${totals.compactions} compacted`
+          )
+        }
+        return
+      }
+
+      default:
+        return
+    }
+  }
+
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
+    recordTelemetry(event)
+
     // Any event at all is proof the run is alive, so it resets both clocks — except
     // `agent_start`, which is where the longest silence begins. A retry is not
     // progress, which is why `auto_retry_start` reaches neither reset: it arrives on
@@ -717,11 +943,26 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
     const chunk = toStreamChunk(event)
     if (!chunk) return
 
-    // The end of a turn is the only moment context usage changes, so the meter rides
-    // the chunk that already marks it rather than a polling channel of its own.
-    callbacks.onStream(
-      chunk.type === 'complete' ? { ...chunk, ...readContextUsage(session) } : chunk
-    )
+    // The end of a turn is the only moment any of this changes, so the turn's cost and
+    // the daemon's cache verdict ride the chunk that already marks it rather than a
+    // polling channel of their own. The context meter deliberately does *not*: the
+    // chunk could carry a usage number but not the attribution, and taking half the
+    // answer from the stream and half from `getContextReport` is how the two drift.
+    if (chunk.type !== 'complete') {
+      callbacks.onStream(chunk)
+      return
+    }
+
+    const measured = telemetry.snapshot()
+    callbacks.onStream({
+      ...chunk,
+      turn: measured.turn,
+      // The last request is the one whose prefix the daemon most recently judged.
+      // An unmeasured turn — every request aborted, or the daemon reporting no usage
+      // — leaves this `unknown`, which the UI renders as "not reported" rather than
+      // as a healthy reuse.
+      cache: measured.requests[measured.requests.length - 1]?.cache ?? 'unknown'
+    })
   })
 
   return {
@@ -746,12 +987,15 @@ export async function createAgentHost(params: CreateAgentHostParams): Promise<Ag
         builtinToolNames: PI_BUILTIN_TOOL_NAMES,
         mcpSources,
         messages: session.state.messages,
-        measured: readContextUsage(session).contextUsage?.used ?? null
+        measured: readMeasuredTokens(session),
+        prefillRate: telemetry.snapshot().prefillRate
       }),
 
     compact: async () => {
       await session.compact()
     },
+
+    getTelemetry: () => telemetry.snapshot(),
 
     dispose: () => {
       stall.clear()

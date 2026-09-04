@@ -2,7 +2,15 @@
  * Type definitions for the Electron API exposed via preload script.
  */
 
-import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, ElementContext, SerializedContentBlock, Skill, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope } from '@anyapp/core'
+import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, CacheVerdict, DaemonHealth, ElementContext, SerializedContentBlock, Skill, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, TurnCost } from '@anyapp/core'
+
+/**
+ * A sampling value as the user configured it.
+ *
+ * A number pins it; `null` sends nothing and leaves the model's Modelfile default
+ * alone; `'auto'` asks anyapp to choose from what it knows about the model.
+ */
+type SamplingSetting = number | 'auto' | null
 
 /** Permission mode type for tool execution. */
 type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
@@ -10,8 +18,15 @@ type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
 /** A single streamed update from the agent to the renderer. */
 interface StreamChunk {
   /** Type of chunk. */
-  type: 'text' | 'tool_start' | 'tool_end' | 'complete' | 'error' | 'rate_limit' | 'status'
-  /** Text content (for 'text' type). */
+  type:
+    | 'text'
+    | 'thinking'
+    | 'tool_start'
+    | 'tool_end'
+    | 'complete'
+    | 'error'
+    | 'status'
+  /** Text content (for 'text' and 'thinking' types). */
   text?: string
   /** Tool name (for 'tool_start' and 'tool_end' types). */
   tool?: string
@@ -23,12 +38,12 @@ interface StreamChunk {
   output?: string
   /** Error message (for 'error' type, or a failed 'tool_end'). */
   error?: string
-  /** Seconds until retry (for 'rate_limit' type). */
-  retryAfterSeconds?: number
   /** What the agent is doing (for 'status' type). */
   status?: AgentStatus
-  /** Context consumed after this turn, when Pi has reported usage. */
-  contextUsage?: ContextUsage
+  /** What the finished turn cost (for 'complete' type). */
+  turn?: TurnCost
+  /** What the daemon did with the prefix on the turn's last request. */
+  cache?: CacheVerdict
   /** What a write actually changed (for 'tool_end' on a file-modifying tool). */
   patches?: FilePatch[]
 }
@@ -116,6 +131,8 @@ interface ContextReport {
   blocks: ContextBlock[]
   /** The largest individual tool results, descending, at most three. */
   hotspots: ContextHotspot[]
+  /** Measured prefill rate in tokens per second, or null before there is a sample. */
+  prefillRate: number | null
 }
 
 /** Tool approval request sent to renderer. */
@@ -246,7 +263,17 @@ interface AppConfig {
   /** Whether to shape the context sent to the model. */
   trimContext: boolean
   /** Sampling temperature for the model, or null for the model's own default. */
-  samplingTemperature: number | null
+  samplingTemperature: SamplingSetting
+  /** Nucleus cutoff, in the same three states as {@link samplingTemperature}. */
+  samplingTopP: SamplingSetting
+  /**
+   * How hard to ask the model to think.
+   *
+   * `unset` sends no `reasoning_effort`, which is not the same as off: Ollama's
+   * models reason regardless, and its OpenAI-compatible endpoint has no switch that
+   * stops them.
+   */
+  reasoningLevel: 'unset' | 'low' | 'medium' | 'high'
 }
 
 /** A model pulled into the local Ollama instance. */
@@ -433,6 +460,8 @@ interface ElectronAPI {
   saveConfig: (config: AppConfig) => Promise<void>
 
   /** List the models pulled into the local Ollama daemon. */
+  /** Whether the daemon answers, and whether it still holds the selected model. */
+  getDaemonHealth: () => Promise<DaemonHealth>
   listModels: () => Promise<OllamaModel[]>
 
   /** Check whether an Ollama daemon is answering. */
@@ -533,8 +562,12 @@ declare global {
 
 export type { 
   PermissionMode, 
+  SamplingSetting,
   StreamChunk,
   AgentStatus,
+  CacheVerdict,
+  DaemonHealth,
+  TurnCost,
   ContextUsage, 
   ContextBlock,
   ContextBlockGroup,

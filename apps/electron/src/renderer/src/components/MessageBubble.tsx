@@ -4,6 +4,7 @@
 
 import { ToolBubble } from './ToolBubble'
 import { TextBubble } from './TextBubble'
+import { ThinkingBubble } from './ThinkingBubble'
 import { ApprovalRecord } from './ApprovalRecord'
 import { ElementContextBubble } from './ElementContextBubble'
 import type { ElementContext, FilePatch } from '@anyapp/core'
@@ -33,6 +34,14 @@ interface TextBlock {
 }
 
 /**
+ * The model's reasoning, which arrives before its answer.
+ */
+interface ThinkingBlock {
+  type: 'thinking'
+  content: string
+}
+
+/**
  * Approval block within a message.
  */
 interface ApprovalBlock {
@@ -54,7 +63,7 @@ interface ElementBlock {
 /**
  * Content block types for rich messages.
  */
-export type ContentBlock = ToolBlock | TextBlock | ApprovalBlock | ElementBlock
+export type ContentBlock = ToolBlock | TextBlock | ThinkingBlock | ApprovalBlock | ElementBlock
 
 /**
  * Legacy tool status indicator (for backward compatibility).
@@ -114,6 +123,14 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
                   key={i}
                   content={block.content}
                   isUser={isUser}
+                  isStreaming={isStreaming && i === message.blocks!.length - 1}
+                />
+              )
+            case 'thinking':
+              return (
+                <ThinkingBubble
+                  key={i}
+                  content={block.content}
                   isStreaming={isStreaming && i === message.blocks!.length - 1}
                 />
               )

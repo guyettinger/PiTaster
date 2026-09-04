@@ -71,6 +71,30 @@ export function formatTokens(value: number): string {
  * @param source - Provenance of the window figure
  * @returns A short clause for the header
  */
+/**
+ * How long a cold prefill of this much context would take, at the measured rate.
+ *
+ * The number that predicts how long the next turn takes, and the one a token count
+ * alone hides: on the audited model a full window is about thirteen minutes of
+ * prefill, and a comfortable-looking `31k / 65k` says nothing about that. It is what
+ * a *miss* costs, not what the next turn will cost — anyapp works to keep the prefix
+ * cached, and the sentence says so.
+ *
+ * Null before there is a sample, because a rate invented from a constant would be the
+ * same mistake as the advertised context window: a plausible number nobody measured.
+ *
+ * @param tokens - The prompt size to price
+ * @param rate - Measured prefill rate in tokens per second
+ * @returns A short phrase, or null when there is no measurement
+ */
+function describePrefillTime(tokens: number, rate: number | null): string | null {
+  if (rate === null || rate <= 0 || tokens <= 0) return null
+
+  const seconds = Math.round(tokens / rate)
+  if (seconds < 60) return `~${seconds}s to prefill if the cache misses`
+  return `~${Math.round(seconds / 60)} min to prefill if the cache misses`
+}
+
 function describeSource(source: ContextReport['windowSource']): string {
   switch (source) {
     case 'user':
@@ -197,6 +221,7 @@ export function ContextBreakdown({
   const canCompact = report.state === 'live' || report.state === 'estimated'
   const fills = assignFills(report.blocks)
   const compactPercent = (report.compactAt / Math.max(1, report.window)) * 100
+  const prefillTime = describePrefillTime(total, report.prefillRate)
   const showSeam = report.measured !== null && report.measured !== report.estimated
 
   return (
@@ -233,6 +258,7 @@ export function ContextBreakdown({
         </div>
         <p className="mt-1 text-ash">
           Summarizes at <span className="tabular-nums">{formatTokens(report.compactAt)}</span>
+          {prefillTime && <span> · {prefillTime}</span>}
         </p>
       </div>
 

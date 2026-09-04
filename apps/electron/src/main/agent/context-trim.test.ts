@@ -1,31 +1,44 @@
 /**
- * Tests for the context trimmer.
+ * Tests for the context sealer.
  *
- * The properties worth protecting are the ones whose violation is silent: trimming
- * the current turn makes the model repeat work it just did, and trimming a user
- * message loses the instruction it was given.
+ * The property that matters most is the one the previous design had no test for and
+ * did not hold: **what was sent last request is sent again byte for byte**. Its
+ * violation is silent — the daemon re-prefills the whole prompt, which looks like a
+ * slow model rather than like a bug. The rest of the suite protects the rules whose
+ * violation is equally quiet: trimming a message the model still needs, or losing the
+ * pointer that says how to read the rest of it.
  */
 
 import { describe, expect, test } from 'bun:test'
-import { trimContext, type AgentMessage } from './context-trim'
+import { createContextSealer, type AgentMessage } from './context-trim'
 
 /** A generous budget, so only the tests that mean to truncate do. */
-const ROOMY = { maxToolResultTokens: 10_000, hardToolResultTokens: 50_000 }
+const ROOMY = {
+  maxToolResultTokens: 10_000,
+  hardToolResultTokens: 50_000,
+  sealAdvanceTokens: 0
+}
 
 /**
- * Build a budget from the ordinary cap, with a hard cap far above it.
+ * Build sealer options from the ordinary cap, with a hard cap far above it.
  *
  * Mirrors the real derivation, where the two are an order of magnitude apart and
- * answer different questions.
+ * answer different questions. The seal threshold defaults to zero so a test that is
+ * not about batching seals on the first call.
  *
  * @param maxToolResultTokens - The ordinary per-result cap
- * @returns Trim options
+ * @param sealAdvanceTokens - Tokens of new history before the seal advances
+ * @returns Sealer options
  */
-function budget(maxToolResultTokens: number): {
-  maxToolResultTokens: number
-  hardToolResultTokens: number
-} {
-  return { maxToolResultTokens, hardToolResultTokens: maxToolResultTokens * 20 }
+function budget(
+  maxToolResultTokens: number,
+  sealAdvanceTokens = 0
+): { maxToolResultTokens: number; hardToolResultTokens: number; sealAdvanceTokens: number } {
+  return {
+    maxToolResultTokens,
+    hardToolResultTokens: maxToolResultTokens * 20,
+    sealAdvanceTokens
+  }
 }
 
 /**
@@ -35,6 +48,22 @@ function budget(maxToolResultTokens: number): {
  */
 function user(text: string): AgentMessage {
   return { role: 'user', content: text, timestamp: 0 } as AgentMessage
+}
+
+/**
+ * Build a user message carrying a screenshot.
+ * @param text - The message text
+ * @returns The message
+ */
+function userWithImage(text: string): AgentMessage {
+  return {
+    role: 'user',
+    content: [
+      { type: 'text', text },
+      { type: 'image', data: 'AAAA', mimeType: 'image/png' }
+    ],
+    timestamp: 0
+  } as unknown as AgentMessage
 }
 
 /**
@@ -71,23 +100,6 @@ function result(id: string, name: string, text: string): AgentMessage {
 }
 
 /**
- * Read the text a message carries.
- * @param message - The message
- * @returns Its concatenated text
- */
-function textOf(message: AgentMessage): string {
-  const content = (message as { content?: unknown }).content
-  if (typeof content === 'string') return content
-  if (!Array.isArray(content)) return ''
-  return content
-    .map((block) => {
-      const typed = block as { type?: unknown; text?: unknown }
-      return typed.type === 'text' && typeof typed.text === 'string' ? typed.text : `[${String(typed.type)}]`
-    })
-    .join('\n')
-}
-
-/**
  * Build a failed tool result message.
  * @param id - The tool call it answers
  * @param name - Tool name
@@ -105,395 +117,501 @@ function errorResult(id: string, name: string, text: string): AgentMessage {
   } as unknown as AgentMessage
 }
 
-describe('trimContext', () => {
-  test('never alters a user message beyond stripping stale images', () => {
-    const messages = [user('first'), call('a', 'read', { path: '/x' }), result('a', 'read', 'x'), user('second')]
-    const trimmed = trimContext(messages, ROOMY)
+/**
+ * Read the text a message carries.
+ * @param message - The message
+ * @returns Its concatenated text
+ */
+function textOf(message: AgentMessage): string {
+  const content = (message as { content?: unknown }).content
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((block) => {
+      const typed = block as { type?: unknown; text?: unknown }
+      return typed.type === 'text' && typeof typed.text === 'string'
+        ? typed.text
+        : `[${String(typed.type)}]`
+    })
+    .join('\n')
+}
 
-    expect(textOf(trimmed[0])).toBe('first')
-    expect(textOf(trimmed[3])).toBe('second')
+/**
+ * The user message that opens a new turn, putting everything before it behind the seal.
+ *
+ * The seal stops at the current turn, so a conversation whose only user message is the
+ * first one has nothing old enough to freeze.
+ *
+ * @param label - A label, so a conversation's turns are distinguishable
+ * @returns The messages
+ */
+function nextTurn(label: number): AgentMessage[] {
+  return [user(`turn ${label}`)]
+}
+
+describe('createContextSealer', () => {
+  describe('prefix stability', () => {
+    test('sends the same bytes for history the seal has not reached', () => {
+      // The failure this module exists to stop: a result sent in full during its own
+      // turn, then sent truncated once the next turn began — a rewrite in the middle
+      // of the prompt prefix, and a full re-prefill, on every turn boundary.
+      const big = 'line\n'.repeat(4000)
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'read', { path: '/x' }),
+        result('a', 'read', big)
+      ]
+
+      // The ordinary cap would cut this at the seal; the viability cap is far above
+      // it, so while the seal stays put the result travels whole.
+      const sealer = createContextSealer(budget(2000, 100_000))
+      sealer.seal(conversation)
+      const first = textOf(sealer.capForRequest(conversation)[2])
+
+      conversation.push(user('two'), call('b', 'ls', {}), result('b', 'ls', 'a\nb'))
+      sealer.seal(conversation)
+      const second = textOf(sealer.capForRequest(conversation)[2])
+
+      expect(second).toBe(first)
+      expect(second).toBe(big)
+    })
+
+    test('does not advance the seal until enough new history has arrived', () => {
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'read', { path: '/x' }),
+        result('a', 'read', 'x'.repeat(4000)),
+        ...nextTurn(1)
+      ]
+
+      // 4000 characters is about 1000 tokens, well under the threshold.
+      const sealer = createContextSealer(budget(10, 100_000))
+      expect(sealer.seal(conversation)).toBe(0)
+      expect(textOf(conversation[2])).toHaveLength(4000)
+    })
+
+    test('advances once the threshold is crossed, and then stays put', () => {
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'read', { path: '/x' }),
+        result('a', 'read', 'x'.repeat(40_000)),
+        ...nextTurn(1)
+      ]
+
+      const sealer = createContextSealer(budget(10, 1000))
+      expect(sealer.seal(conversation)).toBe(1)
+      const sealed = textOf(conversation[2])
+      expect(sealed.length).toBeLessThan(1000)
+
+      // A second pass over the same conversation must find nothing left to do.
+      expect(sealer.seal(conversation)).toBe(0)
+      expect(textOf(conversation[2])).toBe(sealed)
+    })
+
+    test('re-anchors when compaction shrinks the history it was measuring', () => {
+      // Pi rebuilds `state.messages` from the transcript after a compaction, so the
+      // sealable range gets smaller. A baseline left above it would hold the seal shut
+      // until the conversation grew back past a number that no longer described it.
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'read', { path: '/x' }),
+        result('a', 'read', 'x'.repeat(40_000)),
+        ...nextTurn(1)
+      ]
+      const sealer = createContextSealer(budget(10, 1000))
+      sealer.seal(conversation)
+
+      const afterCompaction: AgentMessage[] = [
+        user('summary'),
+        call('b', 'read', { path: '/y' }),
+        result('b', 'read', 'y'.repeat(40_000)),
+        ...nextTurn(9)
+      ]
+      expect(sealer.seal(afterCompaction)).toBe(1)
+      expect(textOf(afterCompaction[2]).length).toBeLessThan(1000)
+    })
   })
 
-  test('truncates a current-turn result that alone cannot fit the window', () => {
-    const long = 'y\n'.repeat(100_000)
-    const messages = [
-      user('go'),
-      call('a', 'bash', { command: 'find /' }),
-      result('a', 'bash', long)
-    ]
-    const trimmed = trimContext(messages, { maxToolResultTokens: 10, hardToolResultTokens: 100 })
+  describe('writing the seal back', () => {
+    test('seals into the caller\'s own messages', () => {
+      // The whole reason the seal is written rather than transformed: Pi decides to
+      // compact from an estimate over `agent.state.messages`, so a trim it cannot see
+      // can never relieve compaction pressure.
+      const message = result('a', 'read', 'x'.repeat(40_000))
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'read', { path: '/x' }),
+        message,
+        ...nextTurn(1)
+      ]
 
-    // The current-turn exemption is about relevance, not size. A result past the hard
-    // cap cannot coexist with the rest of the prompt, so sending it whole only
-    // guarantees the request fails — as a timeout, not as an oversized result.
-    expect(textOf(trimmed[2])).not.toBe(long)
-    expect(textOf(trimmed[2])).toContain('anyapp truncated')
+      createContextSealer(budget(10)).seal(conversation)
+
+      expect(textOf(message).length).toBeLessThan(1000)
+      expect(conversation[2]).toBe(message)
+    })
+
+    test('capForRequest leaves the stored message alone', () => {
+      const message = result('a', 'bash', 'x'.repeat(400_000))
+      const conversation: AgentMessage[] = [user('one'), call('a', 'bash', {}), message]
+
+      const sent = createContextSealer(budget(10)).capForRequest(conversation)
+
+      expect(textOf(sent[0])).toBe('one')
+      expect(textOf(sent[2]).length).toBeLessThan(10_000)
+      expect(textOf(message)).toHaveLength(400_000)
+    })
+
+    test('applies the viability cap past the seal, and nothing smaller', () => {
+      // Two caps, two questions. Recent history is exempt from "is this worth its
+      // space" — an agent that cannot see what it just did repeats it — but not from
+      // "can this request succeed at all".
+      const merely = result('a', 'bash', 'x'.repeat(80_000))
+      const doomed = result('b', 'bash', 'x'.repeat(4_000_000))
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'bash', {}),
+        merely,
+        call('b', 'bash', {}),
+        doomed
+      ]
+
+      const sent = createContextSealer(budget(1000)).capForRequest(conversation)
+
+      expect(textOf(sent[2])).toHaveLength(80_000)
+      expect(textOf(sent[4]).length).toBeLessThan(90_000)
+    })
   })
 
-  test('leaves a merely large current-turn result alone', () => {
-    // The ordinary cap does not reach into the current turn. A full 50 KB read is
-    // exactly what Pi's read tool is entitled to return, and the agent has to see
-    // what it just did or it reads the file again.
-    const body = 'line of source\n'.repeat(3_000)
-    const messages = [
-      user('go'),
-      call('a', 'read', { path: '/src/big.ts' }),
-      result('a', 'read', body)
-    ]
-    const trimmed = trimContext(messages, { maxToolResultTokens: 10, hardToolResultTokens: 100_000 })
+  describe('what the seal may reach', () => {
+    test('seals nothing before a turn has completed', () => {
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'read', { path: '/x' }),
+        result('a', 'read', 'x'.repeat(40_000))
+      ]
 
-    expect(textOf(trimmed[2])).toBe(body)
-  })
+      expect(createContextSealer(budget(10)).seal(conversation)).toBe(0)
+      expect(textOf(conversation[2])).toHaveLength(40_000)
+    })
 
-  test('truncates a git_status result listing an unignored node_modules', () => {
-    // The shape that caused a 422 KB result: statusMatrix reports untracked files as
-    // modified, so an app without a .gitignore answers with all of node_modules.
-    const paths = Array.from({ length: 6_000 }, (_, i) => `  node_modules/.vite/deps/chunk-${i}.js`)
-    const status = `Branch: main\nHEAD: e2a5eec\nModified files:\n${paths.join('\n')}`
-    const messages = [user('go'), call('a', 'git_status', {}), result('a', 'git_status', status)]
-    const hardToolResultTokens = 32_768
-    const trimmed = trimContext(messages, { maxToolResultTokens: 12_800, hardToolResultTokens })
-    const text = textOf(trimmed[2])
+    test('never seals into the current turn', () => {
+      const conversation: AgentMessage[] = [
+        ...nextTurn(1),
+        user('current'),
+        call('a', 'read', { path: '/x' }),
+        result('a', 'read', 'x'.repeat(40_000))
+      ]
 
-    expect(text).toContain('anyapp truncated')
-    expect(text.length).toBeLessThanOrEqual(hardToolResultTokens * 4 + 200)
-    expect(text.length).toBeLessThan(status.length)
-  })
+      createContextSealer(budget(10)).seal(conversation)
 
-  test('leaves a result that fits alone, current turn or not', () => {
-    const short = 'y'.repeat(100)
-    const messages = [user('go'), call('a', 'read', { path: '/small' }), result('a', 'read', short)]
-    const trimmed = trimContext(messages, ROOMY)
+      expect(textOf(conversation[conversation.length - 1])).toHaveLength(40_000)
+    })
 
-    expect(textOf(trimmed[2])).toBe(short)
-  })
+    test('never rewrites a user message except to drop a stale screenshot', () => {
+      const conversation: AgentMessage[] = [
+        user('x'.repeat(40_000)),
+        call('a', 'read', { path: '/x' }),
+        result('a', 'read', 'ok'),
+        ...nextTurn(1)
+      ]
 
-  test('does not collapse a superseded read inside the current turn', () => {
-    const messages = [
-      user('go'),
-      call('a', 'read', { path: '/src/App.tsx' }),
-      result('a', 'read', 'first version'),
-      call('b', 'read', { path: '/src/App.tsx' }),
-      result('b', 'read', 'second version')
-    ]
-    const trimmed = trimContext(messages, ROOMY)
+      createContextSealer(budget(10)).seal(conversation)
 
-    // Superseding is a relevance judgement, and within the turn the agent still
-    // needs to see what it just did or it repeats the read.
-    expect(textOf(trimmed[2])).toBe('first version')
-    expect(textOf(trimmed[4])).toBe('second version')
-  })
+      expect(textOf(conversation[0])).toHaveLength(40_000)
+    })
 
-  test('collapses a read superseded by a later read of the same path', () => {
-    const messages = [
-      user('go'),
-      call('a', 'read', { path: '/src/App.tsx' }),
-      result('a', 'read', 'first version'),
-      call('b', 'read', { path: '/src/App.tsx' }),
-      result('b', 'read', 'second version'),
-      user('now change it')
-    ]
-    const trimmed = trimContext(messages, ROOMY)
+    test('drops a screenshot once its turn falls behind the seal', () => {
+      const conversation: AgentMessage[] = [userWithImage('look'), ...nextTurn(1)]
 
-    expect(textOf(trimmed[2])).toContain('superseded by a later read of /src/App.tsx')
-    expect(textOf(trimmed[4])).toBe('second version')
-  })
+      createContextSealer(budget(1000)).seal(conversation)
 
-  test('keeps reads of different paths', () => {
-    const messages = [
-      user('go'),
-      call('a', 'read', { path: '/a.ts' }),
-      result('a', 'read', 'contents of a'),
-      call('b', 'read', { path: '/b.ts' }),
-      result('b', 'read', 'contents of b'),
-      user('next')
-    ]
-    const trimmed = trimContext(messages, ROOMY)
+      expect(textOf(conversation[0])).toContain('screenshot omitted')
+      expect(textOf(conversation[0])).toContain('look')
+    })
 
-    expect(textOf(trimmed[2])).toBe('contents of a')
-    expect(textOf(trimmed[4])).toBe('contents of b')
-  })
+    test('keeps the current turn\'s screenshot', () => {
+      const conversation: AgentMessage[] = [user('one'), user('two'), userWithImage('look')]
 
-  test('truncates an oversized tool result and says how to get it back', () => {
-    const messages = [
-      user('go'),
-      call('a', 'bash', { command: 'ls -R' }),
-      result('a', 'bash', 'line\n'.repeat(5000)),
-      user('next')
-    ]
-    const trimmed = trimContext(messages, budget(50))
-    const text = textOf(trimmed[2])
+      createContextSealer(budget(1000)).seal(conversation)
 
-    expect(text.length).toBeLessThan(1000)
-    expect(text).toContain('anyapp truncated')
-    expect(text).toContain('offset and limit')
-  })
+      expect(textOf(conversation[2])).toContain('[image]')
+    })
 
-  test('truncates a code_intel result, which is evidence like a read', () => {
-    const messages = [
-      user('go'),
-      call('a', 'code_intel', { operation: 'references', path: 'src/App.tsx', symbol: 'x' }),
-      result('a', 'code_intel', 'src/App.tsx:1:1  const x = 1\n'.repeat(5000)),
-      user('next')
-    ]
-    const trimmed = trimContext(messages, budget(50))
-    const text = textOf(trimmed[2])
-
-    expect(text.length).toBeLessThan(1000)
-    expect(text).toContain('anyapp truncated')
-  })
-
-  test('does not truncate an edit result, which now carries the diagnostics', () => {
-    // The compiler errors appended by `diagnostics-note.ts` ride on the edit's own
-    // result. If this set ever grew to include `edit`, that block would be the first
-    // thing cut — which is why its budget is enforced where it is produced instead.
-    const body = `edited\n\n2 TypeScript errors in src/App.tsx:\n  ${'e'.repeat(5000)}`
-    const messages = [
-      user('go'),
-      call('a', 'edit', { path: '/x' }),
-      result('a', 'edit', body),
-      user('next')
-    ]
-    const trimmed = trimContext(messages, budget(10))
-    expect(textOf(trimmed[2])).toBe(body)
-  })
-
-  test('does not truncate a write result', () => {
-    const body = 'w'.repeat(5000)
-    const messages = [
-      user('go'),
-      call('a', 'write', { path: '/x' }),
-      result('a', 'write', body),
-      user('next')
-    ]
-    const trimmed = trimContext(messages, budget(10))
-    expect(textOf(trimmed[2])).toBe(body)
-  })
-
-  test('strips screenshots older than the last few turns', () => {
-    const withImage = (text: string): AgentMessage =>
-      ({
-        role: 'user',
+    test('does not flatten a tool result carrying an image', () => {
+      // The seal writes over the original, so flattening content to a single text
+      // block would destroy the image permanently rather than for one request.
+      const withImage = {
+        role: 'toolResult',
+        toolCallId: 'a',
+        toolName: 'read',
         content: [
-          { type: 'text', text },
+          { type: 'text', text: 'x'.repeat(40_000) },
           { type: 'image', data: 'AAAA', mimeType: 'image/png' }
         ],
+        isError: false,
         timestamp: 0
-      }) as unknown as AgentMessage
+      } as unknown as AgentMessage
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'read', { path: '/x' }),
+        withImage,
+        ...nextTurn(1)
+      ]
 
-    const messages = [withImage('old'), user('t1'), user('t2'), user('t3')]
-    const trimmed = trimContext(messages, ROOMY)
+      createContextSealer(budget(10)).seal(conversation)
 
-    expect(textOf(trimmed[0])).toContain('screenshot omitted')
-    expect(textOf(trimmed[0])).toContain('old')
+      expect(textOf(withImage)).toContain('[image]')
+      expect(textOf(withImage)).toContain('x'.repeat(40_000))
+    })
   })
 
-  test('keeps recent screenshots', () => {
-    const withImage = (text: string): AgentMessage =>
-      ({
-        role: 'user',
-        content: [
-          { type: 'text', text },
-          { type: 'image', data: 'AAAA', mimeType: 'image/png' }
-        ],
-        timestamp: 0
-      }) as unknown as AgentMessage
+  describe('truncation', () => {
+    test('says how to get the rest of an oversized result back', () => {
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'bash', {}),
+        result('a', 'bash', 'line\n'.repeat(4000)),
+        ...nextTurn(1)
+      ]
 
-    const messages = [user('t0'), withImage('recent'), user('t2')]
-    const trimmed = trimContext(messages, ROOMY)
+      createContextSealer(budget(100)).seal(conversation)
 
-    expect(textOf(trimmed[1])).toContain('[image]')
+      const text = textOf(conversation[2])
+      expect(text).toContain('…[anyapp truncated')
+      expect(text).toContain('more lines')
+      expect(text.length).toBeLessThan(1000)
+    })
+
+    test('rewrites Pi\'s resume footer for the shortened body', () => {
+      const body = 'line\n'.repeat(2000)
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'read', { path: '/x', offset: 12 }),
+        result('a', 'read', `${body}[Showing lines 12-2011 of 5400. Use offset=2012 to continue.]`),
+        ...nextTurn(1)
+      ]
+
+      createContextSealer(budget(100)).seal(conversation)
+
+      const text = textOf(conversation[2])
+      expect(text).toContain('Showing lines 12-')
+      expect(text).toContain('of 5400')
+      expect(text).not.toContain('offset=2012')
+      const resume = /Use offset=(\d+) to continue/.exec(text)
+      expect(resume).not.toBeNull()
+      expect(Number(resume?.[1])).toBeLessThan(2012)
+    })
+
+    test('names the resume offset from a read that had no footer', () => {
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'read', { path: '/x', offset: 100 }),
+        result('a', 'read', 'line\n'.repeat(2000)),
+        ...nextTurn(1)
+      ]
+
+      createContextSealer(budget(100)).seal(conversation)
+
+      expect(textOf(conversation[2])).toContain('Showing lines 100-')
+    })
+
+    test('cuts on a line boundary', () => {
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'bash', {}),
+        result('a', 'bash', 'aaaaaaaaaa\n'.repeat(1000)),
+        ...nextTurn(1)
+      ]
+
+      createContextSealer(budget(100)).seal(conversation)
+
+      const body = textOf(conversation[2]).split('\n\n…[anyapp truncated')[0]
+      expect(body.split('\n').every((line) => line === 'aaaaaaaaaa')).toBe(true)
+    })
+
+    test('does not treat a file quoting the marker as already truncated', () => {
+      const quoting =
+        `${'line\n'.repeat(2000)}…[anyapp truncated something] in the middle\n` +
+        'line\n'.repeat(2000)
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'read', { path: '/x' }),
+        result('a', 'read', quoting),
+        ...nextTurn(1)
+      ]
+
+      createContextSealer(budget(100)).seal(conversation)
+
+      expect(textOf(conversation[2]).length).toBeLessThan(quoting.length)
+    })
+
+    test('leaves edit and write results alone, which carry the diagnostics', () => {
+      const long = 'x'.repeat(40_000)
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'edit', { path: '/x' }),
+        result('a', 'edit', long),
+        call('b', 'write', { path: '/y' }),
+        result('b', 'write', long),
+        ...nextTurn(1)
+      ]
+
+      createContextSealer(budget(10)).seal(conversation)
+
+      expect(textOf(conversation[2])).toHaveLength(40_000)
+      expect(textOf(conversation[4])).toHaveLength(40_000)
+    })
+
+    test('truncates git_status and code_intel, which are unbounded evidence', () => {
+      const long = 'node_modules/x\n'.repeat(4000)
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'git_status', {}),
+        result('a', 'git_status', long),
+        call('b', 'code_intel', {}),
+        result('b', 'code_intel', long),
+        ...nextTurn(1)
+      ]
+
+      createContextSealer(budget(100)).seal(conversation)
+
+      expect(textOf(conversation[2]).length).toBeLessThan(1000)
+      expect(textOf(conversation[4]).length).toBeLessThan(1000)
+    })
+
+    test('gives a loaded skill the viability cap and not the ordinary one', () => {
+      // A skill body is the model's brief, not evidence it gathered. Cutting it in
+      // history cuts the procedure the model is working from.
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'load_skill', {}),
+        result('a', 'load_skill', 'x'.repeat(40_000)),
+        ...nextTurn(1)
+      ]
+
+      createContextSealer(budget(100)).seal(conversation)
+
+      // The ordinary cap here is 100 tokens; the viability cap is 2000. The body is
+      // cut to the second, which is the point — it is not cut to the first.
+      expect(textOf(conversation[2]).length).toBeGreaterThan(7000)
+    })
   })
 
-  test('does not mark a failed re-read as superseded by the stale success', () => {
-    // The newest read is the failing one. Replacing it with a pointer to the older
-    // successful read would tell the model the stale contents are current.
-    const messages = [
-      user('go'),
-      call('a', 'read', { path: '/gone.ts' }),
-      result('a', 'read', 'contents that no longer exist'),
-      call('b', 'read', { path: '/gone.ts' }),
-      errorResult('b', 'read', 'ENOENT: no such file'),
-      user('next')
-    ]
-    const trimmed = trimContext(messages, ROOMY)
+  describe('superseded reads', () => {
+    test('collapses a read a later read of the same path covers', () => {
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'read', { path: '/src/App.tsx' }),
+        result('a', 'read', 'old contents'),
+        call('b', 'read', { path: '/src/App.tsx' }),
+        result('b', 'read', 'new contents'),
+        ...nextTurn(1)
+      ]
 
-    expect(textOf(trimmed[4])).toBe('ENOENT: no such file')
-    expect(textOf(trimmed[4])).not.toContain('superseded')
-  })
+      createContextSealer(ROOMY).seal(conversation)
 
-  test('is idempotent', () => {
-    const messages = [
-      user('go'),
-      call('a', 'read', { path: '/x' }),
-      result('a', 'read', 'first'),
-      call('b', 'read', { path: '/x' }),
-      result('b', 'read', 'second'),
-      call('c', 'bash', { command: 'ls' }),
-      result('c', 'bash', 'out\n'.repeat(5000)),
-      user('next')
-    ]
-    const once = trimContext(messages, budget(50))
-    const twice = trimContext(once, budget(50))
+      expect(textOf(conversation[2])).toContain('superseded by a later read of /src/App.tsx')
+      expect(textOf(conversation[4])).toBe('new contents')
+    })
 
-    expect(twice.map(textOf)).toEqual(once.map(textOf))
+    test('keeps reads of different paths', () => {
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'read', { path: '/a.ts' }),
+        result('a', 'read', 'a contents'),
+        call('b', 'read', { path: '/b.ts' }),
+        result('b', 'read', 'b contents'),
+        ...nextTurn(1)
+      ]
+
+      createContextSealer(ROOMY).seal(conversation)
+
+      expect(textOf(conversation[2])).toBe('a contents')
+      expect(textOf(conversation[4])).toBe('b contents')
+    })
+
+    test('keeps two reads of different regions of one file', () => {
+      // Pi's read caps at 2000 lines and tells the model to continue with `offset`, so
+      // two reads of one path are usually two different parts of it. Between them they
+      // are the only copy the model has.
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'read', { path: '/big.ts', offset: 1, limit: 2000 }),
+        result('a', 'read', 'head'),
+        call('b', 'read', { path: '/big.ts', offset: 2001, limit: 2000 }),
+        result('b', 'read', 'tail'),
+        ...nextTurn(1)
+      ]
+
+      createContextSealer(ROOMY).seal(conversation)
+
+      expect(textOf(conversation[2])).toBe('head')
+      expect(textOf(conversation[4])).toBe('tail')
+    })
+
+    test('a later unbounded read supersedes an earlier chunk', () => {
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'read', { path: '/big.ts', offset: 10, limit: 20 }),
+        result('a', 'read', 'chunk'),
+        call('b', 'read', { path: '/big.ts' }),
+        result('b', 'read', 'whole file'),
+        ...nextTurn(1)
+      ]
+
+      createContextSealer(ROOMY).seal(conversation)
+
+      expect(textOf(conversation[2])).toContain('superseded')
+      expect(textOf(conversation[2])).toContain('lines 10-29')
+    })
+
+    test('an earlier unbounded read is not superseded by a later slice', () => {
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'read', { path: '/big.ts' }),
+        result('a', 'read', 'whole file'),
+        call('b', 'read', { path: '/big.ts', offset: 10, limit: 20 }),
+        result('b', 'read', 'chunk'),
+        ...nextTurn(1)
+      ]
+
+      createContextSealer(ROOMY).seal(conversation)
+
+      expect(textOf(conversation[2])).toBe('whole file')
+    })
+
+    test('does not mark a failed re-read as superseded by the stale success', () => {
+      const conversation: AgentMessage[] = [
+        user('one'),
+        call('a', 'read', { path: '/gone.ts' }),
+        result('a', 'read', 'contents'),
+        call('b', 'read', { path: '/gone.ts' }),
+        errorResult('b', 'read', 'ENOENT'),
+        ...nextTurn(1)
+      ]
+
+      createContextSealer(ROOMY).seal(conversation)
+
+      expect(textOf(conversation[4])).toBe('ENOENT')
+      expect(textOf(conversation[2])).toBe('contents')
+    })
   })
 
   test('preserves message count and roles', () => {
-    const messages = [
-      user('go'),
+    const conversation: AgentMessage[] = [
+      user('one'),
       call('a', 'read', { path: '/x' }),
-      result('a', 'read', 'z'.repeat(50_000)),
-      user('next')
+      result('a', 'read', 'x'.repeat(40_000)),
+      ...nextTurn(1)
     ]
-    const trimmed = trimContext(messages, budget(10))
+    const roles = conversation.map((message) => (message as { role: string }).role)
 
-    expect(trimmed).toHaveLength(messages.length)
-    expect(trimmed.map((m) => (m as { role: string }).role)).toEqual([
-      'user',
-      'assistant',
-      'toolResult',
-      'user'
-    ])
-  })
-  test('keeps two reads of different regions of one file', () => {
-    // Pi's read tool caps at 2000 lines and tells the model to "continue with offset
-    // until complete", so this is the designed way to read a large file. Keying
-    // superseding on the path alone would collapse the first chunk into a pointer and
-    // leave the model believing it had read a file it had only seen the tail of.
-    const messages = [
-      user('read all of it'),
-      call('a', 'read', { path: '/src/big.ts', offset: 1, limit: 2000 }),
-      result('a', 'read', 'lines 1 to 2000'),
-      call('b', 'read', { path: '/src/big.ts', offset: 2001, limit: 2000 }),
-      result('b', 'read', 'lines 2001 to 4000'),
-      user('now change it')
-    ]
-    const trimmed = trimContext(messages, ROOMY)
+    const sealer = createContextSealer(budget(10))
+    sealer.seal(conversation)
+    const sent = sealer.capForRequest(conversation)
 
-    expect(textOf(trimmed[2])).toBe('lines 1 to 2000')
-    expect(textOf(trimmed[4])).toBe('lines 2001 to 4000')
-  })
-
-  test('collapses a read whose region a later read fully covers', () => {
-    const messages = [
-      user('go'),
-      call('a', 'read', { path: '/src/App.tsx', offset: 10, limit: 20 }),
-      result('a', 'read', 'the middle bit'),
-      call('b', 'read', { path: '/src/App.tsx', offset: 1, limit: 500 }),
-      result('b', 'read', 'the whole thing'),
-      user('next')
-    ]
-    const trimmed = trimContext(messages, ROOMY)
-
-    expect(textOf(trimmed[2])).toContain('superseded by a later read of /src/App.tsx')
-    expect(textOf(trimmed[2])).toContain('lines 10-29')
-    expect(textOf(trimmed[4])).toBe('the whole thing')
-  })
-
-  test('a later unbounded read supersedes an earlier chunk', () => {
-    const messages = [
-      user('go'),
-      call('a', 'read', { path: '/x.ts', offset: 5, limit: 10 }),
-      result('a', 'read', 'a slice'),
-      call('b', 'read', { path: '/x.ts' }),
-      result('b', 'read', 'everything'),
-      user('next')
-    ]
-    const trimmed = trimContext(messages, ROOMY)
-
-    expect(textOf(trimmed[2])).toContain('superseded')
-    expect(textOf(trimmed[4])).toBe('everything')
-  })
-
-  test('an earlier unbounded read is not superseded by a later slice', () => {
-    // The later read saw less, so it cannot stand in for the earlier one.
-    const messages = [
-      user('go'),
-      call('a', 'read', { path: '/x.ts' }),
-      result('a', 'read', 'everything'),
-      call('b', 'read', { path: '/x.ts', offset: 5, limit: 10 }),
-      result('b', 'read', 'a slice'),
-      user('next')
-    ]
-    const trimmed = trimContext(messages, ROOMY)
-
-    expect(textOf(trimmed[2])).toBe('everything')
-    expect(textOf(trimmed[4])).toBe('a slice')
-  })
-
-  test('rewrites Pi\'s resume footer for the shortened body', () => {
-    // Pi appends this footer as the last line, and it is the only thing in a read
-    // result that says where the agent got to — the output carries no line numbers.
-    // A head-slice removes it, so it has to be recomputed rather than dropped.
-    const body = Array.from({ length: 2_000 }, (_, i) => `line ${i + 1}`).join('\n')
-    const withFooter = `${body}\n\n[Showing lines 1-2000 of 5400. Use offset=2001 to continue.]`
-    const messages = [
-      user('go'),
-      call('a', 'read', { path: '/src/big.ts' }),
-      result('a', 'read', withFooter),
-      user('next')
-    ]
-    const trimmed = trimContext(messages, budget(100))
-    const text = textOf(trimmed[2])
-
-    expect(text).toContain('anyapp truncated')
-    expect(text).toContain('of 5400')
-    // The offset must describe what survived, not what Pi originally returned.
-    expect(text).not.toContain('offset=2001')
-    const match = /Use offset=(\d+) to continue/.exec(text)
-    expect(match).not.toBeNull()
-    const resume = Number(match?.[1])
-    expect(resume).toBeGreaterThan(1)
-    expect(resume).toBeLessThan(2_000)
-    // The line before the marker is the last line actually kept.
-    expect(text).toContain(`line ${resume - 1}`)
-    expect(text).not.toContain(`line ${resume}\n`)
-  })
-
-  test('names the resume offset from a read that had no footer', () => {
-    const body = Array.from({ length: 500 }, (_, i) => `line ${i + 200}`).join('\n')
-    const messages = [
-      user('go'),
-      call('a', 'read', { path: '/src/mid.ts', offset: 200 }),
-      result('a', 'read', body),
-      user('next')
-    ]
-    const trimmed = trimContext(messages, budget(50))
-    const text = textOf(trimmed[2])
-
-    expect(text).toContain('Showing lines 200-')
-    expect(text).toContain('Use offset=')
-  })
-
-  test('cuts on a line boundary', () => {
-    const messages = [
-      user('go'),
-      call('a', 'bash', { command: 'ls' }),
-      result('a', 'bash', 'aaaaaaaaaa\n'.repeat(500)),
-      user('next')
-    ]
-    const trimmed = trimContext(messages, budget(20))
-    const kept = textOf(trimmed[2]).split('\n\n')[0]
-
-    // Every retained line is whole.
-    for (const line of kept.split('\n')) {
-      expect(line === '' || line === 'aaaaaaaaaa').toBe(true)
-    }
-  })
-
-  test('does not treat a file quoting the marker as already truncated', () => {
-    // The old guard tested for the marker anywhere in the text, which exempted any
-    // file whose contents happened to mention it — including this module's own tests.
-    const body = `${'x'.repeat(5_000)}\n…[anyapp truncated something]\n${'y'.repeat(5_000)}`
-    const messages = [
-      user('go'),
-      call('a', 'bash', { command: 'cat notes' }),
-      result('a', 'bash', body),
-      user('next')
-    ]
-    const trimmed = trimContext(messages, budget(20))
-
-    expect(textOf(trimmed[2]).length).toBeLessThan(body.length)
+    expect(sent).toHaveLength(conversation.length)
+    expect(sent.map((message) => (message as { role: string }).role)).toEqual(roles)
   })
 })
