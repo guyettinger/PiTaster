@@ -1993,11 +1993,18 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (!activeAppId) throw new Error('No active app')
     assertSessionId(sessionId)
 
+    const changed = sessionId !== activeSessionId
     await chatHistoryManager.setActiveSession(activeAppId, sessionId)
     activeSessionId = sessionId
     await disposeAgentHost()
-    forgetCachedReport()
-    forgetSessionTelemetry()
+    // Only when the session actually changes, for the reason `apps:set-active` gives:
+    // clicking the chat you are already in is an ordinary navigation, and forgetting
+    // there would reset the Activity panel and drop the context meter to its fixed
+    // floor for a trip the user made to return to the very conversation they describe.
+    if (changed) {
+      forgetCachedReport()
+      forgetSessionTelemetry()
+    }
 
     // Load history for the new session
     const history = await chatHistoryManager.loadHistory(activeAppId, sessionId)

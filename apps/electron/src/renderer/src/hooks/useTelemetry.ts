@@ -3,6 +3,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { readableError } from '../lib/ipcError'
 import { useAgentActivity } from '../state/agentActivity'
 import type { TelemetrySnapshot } from '../types/electron'
 
@@ -15,6 +16,16 @@ import type { TelemetrySnapshot } from '../types/electron'
 const POLL_MS = 1000
 
 /**
+ * What {@link useTelemetry} returns.
+ */
+export interface UseTelemetryResult {
+  /** The reading, or null before the first successful read. */
+  snapshot: TelemetrySnapshot | null
+  /** Why the last read failed, or null when it did not. */
+  error: string | null
+}
+
+/**
  * Read the session's request history.
  *
  * Refetches on mount, on a finished turn, and — **only while a request is actually
@@ -24,10 +35,18 @@ const POLL_MS = 1000
  * Main answers this without a live agent session, so there is no state in which there
  * is nothing to show: the recorder outlives the agent host by construction.
  *
- * @returns The snapshot, or null before the first read settles
+ * **A failed read is reported, not swallowed.** A record is pushed the moment a request
+ * is handed to the provider, so an empty snapshot while a turn is running is not a
+ * state main can produce — it means the read never landed. Hiding that behind the
+ * panel's "nothing measured yet" made a broken channel and an idle session render
+ * identically, which is the one thing a diagnostic panel must not do. The last good
+ * snapshot is still kept, so a single dropped read does not blank a working panel.
+ *
+ * @returns The snapshot and the last read failure
  */
-export function useTelemetry(): TelemetrySnapshot | null {
+export function useTelemetry(): UseTelemetryResult {
   const [snapshot, setSnapshot] = useState<TelemetrySnapshot | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const { turnRevision, isStreaming } = useAgentActivity()
 
   // Drops a response that arrived after a newer request was already in flight, so a
@@ -38,10 +57,12 @@ export function useTelemetry(): TelemetrySnapshot | null {
     const ticket = ++latest.current
     try {
       const next = await window.electronAPI.getTelemetry()
-      if (latest.current === ticket) setSnapshot(next)
-    } catch {
-      // Telemetry is diagnostic. A failed read keeps the last answer rather than
-      // blanking a panel over a channel that will answer again in a second.
+      if (latest.current !== ticket) return
+      setSnapshot(next)
+      setError(null)
+    } catch (caught) {
+      if (latest.current !== ticket) return
+      setError(readableError(caught))
     }
   }, [])
 
@@ -55,5 +76,5 @@ export function useTelemetry(): TelemetrySnapshot | null {
     return () => clearInterval(timer)
   }, [isStreaming, refresh])
 
-  return snapshot
+  return { snapshot, error }
 }

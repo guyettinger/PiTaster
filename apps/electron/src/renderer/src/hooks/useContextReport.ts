@@ -1,21 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { readableError } from '../lib/ipcError'
 import type { ContextReport } from '../types/electron'
-
-/**
- * Strip Electron's wrapper from an IPC rejection.
- *
- * `ipcRenderer.invoke` rethrows a handler's error as
- * `Error invoking remote method 'agent:compact': Error: Nothing to compact`. The part
- * worth showing is the last clause — the handlers on the other side write messages meant
- * for a person, and the channel name in front of them is noise.
- *
- * @param caught - The rejection
- * @returns A message worth putting in the UI
- */
-function readableError(caught: unknown): string {
-  const message = (caught as Error).message ?? String(caught)
-  return message.replace(/^Error invoking remote method '[^']*':\s*/, '').replace(/^Error:\s*/, '')
-}
 
 /**
  * What {@link useContextReport} returns.

@@ -92,6 +92,35 @@ describe('the activity store', () => {
     expect(state.turnRevision).toBe(1)
   })
 
+  test('a measured turn frees the composer and keeps its cost', () => {
+    beginTurn()
+    endTurn({ turn: TURN, cache: 'reused' })
+
+    const state = readForTest()
+    // The whole symptom the turn-completion work exists to fix: `isStreaming` is what
+    // disables the input and holds the red Stop button up, and it is cleared here and
+    // nowhere else on the happy path.
+    expect(state.isStreaming).toBe(false)
+    expect(state.status).toBeNull()
+    expect(state.lastTurn).toEqual({ turn: TURN, cache: 'reused' })
+  })
+
+  test('ending a turn twice changes nothing but the revision', () => {
+    beginTurn()
+    endTurn({ turn: TURN, cache: 'reused' })
+    const once = readForTest()
+
+    // Main claims the turn's completion so only one `complete` chunk goes out — see
+    // `agent/turn-completion.ts`. If that ever slips, the second end must still be
+    // harmless here rather than replacing a measured turn with a blank one.
+    endTurn({ turn: TURN, cache: 'reused' })
+    const twice = readForTest()
+
+    expect(twice.isStreaming).toBe(false)
+    expect(twice.lastTurn).toEqual(once.lastTurn!)
+    expect(twice.turnRevision).toBe(once.turnRevision + 1)
+  })
+
   test('a file written twice in one turn is one entry', () => {
     recordWrite('src/App.tsx')
     recordWrite('src/App.tsx')

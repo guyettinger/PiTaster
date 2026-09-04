@@ -20,7 +20,22 @@ import type { ProviderRequestRecord, TelemetrySnapshot } from '../../types/elect
  * that does not is paying a full re-prefill it has no reason to.
  */
 export function ActivityPanel() {
-  const telemetry = useTelemetry()
+  const { snapshot: telemetry, error } = useTelemetry()
+
+  // A read that failed and a session that has run nothing are different situations
+  // with different responses, and they used to render the same sentence. A record is
+  // written the moment a request is handed to the provider, so "nothing measured" is
+  // only ever true of an idle session — if the panel is empty while the agent is
+  // working, the channel is what is broken, and it has to say so.
+  if (error && !telemetry) {
+    return (
+      <div className="flex h-full items-center justify-center px-6 text-center">
+        <p className="max-w-sm text-[13px] text-rust">
+          Could not read the session's telemetry: {error}
+        </p>
+      </div>
+    )
+  }
 
   if (!telemetry || telemetry.requests.length === 0) {
     return (

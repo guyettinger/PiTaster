@@ -20,6 +20,7 @@ import { useContextReport } from '../hooks/useContextReport'
 import { useSessionChanges } from '../hooks/useSessionChanges'
 import { useDaemonHealth } from '../hooks/useDaemonHealth'
 import { useTelemetry } from '../hooks/useTelemetry'
+import { readableError } from '../lib/ipcError'
 import { AgentGaugeRow } from './AgentGaugeRow'
 import {
   beginTurn,
@@ -173,6 +174,46 @@ function toUIMessages(history: PersistedMessage[]): Message[] {
 }
 
 /**
+ * Record a failure against the assistant message in flight.
+ *
+ * A failure lands on the tool that was running when it arrived, because a tool left
+ * `running` reads as a call still in progress; with no such tool it becomes a text
+ * block instead. Written once and used twice — the `error` chunk and a send that never
+ * reached the agent are the same event to a reader, and two copies of this would drift.
+ *
+ * Exported for its tests: it is the only part of the failure path that a test can
+ * reach without a renderer, and the two callers differ only in where the error came
+ * from.
+ *
+ * @param messages - The transcript as it stands
+ * @param error - What went wrong
+ * @returns The transcript with the failure recorded, or unchanged when there is no
+ *   assistant message to record it against
+ */
+export function withFailure(messages: Message[], error: string | undefined): Message[] {
+  const last = messages[messages.length - 1]
+  if (last?.role !== 'assistant') return messages
+
+  const blocks = last.blocks ?? []
+  const runningIdx = blocks.findIndex((b) => b.type === 'tool' && b.status === 'running')
+
+  if (runningIdx >= 0) {
+    const newBlocks = [...blocks]
+    const toolBlock = newBlocks[runningIdx]
+    if (toolBlock.type === 'tool') {
+      newBlocks[runningIdx] = { ...toolBlock, status: 'complete' as const, error }
+    }
+    return [...messages.slice(0, -1), { ...last, blocks: newBlocks }]
+  }
+
+  const newBlocks: ContentBlock[] = [
+    ...blocks,
+    { type: 'text' as const, content: `\n**Error:** ${error}` }
+  ]
+  return [...messages.slice(0, -1), { ...last, blocks: newBlocks }]
+}
+
+/**
  * Main chat interface with streaming messages and tool approval.
  */
 export function Chat({
@@ -205,7 +246,7 @@ export function Chat({
   const { isStreaming, turnRevision } = activity
 
   const daemonHealth = useDaemonHealth()
-  const telemetry = useTelemetry()
+  const { snapshot: telemetry } = useTelemetry()
 
   // The model's name, for the daemon gauge's resting label. Read once: changing it
   // goes through Settings, which disposes the agent host and remounts this panel.
@@ -470,37 +511,7 @@ export function Chat({
         // failed turn has no cost to report, so nothing is shown rather than a
         // summary of zero.
         endTurn(null)
-        
-        // Add error to current tool or as text
-        setMessages(prev => {
-          const last = prev[prev.length - 1]
-          if (last?.role !== 'assistant') return prev
-          
-          const blocks = last.blocks ?? []
-          const runningIdx = blocks.findIndex(
-            b => b.type === 'tool' && b.status === 'running'
-          )
-          
-          if (runningIdx >= 0) {
-            const newBlocks = [...blocks]
-            const toolBlock = newBlocks[runningIdx]
-            if (toolBlock.type === 'tool') {
-              newBlocks[runningIdx] = {
-                ...toolBlock,
-                status: 'complete' as const,
-                error: chunk.error
-              }
-            }
-            return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
-          }
-          
-          // Add as text block
-          const newBlocks: ContentBlock[] = [...blocks, { 
-            type: 'text' as const, 
-            content: `\n**Error:** ${chunk.error}` 
-          }]
-          return [...prev.slice(0, -1), { ...last, blocks: newBlocks }]
-        })
+        setMessages((prev) => withFailure(prev, chunk.error))
       }
     })
 
@@ -563,7 +574,19 @@ export function Chat({
 
     // Convert message blocks to serialized format for agent
     const serializedBlocks = convertToSerializedBlocks(userMessage.blocks || [])
-    await window.electronAPI.sendMessage(serializedBlocks)
+
+    // The turn is open from `beginTurn` until a `complete` chunk closes it, and a
+    // rejected invoke produces no chunks at all. `agent:message` validates the prompt
+    // *before* the try block whose catch emits the compensating error and completion,
+    // so a rejection here is the one failure nothing downstream reports — it would
+    // leave the composer disabled behind a turn that never started. This is also the
+    // only handler for the rejection: `sendMessage` is passed straight to `onClick`.
+    try {
+      await window.electronAPI.sendMessage(serializedBlocks)
+    } catch (caught) {
+      endTurn(null)
+      setMessages((prev) => withFailure(prev, readableError(caught)))
+    }
   }, [input, isStreaming, setInput, activeSessionId])
 
   /**
