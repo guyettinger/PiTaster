@@ -10,6 +10,8 @@ const UNTITLED_SESSION = 'New Chat'
  * Props for the ChatSessionList component.
  */
 interface ChatSessionListProps {
+  /** The app whose sessions these are. */
+  appId: string
   /** Currently active session ID. */
   activeSessionId: string | null
   /** Callback when a session is selected. */
@@ -40,6 +42,7 @@ interface SessionGroup {
  * random.
  */
 export function ChatSessionList({
+  appId,
   activeSessionId,
   onSessionSelect,
   onSessionCreate
@@ -55,8 +58,8 @@ export function ChatSessionList({
   useEffect(() => {
     window.electronAPI.listChatSessions().then(setSessions).catch(() => {})
 
-    return window.electronAPI.onSessionsListUpdated(setSessions)
-  }, [])
+    return window.electronAPI.onSessionsListUpdated(appId, setSessions)
+  }, [appId])
 
   const handleDelete = useCallback(
     async (sessionId: string) => {

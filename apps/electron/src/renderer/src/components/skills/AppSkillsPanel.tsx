@@ -12,6 +12,8 @@ import type { Skill, SkillDraft } from '@pitaster/core'
  */
 interface AppSkillsPanelProps {
   /** The app this panel belongs to. */
+  appId: string
+  /** Its name, for the header and the empty states. */
   appName: string
 }
 
@@ -34,8 +36,9 @@ interface AppSkillsPanelProps {
  * honest answer to "what am I paying for this" — and it is what makes turning
  * one off feel like a decision rather than a preference.
  */
-export function AppSkillsPanel({ appName }: AppSkillsPanelProps) {
-  const { library, isLoading, error, warning, reload, save, remove, setEnabled } = useSkills()
+export function AppSkillsPanel({ appId, appName }: AppSkillsPanelProps) {
+  const { library, isLoading, error, warning, reload, save, remove, setEnabled } =
+    useSkills(appId)
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [isAdding, setIsAdding] = useState(false)

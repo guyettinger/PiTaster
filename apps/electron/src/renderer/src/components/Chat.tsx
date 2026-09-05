@@ -291,7 +291,7 @@ export function Chat({
 
   // Mention completion. The skills come from the same libraries the manifest is built
   // from, so a name the menu offers is a name `load_skill` can resolve.
-  const { library: skillLibrary } = useSkills()
+  const { library: skillLibrary } = useSkills(app.id)
   const mentionableSkills = useMemo(
     () =>
       [...skillLibrary.app, ...skillLibrary.workspace].filter(
@@ -368,13 +368,18 @@ export function Chat({
       setMessages(toUIMessages(payload.messages))
     }
 
-    return window.electronAPI.onChatHistoryLoaded(handleHistoryLoaded)
-  }, [])
+    return window.electronAPI.onChatHistoryLoaded(app.id, handleHistoryLoaded)
+  }, [app.id])
 
-  // Setup IPC listeners
+  // Setup IPC listeners.
+  //
+  // Every subscription names this workspace's app. The pushes carry the app they
+  // are about, so a transcript only ever renders its own turn — with several
+  // workspaces mounted, an untagged subscription would splice another app's
+  // stream into this conversation, and show its approval prompts here.
   useEffect(() => {
     // Listen for agent stream
-    const unsubscribeStream = window.electronAPI.onAgentStream((chunk: StreamChunk) => {
+    const unsubscribeStream = window.electronAPI.onAgentStream(app.id, (chunk: StreamChunk) => {
       if (chunk.type === 'text' && chunk.text) {
         // Add text to current or create new text block
         setMessages(prev => {
@@ -514,6 +519,7 @@ export function Chat({
 
     // Listen for tool approval requests
     const unsubscribeApproval = window.electronAPI.onToolApproval(
+      app.id,
       (request: ToolApprovalRequest) => {
         setPendingApproval(request)
       }
@@ -521,6 +527,7 @@ export function Chat({
 
     // Listen for element context events
     const unsubscribeElementContext = window.electronAPI.onElementContextAdded(
+      app.id,
       (context: ElementContext) => {
         // Add a new user message with element context
         const message: Message = {
@@ -549,7 +556,10 @@ export function Chat({
       unsubscribeApproval()
       unsubscribeElementContext()
     }
-  }, [])
+    // `app.id` is stable for the life of this component — the workspace is keyed
+    // by it — but the subscriptions filter on it now, so it is a real dependency
+    // and listing it is what keeps that true if the keying ever changes.
+  }, [app.id])
 
   const sendMessage = useCallback(async () => {
     if (!input.trim() || isStreaming || !activeSessionId) return

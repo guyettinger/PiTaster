@@ -40,9 +40,13 @@ export interface UseSkillsResult {
  * here, because a save can change more than the skill saved: an app skill that takes a
  * workspace skill's name shadows it, and both rows have to move at once.
  *
+ * @param appId - The app whose library this is, or null for the workspace library
+ *   alone. It selects which `skills:changed` pushes this subscriber acts on; a
+ *   workspace-scoped change reaches every subscriber, since a workspace skill is
+ *   offered to every app.
  * @returns The libraries, their load state, and the mutations
  */
-export function useSkills(): UseSkillsResult {
+export function useSkills(appId: string | null): UseSkillsResult {
   const [library, setLibrary] = useState<SkillLibrary>(EMPTY_LIBRARY)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -64,10 +68,10 @@ export function useSkills(): UseSkillsResult {
     void reload()
 
     // The agent can write a skill mid-turn, and loading one changes its count.
-    return window.electronAPI.onSkillsChanged(() => {
+    return window.electronAPI.onSkillsChanged(appId, () => {
       void reload()
     })
-  }, [reload])
+  }, [appId, reload])
 
   /**
    * Run a mutation and adopt the libraries it returns.

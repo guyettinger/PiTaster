@@ -591,8 +591,14 @@ const electronAPI = {
    * @param callback - Function called with each streamed chunk
    * @returns Unsubscribe
    */
-  onAgentStream: (callback: (chunk: StreamChunk) => void): (() => void) => {
-    const handler = (_event: unknown, chunk: StreamChunk): void => callback(chunk)
+  onAgentStream: (
+    appId: string,
+    callback: (chunk: StreamChunk) => void
+  ): (() => void) => {
+    const handler = (_event: unknown, payload: { appId: string | null; chunk: StreamChunk }): void => {
+      if (payload.appId !== appId) return
+      callback(payload.chunk)
+    }
     ipcRenderer.on('agent:stream', handler)
     return () => ipcRenderer.removeListener('agent:stream', handler)
   },
@@ -617,8 +623,17 @@ const electronAPI = {
    * @param callback - Function called when approval is needed
    * @returns Unsubscribe
    */
-  onToolApproval: (callback: (request: ToolApprovalRequest) => void): (() => void) => {
-    const handler = (_event: unknown, request: ToolApprovalRequest): void => callback(request)
+  onToolApproval: (
+    appId: string,
+    callback: (request: ToolApprovalRequest) => void
+  ): (() => void) => {
+    const handler = (
+      _event: unknown,
+      payload: { appId: string | null; request: ToolApprovalRequest }
+    ): void => {
+      if (payload.appId !== appId) return
+      callback(payload.request)
+    }
     ipcRenderer.on('agent:tool-approval', handler)
     return () => ipcRenderer.removeListener('agent:tool-approval', handler)
   },
@@ -874,8 +889,13 @@ const electronAPI = {
    * @param callback - Function called when a skill may have been added or changed
    * @returns Unsubscribe
    */
-  onSkillsChanged: (callback: () => void): (() => void) => {
-    const handler = (_event: unknown): void => callback()
+  onSkillsChanged: (appId: string | null, callback: () => void): (() => void) => {
+    const handler = (_event: unknown, payload?: { appId: string | null }): void => {
+      // A null `appId` on either side means "the workspace library", which every
+      // subscriber cares about: a workspace skill is offered to every app.
+      if (appId !== null && payload?.appId != null && payload.appId !== appId) return
+      callback()
+    }
     ipcRenderer.on('skills:changed', handler)
     return () => ipcRenderer.removeListener('skills:changed', handler)
   },
@@ -983,8 +1003,17 @@ const electronAPI = {
    * @param callback - Function called with the transcript and the session it is for
    * @returns Unsubscribe
    */
-  onChatHistoryLoaded: (callback: (payload: ChatHistoryPayload) => void): (() => void) => {
-    const handler = (_event: unknown, payload: ChatHistoryPayload): void => callback(payload)
+  onChatHistoryLoaded: (
+    appId: string,
+    callback: (payload: ChatHistoryPayload) => void
+  ): (() => void) => {
+    const handler = (
+      _event: unknown,
+      payload: ChatHistoryPayload & { appId: string | null }
+    ): void => {
+      if (payload.appId !== appId) return
+      callback(payload)
+    }
     ipcRenderer.on('chat:history-loaded', handler)
     return () => ipcRenderer.removeListener('chat:history-loaded', handler)
   },
@@ -1043,8 +1072,17 @@ const electronAPI = {
    * @param callback - Function called when the active session changes
    * @returns Unsubscribe
    */
-  onChatSessionChanged: (callback: (sessionId: string | null) => void): (() => void) => {
-    const handler = (_event: unknown, sessionId: string | null): void => callback(sessionId)
+  onChatSessionChanged: (
+    appId: string,
+    callback: (sessionId: string | null) => void
+  ): (() => void) => {
+    const handler = (
+      _event: unknown,
+      payload: { appId: string | null; sessionId: string | null }
+    ): void => {
+      if (payload.appId !== appId) return
+      callback(payload.sessionId)
+    }
     ipcRenderer.on('chat:session-changed', handler)
     return () => ipcRenderer.removeListener('chat:session-changed', handler)
   },
@@ -1054,8 +1092,17 @@ const electronAPI = {
    * @param callback - Function called when the sessions list changes
    * @returns Unsubscribe
    */
-  onSessionsListUpdated: (callback: (sessions: ChatSession[]) => void): (() => void) => {
-    const handler = (_event: unknown, sessions: ChatSession[]): void => callback(sessions)
+  onSessionsListUpdated: (
+    appId: string,
+    callback: (sessions: ChatSession[]) => void
+  ): (() => void) => {
+    const handler = (
+      _event: unknown,
+      payload: { appId: string | null; sessions: ChatSession[] }
+    ): void => {
+      if (payload.appId !== appId) return
+      callback(payload.sessions)
+    }
     ipcRenderer.on('sessions:list-updated', handler)
     return () => ipcRenderer.removeListener('sessions:list-updated', handler)
   },
@@ -1240,8 +1287,17 @@ const electronAPI = {
   /**
    * Listen for element context added events.
    */
-  onElementContextAdded: (callback: (context: ElementContext) => void): (() => void) => {
-    const handler = (_event: unknown, context: ElementContext): void => callback(context)
+  onElementContextAdded: (
+    appId: string,
+    callback: (context: ElementContext) => void
+  ): (() => void) => {
+    const handler = (
+      _event: unknown,
+      payload: { appId: string | null; context: ElementContext }
+    ): void => {
+      if (payload.appId !== appId) return
+      callback(payload.context)
+    }
     ipcRenderer.on('chat:element-context-added', handler)
     return () => ipcRenderer.removeListener('chat:element-context-added', handler)
   }

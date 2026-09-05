@@ -21,7 +21,8 @@ import type { Skill, SkillDraft } from '@pitaster/core'
  * each skill's description cost, and what does its body say.
  */
 export function WorkspaceSkillsSettings() {
-  const { library, isLoading, error, warning, reload, save, remove } = useSkills()
+  // `null`: this page is the workspace library, which belongs to no app.
+  const { library, isLoading, error, warning, reload, save, remove } = useSkills(null)
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [isAdding, setIsAdding] = useState(false)

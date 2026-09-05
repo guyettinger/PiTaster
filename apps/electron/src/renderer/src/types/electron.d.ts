@@ -363,13 +363,16 @@ interface ElectronAPI {
   /** Send a message to the agent (string or content blocks). */
   sendMessage: (message: string | SerializedContentBlock[]) => Promise<void>
   /** Listen for streamed agent responses. */
-  onAgentStream: (callback: (chunk: StreamChunk) => void) => () => void
+  onAgentStream: (appId: string, callback: (chunk: StreamChunk) => void) => () => void
   /** Get the current permission mode. */
   getPermissionMode: () => Promise<PermissionMode>
   /** Set the permission mode. */
   setPermissionMode: (mode: PermissionMode) => Promise<PermissionMode>
   /** Listen for tool approval requests. */
-  onToolApproval: (callback: (request: ToolApprovalRequest) => void) => () => void
+  onToolApproval: (
+    appId: string,
+    callback: (request: ToolApprovalRequest) => void
+  ) => () => void
   /** Respond to a tool approval request. */
   respondToolApproval: (response: ToolApprovalResponse) => void
   /** Clear the conversation history. */
@@ -441,7 +444,7 @@ interface ElectronAPI {
   /** Turn a skill on or off for the open app. */
   setSkillEnabled: (request: { name: string; enabled: boolean }) => Promise<SkillLibrary>
   /** Listen for the skill libraries changing on disk. */
-  onSkillsChanged: (callback: () => void) => () => void
+  onSkillsChanged: (appId: string | null, callback: () => void) => () => void
 
   // Workspace layout methods
   /** Read a sub-app's saved dock layout, or null when there is nothing usable. */
@@ -475,7 +478,10 @@ interface ElectronAPI {
   /** Clear chat history for the active app. */
   clearChatHistory: () => Promise<void>
   /** Listen for chat history loaded events. */
-  onChatHistoryLoaded: (callback: (payload: ChatHistoryPayload) => void) => () => void
+  onChatHistoryLoaded: (
+    appId: string,
+    callback: (payload: ChatHistoryPayload) => void
+  ) => () => void
 
   // Chat session methods
   /** List all chat sessions for the active app. */
@@ -491,9 +497,15 @@ interface ElectronAPI {
   /** Get the active chat session ID. */
   getActiveChatSession: () => Promise<string | null>
   /** Listen for session change events. */
-  onChatSessionChanged: (callback: (sessionId: string | null) => void) => () => void
+  onChatSessionChanged: (
+    appId: string,
+    callback: (sessionId: string | null) => void
+  ) => () => void
   /** Listen for sessions list updates. */
-  onSessionsListUpdated: (callback: (sessions: ChatSession[]) => void) => () => void
+  onSessionsListUpdated: (
+    appId: string,
+    callback: (sessions: ChatSession[]) => void
+  ) => () => void
 
   // Apps methods
   /** List all sub-apps. */
@@ -543,7 +555,10 @@ interface ElectronAPI {
   /** Add element context to the current chat. */
   addElementContext: (context: ElementContext) => Promise<void>
   /** Listen for element context added events. */
-  onElementContextAdded: (callback: (context: ElementContext) => void) => () => void
+  onElementContextAdded: (
+    appId: string,
+    callback: (context: ElementContext) => void
+  ) => () => void
 }
 
 declare global {

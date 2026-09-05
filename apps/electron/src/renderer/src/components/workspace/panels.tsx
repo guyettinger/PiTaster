@@ -46,10 +46,11 @@ export interface CodePanelParams {
  * The app's chat sessions.
  */
 function ChatsPanel() {
-  const { activeSessionId, onSessionSelect, onSessionCreate } = useWorkspace()
+  const { app, activeSessionId, onSessionSelect, onSessionCreate } = useWorkspace()
   return (
     <div className="h-full overflow-y-auto bg-panel">
       <ChatSessionList
+        appId={app.id}
         activeSessionId={activeSessionId}
         onSessionSelect={onSessionSelect}
         onSessionCreate={onSessionCreate}
@@ -69,7 +70,7 @@ function SkillsPanel() {
   const { app } = useWorkspace()
   return (
     <div className="h-full bg-panel">
-      <AppSkillsPanel appName={app.name} />
+      <AppSkillsPanel appId={app.id} appName={app.name} />
     </div>
   )
 }

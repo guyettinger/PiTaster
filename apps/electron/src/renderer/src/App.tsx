@@ -97,12 +97,17 @@ export function App() {
     if (focusedApp) setDestination(null)
   }, [isRestoring, focusedApp])
 
-  // Listen for session change events from main process
+  // Listen for session change events from main process.
+  //
+  // Subscribed per app, because the push now names the workspace it is about: with
+  // several mounted, an untagged subscription would let a background app's session
+  // change rewrite the session pointer of the one on screen.
   useEffect(() => {
-    return window.electronAPI.onChatSessionChanged((sessionId) => {
+    if (!focusedAppId) return
+    return window.electronAPI.onChatSessionChanged(focusedAppId, (sessionId) => {
       setActiveSessionId(sessionId)
     })
-  }, [])
+  }, [focusedAppId])
 
   const handleModeChange = useCallback(async (mode: PermissionMode) => {
     const newMode = await window.electronAPI.setPermissionMode(mode)

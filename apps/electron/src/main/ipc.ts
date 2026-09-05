@@ -334,7 +334,7 @@ async function onTurnComplete(mainWindow: BrowserWindow): Promise<void> {
   // filesystem watcher would also catch a hand edit in Finder, which the reload button
   // covers, at the price of two watchers whose lifetime tracks the active app.
   if (!mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('skills:changed')
+    mainWindow.webContents.send('skills:changed', { appId })
   }
 
   const sessions = await broadcastSessions(mainWindow, appId)
@@ -398,8 +398,12 @@ function sendSessionChanged(
   // the agent works. Awaiting it would make this function async and put a git read
   // between the two sends below, whose order is the whole point of the helper.
   if (appId && sessionId) void captureSessionBaseline(appId, sessionId)
-  mainWindow.webContents.send('chat:session-changed', sessionId)
-  mainWindow.webContents.send('chat:history-loaded', { sessionId, messages })
+  // Both carry the app they are about. A renderer with several workspaces mounted
+  // has several subscribers on this one channel, and only the one whose app this
+  // names may act on it — otherwise a background workspace's session change would
+  // rewrite the transcript the user is looking at.
+  mainWindow.webContents.send('chat:session-changed', { appId, sessionId })
+  mainWindow.webContents.send('chat:history-loaded', { appId, sessionId, messages })
 }
 
 /**
@@ -462,7 +466,7 @@ async function broadcastSessions(
   try {
     const sessions = await chatHistoryManager.listSessions(appId)
     if (mainWindow.isDestroyed()) return null
-    mainWindow.webContents.send('sessions:list-updated', sessions)
+    mainWindow.webContents.send('sessions:list-updated', { appId, sessions })
     return sessions
   } catch {
     // A list that could not be read is not worth failing the operation that
@@ -1218,7 +1222,7 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
       type: 'status',
       status: status ?? { kind: 'settled' }
     }
-    mainWindow.webContents.send('agent:stream', chunk)
+    mainWindow.webContents.send('agent:stream', { appId: app.id, chunk })
   }
 
   sendStatus({
@@ -1297,7 +1301,11 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
         }
 
         if (mainWindow.isDestroyed()) return Promise.resolve(false)
-        mainWindow.webContents.send('agent:tool-approval', request)
+        // Tagged with the workspace whose turn is asking. With several mounted,
+        // an untagged prompt would appear in whichever Chat happened to be
+        // listening — and approving a write you cannot see the context for is
+        // exactly what the prompt exists to prevent.
+        mainWindow.webContents.send('agent:tool-approval', { appId: app.id, request })
 
         // Deliberately unbounded. A turn on a local model can take minutes, so
         // stepping away while one runs is normal — and a timeout here does not fail
@@ -1311,10 +1319,10 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
 
       onStream: (chunk: StreamChunk): void => {
         if (mainWindow.isDestroyed()) return
-        mainWindow.webContents.send('agent:stream', chunk)
+        mainWindow.webContents.send('agent:stream', { appId: app.id, chunk })
 
         if (recordSkillLoad(chunk)) {
-          mainWindow.webContents.send('skills:changed')
+          mainWindow.webContents.send('skills:changed', { appId: app.id })
         }
 
         // A finished turn is the only moment the session list is known to have
@@ -1390,11 +1398,14 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     }
 
     /**
-     * Stream chunks to the renderer process.
+     * Report a failure to the workspace that asked for the turn.
+     *
+     * Tagged with the focused app, which is the one whose prompt this is — a
+     * failure delivered untagged would surface in whichever Chat was listening.
      */
     const onStream = (chunk: StreamChunk): void => {
       if (mainWindow.isDestroyed()) return
-      mainWindow.webContents.send('agent:stream', chunk)
+      mainWindow.webContents.send('agent:stream', { appId: getFocusedAppId(), chunk })
     }
 
     try {
@@ -2316,9 +2327,12 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
    * Add element context to the current chat.
    */
   ipcMain.handle('chat:add-element-context', async (event, context: ElementContext) => {
+    // Tagged with the focused app: the element was picked in that workspace's
+    // Preview, so it belongs in that workspace's composer and no other.
+    const appId = getFocusedAppId()
     // Notify all renderer windows to inject element context
     BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('chat:element-context-added', context)
+      win.webContents.send('chat:element-context-added', { appId, context })
     })
   })
 }
