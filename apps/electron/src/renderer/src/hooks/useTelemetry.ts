@@ -48,7 +48,7 @@ export interface UseTelemetryResult {
 export function useTelemetry(appId: string): UseTelemetryResult {
   const [snapshot, setSnapshot] = useState<TelemetrySnapshot | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const { turnRevision, isStreaming } = useAgentActivity()
+  const { turnRevision, isStreaming } = useAgentActivity(appId)
 
   // Drops a response that arrived after a newer request was already in flight, so a
   // slow read cannot overwrite a fresh one — the same guard the context report uses.

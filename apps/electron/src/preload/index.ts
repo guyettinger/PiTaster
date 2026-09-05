@@ -1159,11 +1159,30 @@ const electronAPI = {
   },
 
   /**
-   * Set the active app for agent context.
-   * @param id - The app ID to set as active, or null to clear
+   * Record which app the window is showing.
+   *
+   * Focus only. It no longer decides what any channel acts on — every one of them
+   * names its app — and it no longer brings a workspace up either; see
+   * {@link openWorkspace}, which each mounted workspace calls for itself.
+   *
+   * @param id - The app ID now focused, or null to clear
    */
   setActiveApp: (id: string | null): Promise<string | null> => {
     return ipcRenderer.invoke('apps:set-active', id)
+  },
+
+  /**
+   * Bring a workspace up: resolve its chat session and push its transcript.
+   *
+   * Called once per mounted workspace, not on focus — several are mounted at once,
+   * so the two are different events. Idempotent, so a remount replays the session
+   * the manifest already names rather than starting a new conversation.
+   *
+   * @param appId - The workspace to open
+   * @returns Its active chat session, or null when it has none
+   */
+  openWorkspace: (appId: string): Promise<string | null> => {
+    return ipcRenderer.invoke('workspace:open', appId)
   },
 
   /**

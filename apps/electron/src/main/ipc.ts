@@ -1858,6 +1858,13 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   // That also fixes a visible bug on its own. `disposeAgentHost` ran here on every
   // navigation to the Apps page, so the context meter blinked out and back several
   // times a minute during ordinary use.
+  // Which app the window is showing. Focus and nothing else.
+  //
+  // It used to also bootstrap the workspace — load the chat manifest, pick a session
+  // and push it — which was fine while exactly one workspace could exist. With
+  // several mounted, bootstrapping only the focused one leaves the others with no
+  // session, and re-bootstrapping on every focus change would re-push a transcript
+  // the panel already has. `workspace:open` does that job, once per workspace.
   ipcMain.handle('apps:set-active', async (_, id: string | null) => {
     if (id === null) {
       setFocusedAppId(null)
@@ -1868,9 +1875,22 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     // root. It also creates the runtime, so `focusedRuntime()` is non-null the
     // moment focus is set — which is what lets the synchronous accessors above be
     // synchronous.
-    return withWorkspace(id, async ({ app, runtime }) => {
+    return withWorkspace(id, ({ app }) => {
       setFocusedAppId(app.id)
+      return app.id
+    })
+  })
 
+  /**
+   * Bring a workspace up: resolve its chat session and push its transcript.
+   *
+   * Called once per mounted workspace rather than on focus, because with several
+   * mounted the two are no longer the same event. Idempotent — it resolves the
+   * session the manifest already names and only creates one when there is none —
+   * so a remount replays the same answer rather than starting a new conversation.
+   */
+  ipcMain.handle('workspace:open', async (_, appId: unknown) => {
+    return withWorkspace(appId, async ({ app, runtime }) => {
       // Load manifest (triggers migration if needed)
       const manifest = await chatHistoryManager.loadManifest(app.id)
 
@@ -1891,7 +1911,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       }
 
       await broadcastSessions(mainWindow, app.id)
-      return app.id
+      return runtime.activeSessionId
     })
   })
 
@@ -2535,6 +2555,7 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('apps:delete')
   ipcMain.removeHandler('apps:update')
   ipcMain.removeHandler('apps:set-active')
+  ipcMain.removeHandler('workspace:open')
   ipcMain.removeHandler('apps:get-active')
   ipcMain.removeHandler('apps:get-active-details')
 

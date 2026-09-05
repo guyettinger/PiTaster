@@ -532,6 +532,7 @@ interface ElectronAPI {
   updateApp: (id: string, updates: { name?: string; description?: string }) => Promise<SubApp>
   /** Set the active app for agent context. */
   setActiveApp: (id: string | null) => Promise<string | null>
+  openWorkspace: (appId: string) => Promise<string | null>
   /** Get the active app ID. */
   getActiveApp: () => Promise<string | null>
   /** Get the active app details. */

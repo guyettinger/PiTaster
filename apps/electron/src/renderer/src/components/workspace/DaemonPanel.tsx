@@ -34,7 +34,7 @@ const TICK_MS = 1000
  */
 export function DaemonPanel() {
   const { app, activeSessionId } = useWorkspace()
-  const { turnRevision } = useAgentActivity()
+  const { turnRevision } = useAgentActivity(app.id)
   const health = useDaemonHealth()
   const { snapshot: telemetry } = useTelemetry(app.id)
   const { report } = useContextReport(app.id, activeSessionId, turnRevision)

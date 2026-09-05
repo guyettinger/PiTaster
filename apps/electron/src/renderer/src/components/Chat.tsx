@@ -243,7 +243,7 @@ export function Chat({
   //
   // `turnRevision` is the whole point of that: it is bumped when a turn completes, and
   // it is what both this composer and the Changes panel key their git read on.
-  const activity = useAgentActivity()
+  const activity = useAgentActivity(app.id)
   const { isStreaming, turnRevision } = activity
 
   const daemonHealth = useDaemonHealth()
@@ -333,7 +333,7 @@ export function Chat({
     // The optimistic half of the gauges belongs to the conversation that produced it,
     // and so does the last turn's cost. The committed half is re-read from git for the
     // new session by `useSessionChanges`.
-    resetActivity()
+    resetActivity(app.id)
 
     if (!activeSessionId) return
     let cancelled = false
@@ -429,7 +429,7 @@ export function Chat({
 
         const target = chunk.input?.path
         if (WRITING_TOOLS.has(chunk.tool) && typeof target === 'string') {
-          publishActivity({ writingPath: target })
+          publishActivity(app.id, { writingPath: target })
         }
 
         setMessages(prev => {
@@ -483,10 +483,10 @@ export function Chat({
         // `details` for `write`, `edit` and `replace_lines`, and `refactor` builds its
         // own for every file it rewrote. Nothing else has to know which tool wrote what.
         if (chunk.patches && chunk.patches.length > 0) {
-          for (const patch of chunk.patches) recordWrite(patch.path)
+          for (const patch of chunk.patches) recordWrite(app.id, patch.path)
         }
 
-        publishActivity({ writingPath: null })
+        publishActivity(app.id, { writingPath: null })
         currentToolRef.current = null
       } else if (chunk.type === 'complete') {
         currentToolRef.current = null
@@ -498,12 +498,12 @@ export function Chat({
         // against git, which is the only version that survives the same file being
         // written twice. And it tells the Activity panel there is something new to
         // read.
-        endTurn(chunk.turn ? { turn: chunk.turn, cache: chunk.cache ?? 'unknown' } : null)
+        endTurn(app.id, chunk.turn ? { turn: chunk.turn, cache: chunk.cache ?? 'unknown' } : null)
         // The agent persists its own transcript; nothing to save here.
       } else if (chunk.type === 'status') {
         // Compaction, retries and long prefills are most of the wall-clock time on a
         // local model. Without this they render as a hang.
-        publishActivity({
+        publishActivity(app.id, {
           status: chunk.status?.kind === 'settled' ? null : (chunk.status ?? null)
         })
       } else if (chunk.type === 'error') {
@@ -511,7 +511,7 @@ export function Chat({
         // run it described has failed, which reads as a run still in progress. A
         // failed turn has no cost to report, so nothing is shown rather than a
         // summary of zero.
-        endTurn(null)
+        endTurn(app.id, null)
         setMessages((prev) => withFailure(prev, chunk.error))
       }
     })
@@ -578,7 +578,7 @@ export function Chat({
 
     setMessages(prev => [...prev, userMessage, assistantMessage])
     setInput('')
-    beginTurn()
+    beginTurn(app.id)
 
     // Convert message blocks to serialized format for agent
     const serializedBlocks = convertToSerializedBlocks(userMessage.blocks || [])
@@ -592,7 +592,7 @@ export function Chat({
     try {
       await window.electronAPI.sendMessage(serializedBlocks, app.id)
     } catch (caught) {
-      endTurn(null)
+      endTurn(app.id, null)
       setMessages((prev) => withFailure(prev, readableError(caught)))
     }
   }, [app.id, input, isStreaming, setInput, activeSessionId])
@@ -609,7 +609,7 @@ export function Chat({
       // Aborting denies any approval still waiting in the main process, so the card
       // asking for it is answered and must not stay on screen.
       setPendingApproval(null)
-      endTurn(null)
+      endTurn(app.id, null)
     }
   }, [])
 

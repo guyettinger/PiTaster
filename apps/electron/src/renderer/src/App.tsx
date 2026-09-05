@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Workspace } from './components/workspace/Workspace'
+import { MountedWorkspace } from './components/workspace/MountedWorkspace'
 import { Settings } from './components/Settings'
 import { Help } from './components/Help'
 import { AppListing } from './components/AppListing'
@@ -8,6 +8,7 @@ import { AppShellHeader } from './components/shell/AppShellHeader'
 import { NavRail } from './components/shell/NavRail'
 import { RunningAppsProvider } from './context/RunningAppsContext'
 import { useOpenApps } from './hooks/useOpenApps'
+import { forgetActivity, useBusyAppIds } from './state/agentActivity'
 import type { Destination } from './types/navigation'
 import type { PermissionMode } from './types/electron'
 import type { SubApp } from '@pitaster/core'
@@ -15,59 +16,63 @@ import type { SubApp } from '@pitaster/core'
 /**
  * Root application component.
  *
- * Owns the shell's fixed chrome — the draggable header and the global nav rail —
- * and the state the focused app's workspace is built from. The workspace itself
- * is a dock; where its panels sit is the dock's business, and is remembered per
- * app rather than held here.
+ * Owns the shell's fixed chrome — the draggable header and the global nav rail — and
+ * the per-app state the workspaces report back. The workspaces themselves are docks;
+ * where their panels sit is each dock's business, and is remembered per app rather
+ * than held here.
  *
- * Navigation is two-valued rather than one. `destination` names a page drawn
- * *over* the workspace, and `null` means nothing covers it — so focusing an app
- * is not navigation at all, which is why the rail no longer has a Workspace
- * item to navigate to.
+ * Navigation is two-valued rather than one. `destination` names a page drawn *over*
+ * the workspaces, and `null` means nothing covers them — so focusing an app is not
+ * navigation at all, which is why the rail no longer has a Workspace item.
+ *
+ * **Every open app is mounted, not just the focused one.** That is what lets a
+ * background app's turn keep filling in its own transcript, keeps its Preview
+ * `<webview>` alive and its Monaco undo stack intact, and it is the renderer half of
+ * the concurrency main gained in Phase 5. `MountedWorkspace` carries the reasoning
+ * about how a background one is hidden.
  */
 export function App() {
-  // Which page, if any, covers the workspace. `null` shows the focused app.
+  // Which page, if any, covers the workspaces. `null` shows the focused app.
   const [destination, setDestination] = useState<Destination | null>('apps')
 
   const { openApps, focusedApp, isRestoring, openApp, focusApp, closeApp, replaceApp } =
     useOpenApps()
 
-  // Agent state
-  const [permissionMode, setPermissionMode] = useState<PermissionMode>('default')
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+  /*
+    Per app rather than per shell, because both are per app in main.
 
-  // Tell main which app is focused, and wait for it to agree.
-  //
-  // Focus no longer decides what any channel *acts on* — every one of them names
-  // its app now — so this is not the confinement input it once was. What it still
-  // does is bootstrap the workspace: `apps:set-active` loads the chat manifest,
-  // picks the session to resume and pushes it, and answers `apps:get-active` on
-  // the next launch.
-  //
-  // The workspace is gated on the round trip finishing so that the mount and that
-  // bootstrap cannot interleave. It also re-reads the permission mode, which is
-  // per workspace and would otherwise keep showing the app you just left.
+    The permission mode is read at every tool call, so one shared value meant a mode
+    chosen for one app widened what another app's in-flight turn could do. The active
+    session is per conversation by definition. Both are *reported up* by each mounted
+    workspace instead of being owned there, because the shell needs the focused app's
+    copy: the header shows the mode and Settings changes it.
+  */
+  const [modes, setModes] = useState<Record<string, PermissionMode>>({})
+  const [sessions, setSessions] = useState<Record<string, string | null>>({})
+
+  // Stable, so the callbacks a workspace memoizes on them stay stable too — the
+  // whole reason `MountedWorkspace` exists rather than this being inlined.
+  const handleModeResolved = useCallback((appId: string, mode: PermissionMode) => {
+    setModes((current) => (current[appId] === mode ? current : { ...current, [appId]: mode }))
+  }, [])
+
+  const handleSessionResolved = useCallback((appId: string, sessionId: string | null) => {
+    setSessions((current) =>
+      current[appId] === sessionId ? current : { ...current, [appId]: sessionId }
+    )
+  }, [])
+
   const focusedAppId = focusedApp?.id ?? null
-  const [syncedAppId, setSyncedAppId] = useState<string | null>(null)
+  const permissionMode = (focusedAppId && modes[focusedAppId]) || 'default'
+
+  // Tell main which app is focused.
+  //
+  // Focus decides nothing a channel acts on — every one of them names its app — and
+  // it no longer brings the workspace up either; each workspace does that for itself
+  // on mount. What is left is the window's own answer to "which one am I showing",
+  // which main persists so the next launch opens on it.
   useEffect(() => {
-    let cancelled = false
-    setActiveSessionId(null) // Refilled by the chat:session-changed push below.
-    setSyncedAppId(null)
-    void window.electronAPI
-      .setActiveApp(focusedAppId)
-      // The permission mode belongs to the workspace, not to the process — it is
-      // read at every tool call, so one shared value meant a mode set for one app
-      // widened what another app's turn could do. Re-read it here, or the composer
-      // would keep showing the mode of the app you just left.
-      .then(() => window.electronAPI.getPermissionMode(focusedAppId))
-      .then((mode) => {
-        if (cancelled) return
-        setPermissionMode(mode)
-        setSyncedAppId(focusedAppId)
-      })
-    return () => {
-      cancelled = true
-    }
+    void window.electronAPI.setActiveApp(focusedAppId)
   }, [focusedAppId])
 
   // Show the library whenever the last tile closes, so the shell is never left
@@ -79,9 +84,9 @@ export function App() {
   // Land on the restored workspace rather than on the library.
   //
   // `destination` starts at 'apps' because that is right for a first launch, and
-  // whether it is right for *this* launch is not known until the persisted set
-  // has been read. Keyed on the restore finishing, so it fires once and never
-  // pulls the user off a page they navigated to themselves.
+  // whether it is right for *this* launch is not known until the persisted set has
+  // been read. Keyed on the restore finishing, so it fires once and never pulls the
+  // user off a page they navigated to themselves.
   const restoredRef = useRef(false)
   useEffect(() => {
     if (isRestoring || restoredRef.current) return
@@ -89,24 +94,13 @@ export function App() {
     if (focusedApp) setDestination(null)
   }, [isRestoring, focusedApp])
 
-  // Listen for session change events from main process.
-  //
-  // Subscribed per app, because the push now names the workspace it is about: with
-  // several mounted, an untagged subscription would let a background app's session
-  // change rewrite the session pointer of the one on screen.
-  useEffect(() => {
-    if (!focusedAppId) return
-    return window.electronAPI.onChatSessionChanged(focusedAppId, (sessionId) => {
-      setActiveSessionId(sessionId)
-    })
-  }, [focusedAppId])
-
   const handleModeChange = useCallback(
     async (mode: PermissionMode) => {
-      const newMode = await window.electronAPI.setPermissionMode(mode, focusedAppId)
-      setPermissionMode(newMode)
+      if (!focusedAppId) return
+      const applied = await window.electronAPI.setPermissionMode(mode, focusedAppId)
+      handleModeResolved(focusedAppId, applied)
     },
-    [focusedAppId]
+    [focusedAppId, handleModeResolved]
   )
 
   const handleAppSelect = useCallback(
@@ -125,11 +119,18 @@ export function App() {
     [focusApp]
   )
 
-  const handleCloseFocusedApp = useCallback(() => {
-    if (focusedApp) closeApp(focusedApp.id)
-  }, [closeApp, focusedApp])
+  // A closed tile takes its activity reading with it. Without this the rail's busy
+  // set is derived from a key list that only ever grows, and a deleted app would sit
+  // in it for the life of the session.
+  const handleCloseApp = useCallback(
+    (appId: string) => {
+      closeApp(appId)
+      forgetActivity(appId)
+    },
+    [closeApp]
+  )
 
-  const refreshActiveApp = useCallback(
+  const handleAppChanged = useCallback(
     async (appId: string) => {
       const updated = await window.electronAPI.getApp(appId)
       if (updated) replaceApp(updated)
@@ -137,50 +138,11 @@ export function App() {
     [replaceApp]
   )
 
-  const handleVersionRollback = useCallback(
-    async (commitId: string) => {
-      if (!focusedApp) return
-      await window.electronAPI.rollback(commitId, focusedApp.id)
-      await refreshActiveApp(focusedApp.id)
-    },
-    [focusedApp, refreshActiveApp]
-  )
-
-  const handleBranchSwitch = useCallback(
-    async (branchName: string) => {
-      if (!focusedApp) return
-      await window.electronAPI.switchBranch(branchName, focusedApp.id)
-      await refreshActiveApp(focusedApp.id)
-    },
-    [focusedApp, refreshActiveApp]
-  )
-
-  const handleBranchCreate = useCallback(
-    async (name: string) => {
-      if (!focusedApp) return
-      await window.electronAPI.createBranch(name, focusedApp.id)
-      await refreshActiveApp(focusedApp.id)
-    },
-    [focusedApp, refreshActiveApp]
-  )
-
-  const handleSessionSelect = useCallback(
-    async (sessionId: string) => {
-      if (!focusedAppId) return
-      setDestination(null)
-      await window.electronAPI.setActiveChatSession(sessionId, focusedAppId)
-    },
-    [focusedAppId]
-  )
-
-  const handleSessionCreate = useCallback(async () => {
-    if (!focusedAppId) return
-    setDestination(null)
-    await window.electronAPI.createChatSession(undefined, focusedAppId)
-    // Session list and active session updated via IPC events
-  }, [focusedAppId])
-
   const handleGoToApps = useCallback(() => setDestination('apps'), [])
+
+  // Fed from the same store the composer's own gauges read, so a tile cannot claim
+  // an app is working while that app's composer says it is idle.
+  const busyAppIds = useBusyAppIds()
 
   return (
     <RunningAppsProvider>
@@ -193,10 +155,9 @@ export function App() {
             onNavigate={setDestination}
             openApps={openApps}
             focusedAppId={focusedAppId}
-            /* Phase 6 fills this from per-app turn state; until then no tile is busy. */
-            busyAppIds={EMPTY_BUSY}
+            busyAppIds={busyAppIds}
             onFocusApp={handleFocusApp}
-            onCloseApp={closeApp}
+            onCloseApp={handleCloseApp}
           />
 
           {/*
@@ -208,32 +169,30 @@ export function App() {
             */}
           <main className="relative flex min-w-0 flex-1 flex-col overflow-clip">
             {/*
-              The workspace is mounted for as long as an app is focused, even
-              while a destination covers it. Swapping it out instead would
-              destroy the Preview panel's `<webview>` and drop whatever the
-              transcript had in flight — which is the bug the dock was built to
-              fix, so reintroducing it here would undo the whole thing.
+              Every open app, stacked. They are all absolutely positioned and only
+              the focused one is visible; see `MountedWorkspace` for why it is not
+              hidden with `display` or `visibility`. Keyed by app id so React never
+              reuses one app's dock for another's.
+
+              They also stay mounted while a destination covers them — swapping them
+              out would destroy the Preview panel's `<webview>` and drop whatever a
+              transcript had in flight, which is the bug the dock was built to fix.
             */}
-            {focusedApp && syncedAppId === focusedApp.id ? (
-              <Workspace
-                key={focusedApp.id}
-                app={focusedApp}
-                permissionMode={permissionMode}
-                activeSessionId={activeSessionId}
-                onModeChange={handleModeChange}
-                onSessionSelect={handleSessionSelect}
-                onSessionCreate={handleSessionCreate}
-                onRollback={handleVersionRollback}
-                onBranchSwitch={handleBranchSwitch}
-                onBranchCreate={handleBranchCreate}
-                onCloseApp={handleCloseFocusedApp}
+            {openApps.map((app) => (
+              <MountedWorkspace
+                key={app.id}
+                app={app}
+                focused={app.id === focusedAppId}
+                permissionMode={modes[app.id] ?? 'default'}
+                activeSessionId={sessions[app.id] ?? null}
+                onModeResolved={handleModeResolved}
+                onSessionResolved={handleSessionResolved}
+                onCloseApp={handleCloseApp}
+                onAppChanged={handleAppChanged}
               />
-            ) : (
-              // Only when there is genuinely no app. While one is focused but not
-              // yet acknowledged, this renders nothing rather than flashing an
-              // empty state at an app that is about to appear.
-              destination === null && !focusedApp && <NoAppSelected onGoToApps={handleGoToApps} />
-            )}
+            ))}
+
+            {destination === null && !focusedApp && <NoAppSelected onGoToApps={handleGoToApps} />}
 
             {destination !== null && (
               <div className="absolute inset-0 z-10 overflow-hidden bg-ground">
@@ -256,12 +215,3 @@ export function App() {
     </RunningAppsProvider>
   )
 }
-
-/**
- * A stable empty list for the rail's busy set.
- *
- * A fresh `[]` each render would give `NavRail` a new prop every time and
- * re-render every tile; this is the placeholder until Phase 6 supplies real
- * per-app turn state.
- */
-const EMPTY_BUSY: readonly string[] = []

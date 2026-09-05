@@ -135,6 +135,12 @@ every mode except `Auto — all` — that is the permission gate working, not a 
   layout changes that way. To get a specific arrangement, either do it by hand,
   or seed `~/.pitaster/layouts.json` before launching and check the result with
   `panels`.
+- **A background workspace's text needs `textContent`, not `innerText`.** Every
+  open app is mounted; the ones not focused are hidden with `clip-path` and
+  `inert`. `innerText` approximates *rendered* text, so it under-reports a
+  clipped subtree and stops growing — which looks exactly like a background turn
+  that has stalled. `textContent` is layout-independent and reports the truth.
+  Find the hidden ones with `main > div[style*="clip-path"]`.
 - **Panel content is not inside `.dv-groupview`.** Every panel is rendered with
   dockview's `always` renderer — its element lives in a positioned
   `.dv-render-overlay` so docking never re-parents it — so query panel content
