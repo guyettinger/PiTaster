@@ -3,6 +3,7 @@ import { PlayIcon, StopIcon, TrashIcon, BranchIcon, PlusIcon, AppsIcon, CloseIco
 import type { SubApp, AppTemplate } from '@pitaster/core'
 import { useRunningApps } from '../context/RunningAppsContext'
 import { formatRelativeTime } from '../lib/relativeTime'
+import { TEMPLATES, RUNNABLE_TEMPLATES } from './appTemplates'
 
 /**
  * Props for the AppListing component.
@@ -12,23 +13,14 @@ interface AppListingProps {
   onAppSelect: (app: SubApp) => void
   /** Currently active app ID. */
   activeAppId: string | null
+  /** Ids of the apps that already have a tile in the nav rail. */
+  openAppIds: readonly string[]
 }
-
-/** Templates that can be started as a dev server. */
-const RUNNABLE_TEMPLATES: AppTemplate[] = ['react-vite', 'node-server', 'node-cli', 'static-site']
-
-const TEMPLATES: { id: AppTemplate; name: string; icon: string }[] = [
-  { id: 'react-vite', name: 'React + Vite', icon: '⚛️' },
-  { id: 'node-cli', name: 'Node CLI', icon: '💻' },
-  { id: 'node-server', name: 'Node Server', icon: '🌐' },
-  { id: 'static-site', name: 'Static Site', icon: '📄' },
-  { id: 'blank', name: 'Blank', icon: '📁' }
-]
 
 /**
  * App listing component for managing sub-apps.
  */
-export function AppListing({ onAppSelect, activeAppId }: AppListingProps) {
+export function AppListing({ onAppSelect, activeAppId, openAppIds }: AppListingProps) {
   const [apps, setApps] = useState<SubApp[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
@@ -150,6 +142,7 @@ export function AppListing({ onAppSelect, activeAppId }: AppListingProps) {
                   key={app.id}
                   app={app}
                   isActive={app.id === activeAppId}
+                  isOpen={openAppIds.includes(app.id)}
                   onSelect={() => onAppSelect(app)}
                   onDelete={() => handleDelete(app)}
                 />
@@ -257,6 +250,8 @@ function CreateAppForm({
 interface AppCardProps {
   app: SubApp
   isActive: boolean
+  /** Whether this app already has a tile in the nav rail. */
+  isOpen: boolean
   onSelect: () => void
   onDelete: () => void
 }
@@ -264,7 +259,7 @@ interface AppCardProps {
 /**
  * Card displaying a single app.
  */
-function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
+function AppCard({ app, isActive, isOpen, onSelect, onDelete }: AppCardProps) {
   const { isRunning, getStatus, getUrl, startApp, stopApp } = useRunningApps()
 
   const running = isRunning(app.id)
@@ -307,6 +302,17 @@ function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
                   {app.name}
                 </button>
               </h4>
+              {/*
+                Says which apps already have a rail tile. Without it the library
+                gives no hint that clicking an app will focus the tile it
+                already has rather than open a new one — and at the cap, that
+                distinction is what explains why an older tile gave way.
+              */}
+              {isOpen && !isActive && (
+                <span className="eyebrow rounded border border-line px-1 py-0.5 text-ash">
+                  Open
+                </span>
+              )}
               {/* Running indicator */}
               {status && (
                 <span className={`h-2 w-2 rounded-full ${

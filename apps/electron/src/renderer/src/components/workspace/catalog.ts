@@ -40,7 +40,8 @@ export const WORKSPACE_PANEL_NAMES = [
   'preview',
   'activity',
   'daemon',
-  'changes'
+  'changes',
+  'skills'
 ] as const
 
 /** A component name the dock can render. */
@@ -60,6 +61,7 @@ export const WORKSPACE_PANEL_KINDS: readonly WorkspacePanelKind[] = [
   { name: 'activity', title: 'Activity', singleton: true },
   { name: 'daemon', title: 'Daemon', singleton: true },
   { name: 'changes', title: 'Changes', singleton: true },
+  { name: 'skills', title: 'Skills', singleton: true },
   { name: 'code', title: 'Code', singleton: false }
 ]
 

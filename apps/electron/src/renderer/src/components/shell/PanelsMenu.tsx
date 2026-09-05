@@ -10,6 +10,7 @@ import {
   PlayIcon,
   PreviewIcon,
   PulseIcon,
+  SkillsIcon,
   SourceIcon,
   TerminalIcon
 } from '../icons'
@@ -41,7 +42,8 @@ const PANEL_ICONS: Record<WorkspacePanelName, ReactNode> = {
   preview: <PreviewIcon size={16} />,
   activity: <PulseIcon size={16} />,
   daemon: <DaemonIcon size={16} />,
-  changes: <FileEditIcon size={16} />
+  changes: <FileEditIcon size={16} />,
+  skills: <SkillsIcon size={16} />
 }
 
 /**

@@ -15,12 +15,33 @@ interface SkillRowProps {
   onToggleExpand: () => void
   /** Turn the skill on or off for the open app. */
   onSetEnabled: (enabled: boolean) => void
-  /** Open the editor for this skill. */
-  onEdit: () => void
-  /** Delete the skill. */
-  onDelete: () => void
-  /** Whether the app that owns the on/off state is open. */
+  /** Open the editor for this skill, where this view can author it. */
+  onEdit?: () => void
+  /** Delete the skill, where this view can author it. */
+  onDelete?: () => void
+  /**
+   * Where to author this skill instead, when this view cannot.
+   *
+   * A workspace skill shown inside an app is togglable but not editable here —
+   * its body is shared by every app, so writing it belongs to the library in
+   * Settings. Saying so beats hiding the controls and leaving the user to
+   * wonder where they went.
+   */
+  editNote?: string
+  /** Whether the app that owns the on/off state is in scope. */
   canToggle: boolean
+  /** Why the toggle is unavailable, shown on it when {@link canToggle} is false. */
+  disabledToggleNote?: string
+  /**
+   * Whether on/off state applies to this view at all.
+   *
+   * False on the workspace library in Settings, where there is no app in scope.
+   * `Skill.enabled` is resolved against whichever app happens to be focused, so
+   * rendering it there dims a row and reports `0 tk` on the strength of a
+   * decision made *somewhere else* — a workspace-level page stating a per-app
+   * fact. With no app to attribute it to, the honest thing is not to show it.
+   */
+  showEnabledState?: boolean
 }
 
 /**
@@ -48,7 +69,10 @@ export function SkillRow({
   onSetEnabled,
   onEdit,
   onDelete,
-  canToggle
+  editNote,
+  canToggle,
+  disabledToggleNote = "Turn this on from an app's Skills panel",
+  showEnabledState = true
 }: SkillRowProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
@@ -58,11 +82,11 @@ export function SkillRow({
       window.setTimeout(() => setConfirmingDelete(false), 3000)
       return
     }
-    onDelete()
+    onDelete?.()
   }, [confirmingDelete, onDelete])
 
   const loaded = skill.loadedThisChat > 0
-  const inactive = !skill.enabled || skill.shadowed
+  const inactive = showEnabledState && (!skill.enabled || skill.shadowed)
 
   return (
     <li className="relative overflow-hidden rounded-lg border border-line bg-panel">
@@ -95,11 +119,19 @@ export function SkillRow({
           </span>
         )}
 
-        <div className={`flex items-center gap-3 ${loaded || skill.shadowed || expanded ? 'mt-1.5' : ''}`}>
+        {/*
+          `items-start` and a wrapping name, not `truncate`. This row was laid
+          out for a full-width page; in the app's dock panel it is ~300px wide,
+          and truncation there cut every name to `add-g…` — the one field that
+          identifies the skill, lost to badges and a token count that are
+          `shrink-0`. Wrapping costs a second line on a long name and keeps the
+          name legible at both widths, which no single fixed layout does.
+        */}
+        <div className={`flex items-start gap-3 ${loaded || skill.shadowed || expanded ? 'mt-1.5' : ''}`}>
           <button
             onClick={onToggleExpand}
             aria-expanded={expanded}
-            className={`min-w-0 flex-1 truncate text-left font-mono text-[13px] after:absolute after:inset-0 ${
+            className={`min-w-0 flex-1 break-words text-left font-mono text-[13px] after:absolute after:inset-0 ${
               inactive ? 'text-ash' : 'text-bone'
             }`}
           >
@@ -121,26 +153,28 @@ export function SkillRow({
             {inactive ? '0' : skill.manifestTokens} tk
           </span>
 
-          <button
-            onClick={() => onSetEnabled(!skill.enabled)}
-            aria-pressed={skill.enabled}
-            disabled={!canToggle}
-            title={
-              canToggle
-                ? skill.enabled
-                  ? `Stop offering ${skill.name} to the agent`
-                  : `Offer ${skill.name} to the agent`
-                : 'Open an app to turn a skill on or off'
-            }
-            className="relative z-10 shrink-0 rounded p-1.5 transition-colors hover:bg-raised disabled:opacity-40 disabled:hover:bg-transparent"
-          >
-            <span
-              aria-hidden="true"
-              className={`block h-2.5 w-2.5 rounded-full border transition-colors ${
-                skill.enabled ? 'border-bone bg-bone' : 'border-line'
-              }`}
-            />
-          </button>
+          {showEnabledState && (
+            <button
+              onClick={() => onSetEnabled(!skill.enabled)}
+              aria-pressed={skill.enabled}
+              disabled={!canToggle}
+              title={
+                canToggle
+                  ? skill.enabled
+                    ? `Stop offering ${skill.name} to the agent`
+                    : `Offer ${skill.name} to the agent`
+                  : disabledToggleNote
+              }
+              className="relative z-10 shrink-0 rounded p-1.5 transition-colors hover:bg-raised disabled:opacity-40 disabled:hover:bg-transparent"
+            >
+              <span
+                aria-hidden="true"
+                className={`block h-2.5 w-2.5 rounded-full border transition-colors ${
+                  skill.enabled ? 'border-bone bg-bone' : 'border-line'
+                }`}
+              />
+            </button>
+          )}
 
           <ChevronDownIcon
             size={16}
@@ -181,24 +215,30 @@ export function SkillRow({
           <div className="flex items-center justify-between gap-2 border-t border-line px-4 py-2">
             <span className="truncate font-mono text-[11px] text-ash">{skill.filepath}</span>
             <div className="relative z-10 flex shrink-0 items-center gap-1">
-              <button
-                onClick={onEdit}
-                className="flex items-center gap-1.5 rounded px-3 py-1.5 text-[13px] text-ash transition-colors hover:bg-raised hover:text-bone"
-              >
-                <PencilIcon size={14} />
-                Edit
-              </button>
-              <button
-                onClick={handleDelete}
-                className={`flex items-center gap-1.5 rounded px-3 py-1.5 text-[13px] transition-colors ${
-                  confirmingDelete
-                    ? 'bg-rust/15 text-rust'
-                    : 'text-ash hover:bg-raised hover:text-bone'
-                }`}
-              >
-                <TrashIcon size={14} />
-                {confirmingDelete ? 'Confirm' : 'Delete'}
-              </button>
+              {onEdit && onDelete ? (
+                <>
+                  <button
+                    onClick={onEdit}
+                    className="flex items-center gap-1.5 rounded px-3 py-1.5 text-[13px] text-ash transition-colors hover:bg-raised hover:text-bone"
+                  >
+                    <PencilIcon size={14} />
+                    Edit
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    className={`flex items-center gap-1.5 rounded px-3 py-1.5 text-[13px] transition-colors ${
+                      confirmingDelete
+                        ? 'bg-rust/15 text-rust'
+                        : 'text-ash hover:bg-raised hover:text-bone'
+                    }`}
+                  >
+                    <TrashIcon size={14} />
+                    {confirmingDelete ? 'Confirm' : 'Delete'}
+                  </button>
+                </>
+              ) : (
+                editNote && <span className="px-3 py-1.5 text-[12px] text-ash">{editNote}</span>
+              )}
             </div>
           </div>
         </div>

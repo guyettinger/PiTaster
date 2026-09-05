@@ -2,7 +2,7 @@
  * Type definitions for the Electron API exposed via preload script.
  */
 
-import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, CacheVerdict, DaemonHealth, ElementContext, SerializedContentBlock, Skill, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, ProviderRequestRecord, RequestOutcome, TelemetrySnapshot, TelemetryTotals, TurnCost } from '@pitaster/core'
+import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, CacheVerdict, DaemonHealth, ElementContext, SerializedContentBlock, Skill, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, ProviderRequestRecord, RequestOutcome, TelemetrySnapshot, TelemetryTotals, TurnCost, OpenAppsState } from '@pitaster/core'
 
 /**
  * A sampling value as the user configured it.
@@ -454,6 +454,12 @@ interface ElectronAPI {
   getWorkspaceLayout: (appId: string, version: number) => Promise<unknown | null>
   /** Save a sub-app's dock layout. */
   saveWorkspaceLayout: (appId: string, version: number, layout: unknown) => Promise<void>
+
+  // Open-app set methods
+  /** Read which apps have a rail tile, already pruned of apps that no longer exist. */
+  getOpenApps: () => Promise<OpenAppsState>
+  /** Persist which apps have a rail tile, and which one has focus. */
+  setOpenApps: (state: OpenAppsState) => Promise<void>
 
   // Config methods
   /** Get the application configuration. */

@@ -10,12 +10,12 @@ import type { WorkspacePanelName } from './catalog'
  * Every layout saved against an older version is then discarded in favour of
  * the default.
  *
- * **A purely additive kind is not one of those cases.** Sessions 26's Activity,
- * Daemon and Changes panels join the catalog without appearing in the default
- * layout and without touching any existing id, so a layout saved before them
- * still restores exactly as it was written. Bumping for that would throw away
- * every user's arrangement to gain nothing — the version is a compatibility
- * gate, not a changelog.
+ * **A purely additive kind is not one of those cases.** Session 26's Activity,
+ * Daemon and Changes panels — and Session 28's Skills — join the catalog without
+ * appearing in the default layout and without touching any existing id, so a
+ * layout saved before them still restores exactly as it was written. Bumping for
+ * that would throw away every user's arrangement to gain nothing — the version is
+ * a compatibility gate, not a changelog.
  */
 export const LAYOUT_VERSION = 1
 

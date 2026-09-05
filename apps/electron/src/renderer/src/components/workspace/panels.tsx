@@ -24,6 +24,7 @@ import { AppServerBlock } from '../shell/AppServerBlock'
 import { ActivityPanel } from './ActivityPanel'
 import { ChangesPanel } from './ChangesPanel'
 import { DaemonPanel } from './DaemonPanel'
+import { AppSkillsPanel } from '../skills/AppSkillsPanel'
 import { FileTree } from '../code/FileTree'
 import { CodeViewer } from '../code/CodeViewer'
 import { WarningIcon } from '../icons'
@@ -53,6 +54,22 @@ function ChatsPanel() {
         onSessionSelect={onSessionSelect}
         onSessionCreate={onSessionCreate}
       />
+    </div>
+  )
+}
+
+/**
+ * This app's skills.
+ *
+ * Takes the app's name from the workspace rather than a prop: a panel's `params`
+ * are serialized into the saved layout, so only plain, stable values can travel
+ * there, and an app's name is neither.
+ */
+function SkillsPanel() {
+  const { app } = useWorkspace()
+  return (
+    <div className="h-full bg-panel">
+      <AppSkillsPanel appName={app.name} />
     </div>
   )
 }
@@ -277,5 +294,6 @@ export const WORKSPACE_COMPONENTS: Record<
   preview: PreviewDockPanel,
   activity: ActivityPanel,
   daemon: DaemonPanel,
-  changes: ChangesPanel
+  changes: ChangesPanel,
+  skills: SkillsPanel
 }

@@ -196,3 +196,17 @@ export interface AppRunConfig {
   /** Pattern to detect when server is ready. */
   readyPattern: RegExp | null
 }
+
+/**
+ * The shell's open-app set — which sub-apps have a rail tile, and which is focused.
+ *
+ * Shell state rather than app state: it describes what the *window* was showing,
+ * so it is persisted beside `config.json` under `~/.pitaster` and never in an
+ * app's own directory, which is a git repo every agent write commits to.
+ */
+export interface OpenAppsState {
+  /** Ids of the apps with a tile in the rail, in rail order. */
+  openAppIds: string[]
+  /** The id of the app whose workspace is focused, or null for none. */
+  focusedAppId: string | null
+}

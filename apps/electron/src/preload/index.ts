@@ -3,6 +3,14 @@ import { contextBridge, ipcRenderer } from 'electron'
 /** Permission mode type for tool execution. */
 type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
 
+/** The shell's open-app set — which sub-apps have a rail tile, and which is focused. */
+interface OpenAppsState {
+  /** Ids of the apps with a tile in the rail, in rail order. */
+  openAppIds: string[]
+  /** The id of the app whose workspace is focused, or null for none. */
+  focusedAppId: string | null
+}
+
 /** A single streamed update from the agent to the renderer. */
 interface StreamChunk {
   /** Type of chunk. */
@@ -902,6 +910,24 @@ const electronAPI = {
     layout: unknown
   ): Promise<void> => {
     return ipcRenderer.invoke('layout:save', appId, version, layout)
+  },
+
+  // Open-app set methods
+
+  /**
+   * Read which apps have a rail tile, and which one has focus.
+   * @returns The set, already pruned of apps that no longer exist
+   */
+  getOpenApps: (): Promise<OpenAppsState> => {
+    return ipcRenderer.invoke('workspaces:get-open')
+  },
+
+  /**
+   * Persist which apps have a rail tile, and which one has focus.
+   * @param state - The set to remember
+   */
+  setOpenApps: (state: OpenAppsState): Promise<void> => {
+    return ipcRenderer.invoke('workspaces:set-open', state)
   },
 
   // Config methods

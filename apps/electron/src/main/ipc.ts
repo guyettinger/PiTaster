@@ -29,6 +29,7 @@ import {
 import { buildContextReport } from './agent/context-report'
 import { createTelemetry, type Telemetry } from './agent/telemetry'
 import { readWorkspaceLayout, writeWorkspaceLayout } from './layout-store'
+import { readOpenApps, writeOpenApps } from './open-apps-store'
 import { ensureSessionBaseline, readSessionBaseline } from './session-baselines'
 import { describeNetworkUse } from './agent/permission-gate'
 import { previewPatch } from './agent/patch'
@@ -51,7 +52,7 @@ import {
   ChatHistoryManager,
   installDependencies
 } from '@pitaster/shared'
-import type { AgentStatus, ContextReport, DaemonHealth, TelemetrySnapshot, PermissionMode, StreamChunk, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@pitaster/core'
+import type { AgentStatus, ContextReport, DaemonHealth, TelemetrySnapshot, PermissionMode, StreamChunk, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig, OpenAppsState } from '@pitaster/core'
 import {
   DEFAULT_OLLAMA_BASE_URL,
   isOllamaReachable,
@@ -454,6 +455,14 @@ const configPath = join(configDir, 'config.json')
  * is a git repo every agent write commits to — see `layout-store.ts`.
  */
 const layoutPath = join(configDir, 'layouts.json')
+
+/**
+ * Path to the open-app set — which apps have a rail tile, and which has focus.
+ *
+ * Beside the layouts, and for the same reason: it is shell state, not app state,
+ * and an app's own directory is a git repo every agent write commits to.
+ */
+const openAppsPath = join(configDir, 'open-apps.json')
 
 /**
  * Path to the chat session baseline store.
@@ -1798,6 +1807,49 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     }
   )
 
+  // Open-app set IPC handlers
+  //
+  // `readdir`, not `appManager.listApps()`, for the same reason `layout:save`
+  // gives: listing layers a `statusMatrix` onto every app, and pruning only
+  // needs the names.
+  async function liveAppIds(): Promise<string[]> {
+    const entries = await fs.readdir(appManager.getAppsDir(), { withFileTypes: true })
+    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name)
+  }
+
+  ipcMain.handle('workspaces:get-open', async (): Promise<OpenAppsState> => {
+    return readOpenApps({ storePath: openAppsPath, liveAppIds: await liveAppIds() })
+  })
+
+  ipcMain.handle('workspaces:set-open', async (_, state: unknown) => {
+    if (typeof state !== 'object' || state === null) {
+      throw new Error('Invalid open apps state')
+    }
+    const { openAppIds, focusedAppId } = state as Partial<OpenAppsState>
+    if (!Array.isArray(openAppIds) || openAppIds.length > 64) {
+      throw new Error('Invalid open apps state')
+    }
+    // Every id is checked here as well as filtered against the live set below:
+    // `isValidAppId` is what keeps a value that is about to be written, read
+    // back on the next launch, and turned into a path from ever being one that
+    // escapes the apps root.
+    for (const id of openAppIds) {
+      if (typeof id !== 'string' || !isValidAppId(id)) {
+        throw new Error('Invalid app ID')
+      }
+    }
+    if (focusedAppId !== null && focusedAppId !== undefined) {
+      if (typeof focusedAppId !== 'string' || !isValidAppId(focusedAppId)) {
+        throw new Error('Invalid app ID')
+      }
+    }
+    return writeOpenApps({
+      storePath: openAppsPath,
+      state: { openAppIds, focusedAppId: focusedAppId ?? null },
+      liveAppIds: await liveAppIds()
+    })
+  })
+
   // Config IPC handlers
   ipcMain.handle('config:get', async () => {
     return loadConfig()
@@ -2260,6 +2312,8 @@ export function cleanupIpcHandlers(): void {
   // Workspace layout handlers
   ipcMain.removeHandler('layout:get')
   ipcMain.removeHandler('layout:save')
+  ipcMain.removeHandler('workspaces:get-open')
+  ipcMain.removeHandler('workspaces:set-open')
 
   // Config handlers
   ipcMain.removeHandler('config:get')
