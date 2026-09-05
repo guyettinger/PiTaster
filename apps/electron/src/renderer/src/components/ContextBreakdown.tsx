@@ -5,9 +5,9 @@ import type { ContextBlock, ContextReport } from '../types/electron'
  * the same rule `PermissionModeControl` documents for its accent map.
  *
  * The palette is deliberately two families rather than eleven hues. `globals.css` states
- * the thesis: brass is the agent acting, patina is history, and nothing else in the UI is
+ * the thesis: keylime is the agent acting, patina is history, and nothing else in the UI is
  * saturated, which is what lets those two read. So the *fixed* half — the prompt, the
- * schemas, the manifest — is drawn in ash, receding; the *conversation* half is brass,
+ * schemas, the manifest — is drawn in ash, receding; the *conversation* half is keylime,
  * because it is the half the agent produced.
  *
  * Rank inside each family is carried by opacity, and assigned by **position**, not by
@@ -17,13 +17,13 @@ import type { ContextBlock, ContextReport } from '../types/electron'
  */
 const FIXED_RAMP = ['bg-ash', 'bg-ash/80', 'bg-ash/65', 'bg-ash/50', 'bg-ash/40', 'bg-ash/30']
 
-/** The conversation ramp. Same rule, brass. */
+/** The conversation ramp. Same rule, keylime. */
 const CONVERSATION_RAMP = [
-  'bg-brass',
-  'bg-brass/80',
-  'bg-brass/60',
-  'bg-brass/45',
-  'bg-brass/30'
+  'bg-keylime',
+  'bg-keylime/80',
+  'bg-keylime/60',
+  'bg-keylime/45',
+  'bg-keylime/30'
 ]
 
 /**

@@ -32,12 +32,12 @@ export function PanelToggle({ icon, label, open, onClick }: PanelToggleProps) {
         open ? 'text-bone' : 'text-ash hover:bg-raised/60 hover:text-bone'
       }`}
     >
-      <span className={open ? 'text-brass' : ''}>{icon}</span>
+      <span className={open ? 'text-keylime' : ''}>{icon}</span>
       <span className="flex-1 truncate text-left">{label}</span>
       <span
         aria-hidden="true"
         className={`h-2 w-2 shrink-0 rounded-full border transition-colors ${
-          open ? 'border-brass bg-brass' : 'border-line'
+          open ? 'border-keylime bg-keylime' : 'border-line'
         }`}
       />
     </button>

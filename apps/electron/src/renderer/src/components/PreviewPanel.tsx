@@ -243,7 +243,7 @@ export function PreviewPanel({ appId, isVisible }: PreviewPanelProps) {
             disabled={!running}
             className={`flex items-center gap-1 rounded px-2 py-1 text-[12px] transition-colors disabled:opacity-50 ${
               isInspecting
-                ? 'bg-brass font-medium text-ground'
+                ? 'bg-keylime font-medium text-ground'
                 : 'border border-line text-bone hover:border-ash'
             }`}
             title={
@@ -287,8 +287,8 @@ export function PreviewPanel({ appId, isVisible }: PreviewPanelProps) {
       <div className="relative flex-1">
         {/* Loading indicator */}
         {isLoading && (
-          <div className="absolute inset-x-0 top-0 h-1 bg-brass/10">
-            <div className="h-full w-1/3 animate-pulse bg-brass" />
+          <div className="absolute inset-x-0 top-0 h-1 bg-keylime/10">
+            <div className="h-full w-1/3 animate-pulse bg-keylime" />
           </div>
         )}
 

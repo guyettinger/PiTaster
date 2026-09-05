@@ -36,9 +36,9 @@ interface SkillRowProps {
  * half below it, each with its own token count. The eyebrows are the teaching, and they
  * cost one line.
  *
- * Colour follows the shell's rule that brass is the agent acting. A skill at rest is
+ * Colour follows the shell's rule that keylime is the agent acting. A skill at rest is
  * neutral no matter how important it is; a skill the agent has *loaded in this chat*
- * takes the brass leading bar, because that is the one thing on this page that is an
+ * takes the keylime leading bar, because that is the one thing on this page that is an
  * action rather than a setting.
  */
 export function SkillRow({
@@ -66,10 +66,10 @@ export function SkillRow({
 
   return (
     <li className="relative overflow-hidden rounded-lg border border-line bg-panel">
-      {/* The load trace. Brass, and only ever this. */}
+      {/* The load trace. Key lime, and only ever this. */}
       <span
         aria-hidden="true"
-        className={`absolute left-0 top-0 h-full w-0.5 bg-brass transition-opacity ${
+        className={`absolute left-0 top-0 h-full w-0.5 bg-keylime transition-opacity ${
           loaded ? 'opacity-100' : 'opacity-0'
         }`}
       />
@@ -85,7 +85,7 @@ export function SkillRow({
             label, because that is where it contrasts with the on-demand half below. */}
         {(loaded || skill.shadowed || expanded) && (
           <span
-            className={`eyebrow block ${loaded ? 'text-brass' : skill.shadowed ? 'text-rust' : 'text-ash'}`}
+            className={`eyebrow block ${loaded ? 'text-keylime' : skill.shadowed ? 'text-rust' : 'text-ash'}`}
           >
             {skill.shadowed
               ? 'Hidden by this app'

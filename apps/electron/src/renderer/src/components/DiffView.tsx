@@ -84,7 +84,7 @@ const ROW_STYLE: Record<DiffRow['kind'], string> = {
   add: 'bg-patina/10 text-bone',
   remove: 'bg-rust/10 text-bone',
   context: 'text-ash',
-  hunk: 'bg-raised text-brass',
+  hunk: 'bg-raised text-keylime',
   note: 'text-ash italic'
 }
 

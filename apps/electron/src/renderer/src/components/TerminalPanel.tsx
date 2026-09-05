@@ -6,16 +6,16 @@ const ANSI_COLORS: Record<string, string> = {
   '30': 'text-ash',
   '31': 'text-rust',
   '32': 'text-patina',
-  '33': 'text-brass',
-  '34': 'text-brass',
+  '33': 'text-keylime',
+  '34': 'text-keylime',
   '35': 'text-purple-500',
   '36': 'text-cyan-500',
   '37': 'text-bone',
   '90': 'text-ash',
   '91': 'text-rust',
   '92': 'text-patina',
-  '93': 'text-brass',
-  '94': 'text-brass',
+  '93': 'text-keylime',
+  '94': 'text-keylime',
   '95': 'text-purple-400',
   '96': 'text-cyan-400',
   '97': 'text-white',
@@ -124,7 +124,7 @@ export function TerminalPanel({ appId, isVisible }: TerminalPanelProps) {
           {status && (
             <span className={`text-xs ${
               status === 'running' ? 'text-patina' : 
-              status === 'starting' ? 'text-brass' :
+              status === 'starting' ? 'text-keylime' :
               status === 'error' ? 'text-rust' : 'text-ash'
             }`}>
               {status}
@@ -194,7 +194,7 @@ export function TerminalPanel({ appId, isVisible }: TerminalPanelProps) {
               key={`${log.timestamp}-${index}`}
               className={`whitespace-pre-wrap ${
                 log.type === 'stderr' ? 'text-rust' :
-                log.type === 'system' ? 'text-brass' : ''
+                log.type === 'system' ? 'text-keylime' : ''
               }`}
             >
               {showTimestamps && (
@@ -203,7 +203,7 @@ export function TerminalPanel({ appId, isVisible }: TerminalPanelProps) {
                 </span>
               )}
               {log.type === 'system' && (
-                <span className="mr-1 text-brass">[system]</span>
+                <span className="mr-1 text-keylime">[system]</span>
               )}
               {parseAnsi(log.message)}
             </div>

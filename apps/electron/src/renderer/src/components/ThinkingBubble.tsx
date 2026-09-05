@@ -82,7 +82,7 @@ export function ThinkingBubble({ content, isStreaming = false }: ThinkingBubbleP
           </span>
           <span className="text-sm font-medium text-ash">Thinking</span>
           {isStreaming ? (
-            <span className="animate-pulse text-xs text-brass">…</span>
+            <span className="animate-pulse text-xs text-keylime">…</span>
           ) : (
             <span className="text-xs text-ash">~{estimateTokens(content)} tokens</span>
           )}

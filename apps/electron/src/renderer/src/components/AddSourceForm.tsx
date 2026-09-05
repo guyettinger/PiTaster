@@ -169,7 +169,7 @@ export function AddSourceForm({
           <button
             onClick={handleSubmit}
             disabled={isSaving}
-            className="flex-1 rounded bg-brass px-3 py-1.5 text-sm text-ground
+            className="flex-1 rounded bg-keylime px-3 py-1.5 text-sm text-ground
                        hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving ? 'Saving...' : label}

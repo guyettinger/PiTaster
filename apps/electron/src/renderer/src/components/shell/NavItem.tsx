@@ -17,7 +17,7 @@ interface NavItemProps {
 /**
  * A destination in the global nav rail.
  *
- * Destinations replace the main view and carry a brass bar on the leading edge
+ * Destinations replace the main view and carry a keylime bar on the leading edge
  * when active. Panel toggles look deliberately different — see `PanelToggle` —
  * because they do a different thing.
  */
@@ -32,7 +32,7 @@ export function NavItem({ icon, label, active, onClick }: NavItemProps) {
     >
       <span
         aria-hidden="true"
-        className={`absolute left-0 top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-r bg-brass transition-opacity ${
+        className={`absolute left-0 top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-r bg-keylime transition-opacity ${
           active ? 'opacity-100' : 'opacity-0'
         }`}
       />

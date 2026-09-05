@@ -178,7 +178,7 @@ export function VersionControl({
           <p className="text-[13px] text-bone">{error}</p>
           <button
             onClick={loadVersionData}
-            className="mt-2 text-[13px] text-brass hover:underline"
+            className="mt-2 text-[13px] text-keylime hover:underline"
           >
             Try again
           </button>
@@ -231,7 +231,7 @@ export function VersionControl({
                 <button
                   onClick={handleCreateBranch}
                   disabled={!newBranchName.trim()}
-                  className="shrink-0 rounded bg-brass px-2 py-1 text-[12px] font-medium text-ground transition-opacity hover:opacity-90 disabled:opacity-40"
+                  className="shrink-0 rounded bg-keylime px-2 py-1 text-[12px] font-medium text-ground transition-opacity hover:opacity-90 disabled:opacity-40"
                 >
                   Create
                 </button>
@@ -249,7 +249,7 @@ export function VersionControl({
 
           {/* Uncommitted work */}
           {state?.hasChanges && (
-            <div className="border-b border-line bg-brass/10 px-3 py-3">
+            <div className="border-b border-line bg-keylime/10 px-3 py-3">
               <p className="text-[12.5px] text-bone">
                 {state.modifiedFiles.length} uncommitted change
                 {state.modifiedFiles.length === 1 ? '' : 's'}

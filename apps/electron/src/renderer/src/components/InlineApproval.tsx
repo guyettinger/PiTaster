@@ -76,10 +76,10 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
   }
   
   return (
-    <div className="rounded-lg border-2 border-brass/40 bg-brass/10 p-4">
+    <div className="rounded-lg border-2 border-keylime/40 bg-keylime/10 p-4">
       {/* Header */}
       <div className="flex items-center gap-2 mb-2">
-        <WarningIcon size={16} className="shrink-0 text-brass" />
+        <WarningIcon size={16} className="shrink-0 text-keylime" />
         <span className="font-medium text-bone">Approval Required</span>
       </div>
       
@@ -95,8 +95,8 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
         prompt-injected exfiltration attempt, and it has to be visible to catch.
       */}
       {mcp && summarizeMcpInput(input) && (
-        <div className="mb-3 rounded border border-brass/40 bg-panel/60 p-2">
-          <p className="mb-1 text-xs font-medium text-brass">
+        <div className="mb-3 rounded border border-keylime/40 bg-panel/60 p-2">
+          <p className="mb-1 text-xs font-medium text-keylime">
             Sends to an external MCP server:
           </p>
           <p className="font-mono text-xs break-all text-bone">
@@ -111,7 +111,7 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
         worth reading closely before approving.
       */}
       {notice && (
-        <p className="mb-3 text-xs text-brass">
+        <p className="mb-3 text-xs text-keylime">
           This command {notice}.
         </p>
       )}
@@ -149,7 +149,7 @@ export function InlineApproval({ request, onApprove, onDeny }: InlineApprovalPro
         </button>
         <button
           onClick={onApprove}
-          className="flex-1 rounded-lg bg-brass px-4 py-2 text-sm font-medium text-ground transition-opacity hover:opacity-90"
+          className="flex-1 rounded-lg bg-keylime px-4 py-2 text-sm font-medium text-ground transition-opacity hover:opacity-90"
         >
           Allow
         </button>

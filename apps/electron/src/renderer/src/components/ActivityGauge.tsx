@@ -15,7 +15,7 @@ import type { AgentStatus, TelemetrySnapshot } from '../types/electron'
  * one that earns a warning colour — it means something already went wrong.
  */
 const STATUS_TONES: Record<AgentStatus['kind'], { tone: string; fallback: string }> = {
-  compacting: { tone: 'bg-brass', fallback: 'Summarizing…' },
+  compacting: { tone: 'bg-keylime', fallback: 'Summarizing…' },
   retrying: { tone: 'bg-rust', fallback: 'Retrying…' },
   waiting: { tone: 'bg-ash', fallback: 'Waiting on the model…' },
   settled: { tone: 'bg-patina', fallback: 'Working…' }
@@ -174,11 +174,11 @@ export function ActivityGauge({ activity, telemetry, onOpenPanel }: ActivityGaug
                     <SplitBar
                       width={140}
                       parts={[
-                        { id: 'prefill', value: record.prefillMs ?? 0, tone: 'bg-brass' },
+                        { id: 'prefill', value: record.prefillMs ?? 0, tone: 'bg-keylime' },
                         {
                           id: 'decode',
                           value: Math.max(0, (record.totalMs ?? 0) - (record.prefillMs ?? 0)),
-                          tone: 'bg-brass/40'
+                          tone: 'bg-keylime/40'
                         }
                       ]}
                       label={`Request ${record.index}`}

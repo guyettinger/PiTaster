@@ -293,7 +293,7 @@ export function SourcesPanel({ isVisible = true }: SourcesPanelProps) {
               setIsAdding(!isAdding)
               setEditingSource(null)
             }}
-            className="flex items-center gap-1 rounded-lg bg-brass px-3 py-1.5 text-[12.5px] font-medium text-ground transition-opacity hover:opacity-90"
+            className="flex items-center gap-1 rounded-lg bg-keylime px-3 py-1.5 text-[12.5px] font-medium text-ground transition-opacity hover:opacity-90"
           >
             <PlusIcon size={14} />
             Add source
@@ -318,7 +318,7 @@ export function SourcesPanel({ isVisible = true }: SourcesPanelProps) {
           <p className="text-[13px] text-bone">{error}</p>
           <button
             onClick={loadSources}
-            className="mt-2 text-[13px] text-brass hover:underline"
+            className="mt-2 text-[13px] text-keylime hover:underline"
           >
             Try again
           </button>
@@ -334,7 +334,7 @@ export function SourcesPanel({ isVisible = true }: SourcesPanelProps) {
           </p>
           <button
             onClick={() => setIsAdding(true)}
-            className="mt-4 rounded-lg bg-brass px-4 py-2 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
+            className="mt-4 rounded-lg bg-keylime px-4 py-2 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
           >
             Add source
           </button>

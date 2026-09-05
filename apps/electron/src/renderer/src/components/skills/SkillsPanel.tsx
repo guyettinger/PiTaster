@@ -156,7 +156,7 @@ export function SkillsPanel({ appName }: SkillsPanelProps) {
             <p className="text-[13px] text-bone">{error}</p>
             <button
               onClick={() => void reload()}
-              className="mt-2 text-[13px] text-brass hover:underline"
+              className="mt-2 text-[13px] text-keylime hover:underline"
             >
               Try again
             </button>
@@ -164,7 +164,7 @@ export function SkillsPanel({ appName }: SkillsPanelProps) {
         )}
 
         {warning && (
-          <div className="mt-4 rounded-lg border border-brass/40 bg-brass/10 p-4">
+          <div className="mt-4 rounded-lg border border-keylime/40 bg-keylime/10 p-4">
             <p className="text-[13px] text-bone">{warning}</p>
           </div>
         )}

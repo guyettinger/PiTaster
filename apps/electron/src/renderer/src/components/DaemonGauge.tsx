@@ -72,8 +72,8 @@ export function describeDaemon(health: DaemonHealth | null, model: string): Daem
 
   if (health.modelLoaded === false) {
     return {
-      tone: 'text-brass',
-      dot: 'bg-brass',
+      tone: 'text-keylime',
+      dot: 'bg-keylime',
       label: 'model not loaded',
       isFault: true,
       detail: 'The model is not loaded. The next turn pays a full model load before it starts.'
@@ -84,8 +84,8 @@ export function describeDaemon(health: DaemonHealth | null, model: string): Daem
 
   if (remaining !== null && remaining <= 0) {
     return {
-      tone: 'text-brass',
-      dot: 'bg-brass',
+      tone: 'text-keylime',
+      dot: 'bg-keylime',
       label: 'model unloaded',
       isFault: true,
       detail: 'The model has been unloaded. The next turn pays a full model load before it starts.'
@@ -95,8 +95,8 @@ export function describeDaemon(health: DaemonHealth | null, model: string): Daem
   if (remaining !== null && remaining <= UNLOAD_WARNING_MS) {
     const seconds = Math.max(1, Math.round(remaining / 1000))
     return {
-      tone: 'text-brass',
-      dot: 'bg-brass',
+      tone: 'text-keylime',
+      dot: 'bg-keylime',
       label: `unloads in ${seconds}s`,
       isFault: true,
       detail: `Ollama unloads the model in ${seconds}s — the next turn after that pays a full model load.`

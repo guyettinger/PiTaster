@@ -164,7 +164,7 @@ export function ChatSessionList({
                           <span
                             aria-hidden="true"
                             className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                              isActive ? 'bg-brass' : 'bg-transparent'
+                              isActive ? 'bg-keylime' : 'bg-transparent'
                             }`}
                           />
                           {/*
@@ -178,7 +178,7 @@ export function ChatSessionList({
                             onClick={() => onSessionSelect(session.id)}
                             aria-current={isActive ? 'true' : undefined}
                             title={session.title}
-                            className={`min-w-0 flex-1 cursor-pointer truncate text-left after:absolute after:inset-0 after:rounded-md after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-1 focus-visible:after:outline-brass ${
+                            className={`min-w-0 flex-1 cursor-pointer truncate text-left after:absolute after:inset-0 after:rounded-md after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-1 focus-visible:after:outline-keylime ${
                               // A chat with nothing in it reads as empty rather than
                               // as one that happens to be named "New Chat".
                               isUntitled ? 'text-ash' : ''

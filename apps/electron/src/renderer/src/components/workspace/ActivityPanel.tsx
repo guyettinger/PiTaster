@@ -90,14 +90,14 @@ function Totals({ telemetry }: TotalsProps) {
           height={6}
           parts={[
             { id: 'cached', value: totals.cachedTokens, tone: 'bg-patina' },
-            { id: 'prefilled', value: totals.prefilledTokens, tone: 'bg-brass' }
+            { id: 'prefilled', value: totals.prefilledTokens, tone: 'bg-keylime' }
           ]}
           label="Reused against prefilled prompt tokens"
         />
       </div>
       <p className="mt-1 text-[11px] text-ash">
         <span className="text-patina">{formatTokens(totals.cachedTokens)} reused</span> ·{' '}
-        <span className="text-brass">{formatTokens(totals.prefilledTokens)} prefilled</span> ·{' '}
+        <span className="text-keylime">{formatTokens(totals.prefilledTokens)} prefilled</span> ·{' '}
         {reuse}% of the prompt came back
       </p>
 
@@ -210,8 +210,8 @@ function RequestRow({ record, slowest }: RequestRowProps) {
         width={120}
         full={slowest}
         parts={[
-          { id: 'prefill', value: record.prefillMs ?? 0, tone: 'bg-brass' },
-          { id: 'decode', value: decodeMs, tone: 'bg-brass/40' }
+          { id: 'prefill', value: record.prefillMs ?? 0, tone: 'bg-keylime' },
+          { id: 'decode', value: decodeMs, tone: 'bg-keylime/40' }
         ]}
         label={`Request ${record.index}: prefill and decode`}
       />
