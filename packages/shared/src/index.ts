@@ -48,7 +48,7 @@ export type {
 } from './apps/install.js'
 
 // Chat
-export { ChatHistoryManager } from './chat/manager.js'
+export { ChatHistoryManager, assertSessionTitle, MAX_SESSION_TITLE_CHARS } from './chat/manager.js'
 export { getAppPath, getAppSessionDir, getPiAgentDir } from './chat/session-paths.js'
 
 // Branding

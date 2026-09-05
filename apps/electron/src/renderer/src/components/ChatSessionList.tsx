@@ -7,6 +7,16 @@ import type { ChatSession } from '@pitaster/core'
 const UNTITLED_SESSION = 'New Chat'
 
 /**
+ * The longest title the rename box accepts.
+ *
+ * Mirrors `MAX_SESSION_TITLE_CHARS` in `@pitaster/shared`, which is where the bound
+ * is actually enforced — main re-checks it, and so does `ChatHistoryManager` at the
+ * write. This copy exists so an honest rename is stopped at the keyboard rather than
+ * rejected by IPC with nothing on screen to explain it.
+ */
+const MAX_TITLE_CHARS = 200
+
+/**
  * Props for the ChatSessionList component.
  */
 interface ChatSessionListProps {
@@ -155,6 +165,7 @@ export function ChatSessionList({
                             if (e.key === 'Escape') setEditingId(null)
                           }}
                           autoFocus
+                          maxLength={MAX_TITLE_CHARS}
                           placeholder={UNTITLED_SESSION}
                           aria-label={`Rename ${session.title}`}
                           className="min-w-0 flex-1 rounded bg-line px-1 py-0.5 text-[13px] text-bone"

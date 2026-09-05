@@ -48,6 +48,7 @@ import {
   type WorkspaceRuntime
 } from './workspaces'
 import { ensureSessionBaseline, readSessionBaseline } from './session-baselines'
+import { assertElementContext } from './element-context'
 import { describeNetworkUse } from './agent/permission-gate'
 import { previewPatch } from './agent/patch'
 import { listAppFiles, readAppFile } from './files'
@@ -67,6 +68,7 @@ import {
   isValidAppId,
   AppRunner,
   ChatHistoryManager,
+  assertSessionTitle,
   installDependencies
 } from '@pitaster/shared'
 import type { AgentStatus, ContextReport, DaemonHealth, TelemetrySnapshot, PermissionMode, StreamChunk, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig, OpenAppsState } from '@pitaster/core'
@@ -1459,6 +1461,13 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
         if (!block || typeof block !== 'object' || typeof block.type !== 'string') {
           throw new Error('Invalid prompt: block missing type')
         }
+        // An element block's payload is the one part of a prompt that is a nested
+        // structure rather than text, and `elementContextToPrompt` reads it without
+        // guarding — a malformed one throws while the turn is being assembled, and
+        // an unbounded screenshot becomes an unbounded image attachment.
+        if (block.type === 'element') {
+          assertElementContext((block as { elementContext?: unknown }).elementContext)
+        }
       }
     } else {
       throw new Error('Invalid prompt: must be string or content blocks')
@@ -2256,7 +2265,14 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   ipcMain.handle('sessions:create', async (_, params: CreateChatSessionParams | undefined, appId: unknown) => {
     const { app, runtime } = await withWorkspace(appId, (workspace) => workspace)
 
-    const session = await chatHistoryManager.createSession(app.id, params)
+    if (params !== undefined && params !== null) {
+      if (typeof params !== 'object' || Array.isArray(params)) {
+        throw new Error('Invalid session params')
+      }
+      if (params.title !== undefined) assertSessionTitle(params.title)
+    }
+
+    const session = await chatHistoryManager.createSession(app.id, params ?? undefined)
 
     // Switch to the new session
     runtime.activeSessionId = session.id
@@ -2298,9 +2314,11 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   ipcMain.handle('sessions:rename', async (_, sessionId: string, title: string, appId: unknown) => {
     const { app } = await withWorkspace(appId, (workspace) => workspace)
     assertSessionId(sessionId)
-    if (typeof title !== 'string' || title.length === 0) {
-      throw new Error('Invalid title')
-    }
+    // Bounded for length as well as type, like the session id beside it. The title
+    // is appended verbatim into Pi's transcript, so an unbounded one is written to
+    // disk and then read back by every later `listSessions`. `ChatHistoryManager`
+    // checks it again at the write itself, which is what covers `sessions:create`.
+    assertSessionTitle(title)
     const renamed = await chatHistoryManager.renameSession(app.id, sessionId, title)
     await broadcastSessions(mainWindow, app.id)
     return renamed
@@ -2509,6 +2527,10 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
    * Add element context to the current chat.
    */
   ipcMain.handle('chat:add-element-context', async (event, context: ElementContext) => {
+    // The renderer is untrusted even though main produced this a moment ago through
+    // `chat:capture-element` — nothing carries it between the two calls but the
+    // renderer itself.
+    assertElementContext(context)
     // Tagged with the focused app: the element was picked in that workspace's
     // Preview, so it belongs in that workspace's composer and no other.
     const appId = getFocusedAppId()
