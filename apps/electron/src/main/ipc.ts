@@ -38,7 +38,6 @@ import {
   existingRuntime,
   dropAllRuntimes,
   dropRuntime,
-  focusedRuntime,
   focusedWorkspace,
   getFocusedAppId,
   hostsToEvict,
@@ -1872,9 +1871,9 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     }
 
     // Validation is `withWorkspace`'s, which is the single place an id becomes a
-    // root. It also creates the runtime, so `focusedRuntime()` is non-null the
-    // moment focus is set — which is what lets the synchronous accessors above be
-    // synchronous.
+    // root — so focus can only ever be set to an app that has already been proven
+    // to resolve inside the apps root, and `getFocusedAppId` never answers with an
+    // id nothing else would accept.
     return withWorkspace(id, ({ app }) => {
       setFocusedAppId(app.id)
       return app.id
@@ -2440,16 +2439,17 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       throw new Error('Invalid app ID')
     }
 
-    const app = await appManager.getApp(id)
-    if (!app) {
-      throw new Error(`App "${id}" not found`)
-    }
+    // Through the funnel like every other app-addressed channel, rather than
+    // calling `getApp` directly. The guard is the same one either way — `getApp`
+    // routes through `appDir` — but a boundary is only auditable if there is one
+    // place to audit, and an exception here is an exception the next reader has
+    // to re-derive the safety of.
+    const { app, runtime } = await withWorkspace(id, (workspace) => workspace)
 
-    const running = existingRuntime(id)
     // `bun install` rewrites `node_modules` and can rewrite `package.json`, both
     // of which a mid-turn agent may be reading — and it runs the project's own
     // install scripts, which is why `install_deps` is never auto-approved either.
-    if (running) refuseWhileRunning(running, 'installing dependencies')
+    refuseWhileRunning(runtime, 'installing dependencies')
 
     // `installDependencies` spawns with a filtered environment, so the user's
     // API keys never reach the install process.

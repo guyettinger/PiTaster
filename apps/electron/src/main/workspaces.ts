@@ -245,21 +245,6 @@ export async function focusedWorkspace(): Promise<Workspace | null> {
 }
 
 /**
- * The focused workspace's runtime, without a lookup.
- *
- * Synchronous, which is what lets the handlers that answer about "the current
- * app" stay synchronous. Safe because focus is only ever set through
- * {@link setFocusedAppId} by a caller that has already resolved the app through
- * {@link withWorkspace}, so a focused id always has a runtime.
- *
- * @returns The focused runtime, or null when no app is focused
- */
-export function focusedRuntime(): WorkspaceRuntime | null {
-  if (focusedAppId === null) return null
-  return runtimes.get(focusedAppId) ?? null
-}
-
-/**
  * Record which app the window is showing.
  * @param appId - The focused app, or null for none
  */

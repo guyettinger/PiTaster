@@ -4,7 +4,7 @@
  * The property under test is confinement, and the case worth being explicit about is the
  * one a security review surfaced: `isWithinRoot` only ever means "inside whatever string
  * the caller called the root", so these functions are safe exactly as far as their
- * `rootPath` is trusted. `resolveAppRoot` in `ipc.ts` is what establishes that; these
+ * `rootPath` is trusted. `withWorkspace` in `main/workspaces.ts` is what establishes that; these
  * tests cover the half that lives here.
  */
 
