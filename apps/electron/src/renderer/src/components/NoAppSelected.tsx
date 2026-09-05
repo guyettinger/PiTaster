@@ -24,7 +24,7 @@ export function NoAppSelected({ onGoToApps }: NoAppSelectedProps) {
         </p>
         <button
           onClick={onGoToApps}
-          className="mt-4 rounded-lg bg-brass px-4 py-2 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
+          className="mt-4 rounded-lg bg-keylime px-4 py-2 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
         >
           Browse apps
         </button>

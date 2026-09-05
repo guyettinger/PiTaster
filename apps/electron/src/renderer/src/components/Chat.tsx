@@ -765,7 +765,7 @@ export function Chat({
               <button
                 onClick={sendMessage}
                 disabled={!input.trim() || !activeSessionId}
-                className="h-11 shrink-0 rounded-lg bg-brass px-5 font-medium text-ground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-11 shrink-0 rounded-lg bg-keylime px-5 font-medium text-ground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Send
               </button>

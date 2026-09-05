@@ -36,7 +36,7 @@ export function WorkspaceBar({ app, api, onCloseApp }: WorkspaceBarProps) {
           <span className="truncate">{app.currentBranch}</span>
           {app.hasChanges && (
             <span
-              className="ml-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brass"
+              className="ml-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-keylime"
               title="Uncommitted changes"
             />
           )}

@@ -9,7 +9,7 @@ const RUNNABLE_TEMPLATES: AppTemplate[] = ['react-vite', 'node-server', 'node-cl
 /** Status dot color per run state. */
 const STATUS_DOT: Record<string, string> = {
   running: 'bg-patina',
-  starting: 'animate-pulse bg-brass',
+  starting: 'animate-pulse bg-keylime',
   error: 'bg-rust',
   stopped: 'bg-ash'
 }
@@ -128,7 +128,7 @@ export function AppServerBlock({ appId, template }: AppServerBlockProps) {
           <button
             onClick={handleRun}
             disabled={status === 'starting'}
-            className="flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md bg-brass text-[13px] font-medium text-ground transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md bg-keylime text-[13px] font-medium text-ground transition-opacity hover:opacity-90 disabled:opacity-50"
             title="Start the dev server"
           >
             <PlayIcon size={14} />

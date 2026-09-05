@@ -58,8 +58,8 @@ describe('describeDaemon', () => {
     const reading = describeDaemon(health, 'qwen3-coder:30b')
 
     expect(reading.isFault).toBe(true)
-    // Brass, not rust: the next turn works, it just pays for a reload first.
-    expect(reading.tone).toBe('text-brass')
+    // Key lime, not rust: the next turn works, it just pays for a reload first.
+    expect(reading.tone).toBe('text-keylime')
     expect(reading.detail).toContain('full model load')
   })
 

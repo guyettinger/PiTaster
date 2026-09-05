@@ -352,7 +352,7 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
               {entry.label}
               <span
                 aria-hidden="true"
-                className={`absolute inset-x-2 -bottom-px h-0.5 rounded-t bg-brass transition-opacity ${
+                className={`absolute inset-x-2 -bottom-px h-0.5 rounded-t bg-keylime transition-opacity ${
                   tab === entry.id ? 'opacity-100' : 'opacity-0'
                 }`}
               />
@@ -437,7 +437,7 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
                       </select>
                       {selectedLacksTools ? (
                         <p className="mt-1.5 flex items-start gap-1.5 text-[12px] text-bone">
-                          <span className="mt-px shrink-0 text-brass">
+                          <span className="mt-px shrink-0 text-keylime">
                             <WarningIcon size={14} />
                           </span>
                           This model cannot call tools, so the agent will be able to talk
@@ -451,7 +451,7 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
                       )}
                     </>
                   ) : (
-                    <div className="rounded-lg border border-brass/40 bg-brass/10 p-3">
+                    <div className="rounded-lg border border-keylime/40 bg-keylime/10 p-3">
                       {reachable ? (
                         <>
                           <p className="text-[13px] text-bone">
@@ -610,7 +610,7 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
                       onChange={(e) =>
                         setConfig({ ...config, trimContext: e.target.checked })
                       }
-                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-line bg-raised accent-[var(--color-brass)]"
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-line bg-raised accent-[var(--color-keylime)]"
                     />
                     <span>
                       <span className="block text-[12.5px] font-medium text-bone">
@@ -647,7 +647,7 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
                       onChange={(e) =>
                         setConfig({ ...config, autoCommit: e.target.checked })
                       }
-                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-line bg-raised accent-[var(--color-brass)]"
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-line bg-raised accent-[var(--color-keylime)]"
                     />
                     <span>
                       <span className="block text-[12.5px] font-medium text-bone">
@@ -669,7 +669,7 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
                       onChange={(e) =>
                         setConfig({ ...config, autoTitleChats: e.target.checked })
                       }
-                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-line bg-raised accent-[var(--color-brass)]"
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-line bg-raised accent-[var(--color-keylime)]"
                     />
                     <span>
                       <span className="block text-[12.5px] font-medium text-bone">
@@ -686,7 +686,7 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
                 <div className="mt-7 flex items-center gap-3">
                   <button
                     onClick={saveConfig}
-                    className="flex items-center gap-1.5 rounded-lg bg-brass px-4 py-2 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
+                    className="flex items-center gap-1.5 rounded-lg bg-keylime px-4 py-2 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
                   >
                     Save settings
                   </button>

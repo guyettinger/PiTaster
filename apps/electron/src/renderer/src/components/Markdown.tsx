@@ -115,7 +115,7 @@ export const Markdown = memo(function Markdown({ content, isStreaming = false }:
             event.preventDefault()
             openLink(href)
           }}
-          className="text-brass underline decoration-brass/40 underline-offset-2 transition-colors hover:decoration-brass"
+          className="text-keylime underline decoration-keylime/40 underline-offset-2 transition-colors hover:decoration-keylime"
           {...rest}
         >
           {children}
@@ -133,7 +133,7 @@ export const Markdown = memo(function Markdown({ content, isStreaming = false }:
             <button
               type="button"
               onClick={() => openLink(src)}
-              className="text-brass underline decoration-brass/40 underline-offset-2 hover:decoration-brass"
+              className="text-keylime underline decoration-keylime/40 underline-offset-2 hover:decoration-keylime"
             >
               open
             </button>

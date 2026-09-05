@@ -1,3 +1,5 @@
+<img src="docs/images/logo.png" alt="" width="104">
+
 # Pi Taster
 
 **A desktop app for tasting [Pi](https://pi.dev/) — a real coding agent, running

@@ -96,9 +96,9 @@ export function SkillEditor({ skill, scopeLabel, onSave, onCancel }: SkillEditor
   }, [content, description, name, nameIsValid, onSave])
 
   return (
-    <li className="rounded-lg border border-brass/40 bg-brass/5 p-4">
+    <li className="rounded-lg border border-keylime/40 bg-keylime/5 p-4">
       <div className="flex items-baseline justify-between gap-3">
-        <span className="eyebrow text-brass">{isNew ? 'New skill' : `Editing ${skill.name}`}</span>
+        <span className="eyebrow text-keylime">{isNew ? 'New skill' : `Editing ${skill.name}`}</span>
         <span className="text-[12px] text-ash">{scopeLabel}</span>
       </div>
 
@@ -155,7 +155,7 @@ export function SkillEditor({ skill, scopeLabel, onSave, onCancel }: SkillEditor
         <button
           onClick={handleSave}
           disabled={isSaving}
-          className="rounded-lg bg-brass px-4 py-2 text-[13px] font-medium text-ground transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="rounded-lg bg-keylime px-4 py-2 text-[13px] font-medium text-ground transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {isSaving ? 'Saving…' : 'Save skill'}
         </button>

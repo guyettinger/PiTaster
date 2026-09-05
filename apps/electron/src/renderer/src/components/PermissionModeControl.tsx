@@ -12,7 +12,7 @@ export interface PermissionModeDescriptor {
   /** What the mode actually permits, in one line. */
   hint: string
   /** The token the shell header's hairline takes in this mode. */
-  accent: 'patina' | 'brass' | 'rust'
+  accent: 'patina' | 'keylime' | 'rust'
 }
 
 /**
@@ -33,13 +33,13 @@ export const PERMISSION_MODES: readonly PermissionModeDescriptor[] = [
     id: 'default',
     label: 'Ask to edit',
     hint: 'Asks before every tool it runs.',
-    accent: 'brass'
+    accent: 'keylime'
   },
   {
     id: 'acceptEdits',
     label: 'Auto edit',
     hint: 'Writes files without asking. Still asks to run commands.',
-    accent: 'brass'
+    accent: 'keylime'
   },
   {
     id: 'bypassPermissions',
@@ -62,7 +62,7 @@ export function describePermissionMode(mode: PermissionMode): PermissionModeDesc
 /** Dot color per accent. Static class names so Tailwind's scanner sees them. */
 const DOT_CLASS: Record<PermissionModeDescriptor['accent'], string> = {
   patina: 'bg-patina',
-  brass: 'bg-brass',
+  keylime: 'bg-keylime',
   rust: 'bg-rust'
 }
 

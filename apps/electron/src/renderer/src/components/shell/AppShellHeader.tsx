@@ -10,7 +10,7 @@ import type { PermissionMode } from '../../types/electron'
  */
 const HAIRLINE_CLASS = {
   patina: 'h-[2px] bg-patina',
-  brass: 'h-[2px] bg-brass',
+  keylime: 'h-[2px] bg-keylime',
   rust: 'h-[3px] bg-rust'
 } as const
 

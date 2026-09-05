@@ -19,10 +19,10 @@ export function ElementContextBubble({ context }: ElementContextBubbleProps) {
   const { element, screenshot } = context
 
   return (
-    <div className="overflow-hidden rounded-lg border border-brass/40 bg-brass/10">
+    <div className="overflow-hidden rounded-lg border border-keylime/40 bg-keylime/10">
       {/* Screenshot */}
       {screenshot && (
-        <div className="border-b border-brass/40 bg-panel/50 p-2">
+        <div className="border-b border-keylime/40 bg-panel/50 p-2">
           <img
             src={screenshot}
             alt="Selected element"
@@ -35,13 +35,13 @@ export function ElementContextBubble({ context }: ElementContextBubbleProps) {
       <div className="space-y-1 px-4 py-3 text-xs">
         <div>
           <span className="text-ash">Tag:</span>{' '}
-          <code className="text-brass">{element.tag}</code>
+          <code className="text-keylime">{element.tag}</code>
         </div>
 
         {element.id && (
           <div>
             <span className="text-ash">ID:</span>{' '}
-            <code className="text-brass">#{element.id}</code>
+            <code className="text-keylime">#{element.id}</code>
           </div>
         )}
 
@@ -79,7 +79,7 @@ export function ElementContextBubble({ context }: ElementContextBubbleProps) {
       </div>
 
       {/* Prompt hint */}
-      <div className="border-t border-brass/40 bg-panel/50 px-3 py-2">
+      <div className="border-t border-keylime/40 bg-panel/50 px-3 py-2">
         <p className="text-xs text-ash">
           💡 Type your request below to modify this element
         </p>

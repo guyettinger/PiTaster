@@ -50,7 +50,7 @@ export function ContextMeter({
   // `stale` and `floor` are honest but not current, so the meter recedes rather than
   // asserting. Crowding is the one thing worth shouting about.
   const dim = report === null || report.state === 'stale' || report.state === 'floor'
-  const fill = fraction > CROWDED ? 'bg-rust' : dim ? 'bg-ash' : 'bg-brass'
+  const fill = fraction > CROWDED ? 'bg-rust' : dim ? 'bg-ash' : 'bg-keylime'
 
   return (
     <GaugePopover

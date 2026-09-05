@@ -3,11 +3,29 @@
 /*
  * Pi Taster design tokens.
  *
- * The thesis is an instrument case in warm graphite, with brass controls and
- * verdigris where it has been handled. Brass is the color of the agent acting:
- * focus, primary action, the permission gate. Patina is the color of history
- * and reversibility: commits, branches, a running app. Nothing else in the UI
- * is saturated, which is what lets those two read.
+ * The thesis is an instrument case in warm graphite, with key lime controls and
+ * verdigris where it has been handled. Key lime is the color of the agent
+ * acting: focus, primary action, the permission gate. Patina is the color of
+ * history and reversibility: commits, branches, a running app. Nothing else in
+ * the UI is saturated, which is what lets those two read.
+ *
+ * The accent used to be `brass` (#d2a24c). It kept its hex and lost its job:
+ * it is the mark's graham crust now, and the two logo files are the only
+ * things that reference it. A token called `brass` holding a green would have
+ * been a lie, which is why this was a rename rather than a redefinition —
+ * every name here is load-bearing.
+ *
+ * Patina moved with it. Brass sat 83° of oklab hue from patina; key lime sits
+ * at h 128, so leaving patina at its old h 168 would have left the app's two
+ * most important meanings 40° apart on two greens. #5e9ba8 is the same
+ * lightness and chroma at h ~213 — still verdigris, still handled metal, and
+ * 85° away, which is where it was.
+ *
+ * Key lime is oklch(0.855 0.13 128). It is the one accent that has to survive
+ * `text-ground` on a filled button *and* `text-keylime` beside `text-bone`
+ * (L 0.92), which is why it sits darker than the pale filling it is named for —
+ * an accent at bone's own lightness reads as body text that has been coloured
+ * in rather than as an accent.
  */
 @theme {
   /* Surfaces, darkest to lightest. */
@@ -21,9 +39,20 @@
   --color-ash: #878d97;
 
   /* Accents. Every filled accent button pairs with `text-ground`. */
-  --color-brass: #d2a24c;
-  --color-patina: #6fa292;
+  --color-keylime: #b7e081;
+  --color-patina: #5e9ba8;
   --color-rust: #cb6952;
+
+  /*
+   * The rest of the mark: crust and cream. Not accents — nothing in the UI may
+   * use these. They are here rather than as literals in `Logo.tsx` because the
+   * mark is brand, and brand colors belong with the palette they were chosen
+   * against.
+   */
+  --color-brass: #d2a24c;
+  --color-brass-deep: #96702f;
+  --color-cream: #f4ecdc;
+  --color-cream-shade: #cfc0a2;
 
   --font-sans: "Archivo Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -105,15 +134,15 @@
     text-rendering: optimizeLegibility;
   }
 
-  /* Brass is the focus color everywhere. Never remove the ring, only restyle it. */
+  /* Key lime is the focus color everywhere. Never remove the ring, only restyle it. */
   :focus-visible {
-    outline: 2px solid var(--color-brass);
+    outline: 2px solid var(--color-keylime);
     outline-offset: 1px;
     border-radius: 2px;
   }
 
   ::selection {
-    background-color: color-mix(in oklab, var(--color-brass) 30%, transparent);
+    background-color: color-mix(in oklab, var(--color-keylime) 30%, transparent);
   }
 
   /* Native form controls inherit the shell's type rather than the platform's. */
@@ -156,8 +185,8 @@
  * highlight.js emits `hljs-*` class names and ships stock themes to go with
  * them, but every one of those themes carries its own palette and would put a
  * second, louder color system inside a UI whose whole argument is that only
- * brass and patina are saturated. So the tokens are mapped onto the existing
- * palette instead: brass for the language's own words, patina for literal
+ * key lime and patina are saturated. So the tokens are mapped onto the existing
+ * palette instead: key lime for the language's own words, patina for literal
  * data, ash for anything the compiler ignores.
  */
 @layer base {
@@ -166,7 +195,7 @@
   .hljs-literal,
   .hljs-doctag,
   .hljs-name {
-    color: var(--color-brass);
+    color: var(--color-keylime);
   }
 
   .hljs-string,
@@ -227,8 +256,8 @@
  *
  * The surfaces follow the shell's own logic: a panel's content sits on
  * `ground` and the tab strip above it on `panel`, so an active tab reads as
- * continuous with what it opens and the strip reads as chrome. Brass stays the
- * color of intent — the sash you are dragging, the target you are dropping
+ * continuous with what it opens and the strip reads as chrome. Key lime stays
+ * the color of intent — the sash you are dragging, the target you are dropping
  * onto — and appears nowhere at rest, so the dock is quiet until you touch it.
  */
 .dockview-theme-pitaster {
@@ -273,28 +302,28 @@
    * second line in the same place.
    */
   --dv-sash-color: transparent;
-  --dv-active-sash-color: var(--color-brass);
+  --dv-active-sash-color: var(--color-keylime);
   --dv-active-sash-transition-duration: 0.1s;
   --dv-active-sash-transition-delay: 0.5s;
 
-  /* Drag and drop: brass, because a drop is an action. */
-  --dv-drag-over-background-color: color-mix(in oklab, var(--color-brass) 22%, transparent);
-  --dv-drag-over-border-color: var(--color-brass);
+  /* Drag and drop: key lime, because a drop is an action. */
+  --dv-drag-over-background-color: color-mix(in oklab, var(--color-keylime) 22%, transparent);
+  --dv-drag-over-border-color: var(--color-keylime);
   --dv-drag-over-border: none;
-  --dv-edge-dock-indicator-color: color-mix(in oklab, var(--color-brass) 80%, transparent);
+  --dv-edge-dock-indicator-color: color-mix(in oklab, var(--color-keylime) 80%, transparent);
   --dv-dnd-compass-color: var(--color-line);
   --dv-dnd-compass-cell-color: var(--color-raised);
-  --dv-dnd-compass-active-cell-color: var(--color-brass);
+  --dv-dnd-compass-active-cell-color: var(--color-keylime);
   --dv-dnd-compass-edge-cell-color: var(--color-raised);
-  --dv-smart-guides-color: var(--color-brass);
-  --dv-smart-guides-preview-color: color-mix(in oklab, var(--color-brass) 40%, transparent);
+  --dv-smart-guides-color: var(--color-keylime);
+  --dv-smart-guides-preview-color: color-mix(in oklab, var(--color-keylime) 40%, transparent);
 
   /* Chrome details. */
   --dv-icon-hover-background-color: var(--color-raised);
   --dv-context-menu-background-color: var(--color-panel);
   --dv-context-menu-color: var(--color-bone);
   --dv-tabs-container-scrollbar-color: var(--color-line);
-  --dv-paneview-active-outline-color: var(--color-brass);
+  --dv-paneview-active-outline-color: var(--color-keylime);
   --dv-transition-duration: 0.1s;
 
   /*

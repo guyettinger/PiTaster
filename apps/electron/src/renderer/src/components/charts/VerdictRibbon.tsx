@@ -17,7 +17,7 @@ export const VERDICT_TONES: Record<CacheVerdict, VerdictTone> = {
   reused: { fill: 'bg-patina', text: 'text-patina', label: 'prefix reused' },
   cold: { fill: 'bg-ash/50', text: 'text-ash', label: 'cold prefill' },
   compacted: {
-    fill: 'bg-brass/70',
+    fill: 'bg-keylime/70',
     text: 'text-ash',
     label: 're-prefilled after summarizing'
   },

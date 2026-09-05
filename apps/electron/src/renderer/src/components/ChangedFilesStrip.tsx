@@ -159,9 +159,9 @@ export function ChangedFilesStrip(props: ChangedFilesStripProps) {
           <>
             <span
               aria-hidden
-              className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-brass"
+              className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-keylime"
             />
-            <span className="min-w-0 truncate font-mono text-[11px] text-brass">
+            <span className="min-w-0 truncate font-mono text-[11px] text-keylime">
               {writingPath}
             </span>
           </>

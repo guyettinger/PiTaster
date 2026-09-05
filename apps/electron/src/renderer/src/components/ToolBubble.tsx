@@ -104,7 +104,7 @@ function getStatusStyle(status: ToolBubbleProps['status']): string {
     // wall of colored panels and the tint stops meaning anything.
     case 'pending':
     case 'running':
-      return 'border-brass/40 bg-brass/10'
+      return 'border-keylime/40 bg-keylime/10'
     case 'error':
     case 'denied':
       return 'border-rust/40 bg-rust/10'
@@ -186,7 +186,7 @@ export function ToolBubble({ tool, status, input, output, error, patches }: Tool
           </span>
           <span className="text-sm font-medium text-bone">{label}</span>
           {status === 'running' && (
-            <span className="animate-pulse text-xs text-brass">Running…</span>
+            <span className="animate-pulse text-xs text-keylime">Running…</span>
           )}
           {status === 'approved' && (
             <span className="text-xs text-patina">Approved</span>

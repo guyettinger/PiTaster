@@ -67,7 +67,7 @@ function CodeExample({
 /** Mode swatches, matching the shell header's hairline. */
 const MODE_SWATCH: Record<PermissionModeDescriptor['accent'], string> = {
   patina: 'h-1 bg-patina',
-  brass: 'h-1 bg-brass',
+  keylime: 'h-1 bg-keylime',
   rust: 'h-1 bg-rust'
 }
 
@@ -103,7 +103,7 @@ export function Help() {
                 its own git commit, so anything it does can be rolled back.
               </p>
               
-              <div className="rounded-lg bg-brass/10 border border-brass/40 p-4">
+              <div className="rounded-lg bg-keylime/10 border border-keylime/40 p-4">
                 <h3 className="font-semibold text-bone mb-2">Pro Tip</h3>
                 <p className="text-sm text-bone">
                   Use the <strong>@enhance-ui</strong> skill when requesting UI improvements. 
@@ -232,8 +232,8 @@ export function Help() {
                   Only two hues are ever saturated, and each one means something.
                 </p>
                 <div className="grid grid-cols-1 gap-2 text-xs md:grid-cols-3">
-                  <div className="rounded border border-brass/40 bg-brass/10 p-2">
-                    <span className="font-mono text-brass">brass</span>
+                  <div className="rounded border border-keylime/40 bg-keylime/10 p-2">
+                    <span className="font-mono text-keylime">keylime</span>
                     <span className="mt-0.5 block text-ash">
                       The agent acting: focus, primary action, permission.
                     </span>
@@ -349,14 +349,14 @@ export function Help() {
                 </div>
 
                 <div className="rounded border border-line bg-raised/30 p-3">
-                  <h4 className="font-semibold text-brass">Branch Management</h4>
+                  <h4 className="font-semibold text-keylime">Branch Management</h4>
                   <p className="text-sm text-bone mt-1">
                     Create experimental branches for risky changes. Merge successful changes back to main.
                   </p>
                 </div>
 
                 <div className="rounded border border-line bg-raised/30 p-3">
-                  <h4 className="font-semibold text-brass">Easy Rollback</h4>
+                  <h4 className="font-semibold text-keylime">Easy Rollback</h4>
                   <p className="text-sm text-bone mt-1">
                     Open <strong>History</strong> in the app&rsquo;s column to see every commit and roll back to any of them.
                   </p>
@@ -434,7 +434,7 @@ export function Help() {
           </HelpSection>
 
           {/* Footer */}
-          <div className="mt-8 rounded-lg border border-brass/40 bg-brass/10 p-4">
+          <div className="mt-8 rounded-lg border border-keylime/40 bg-keylime/10 p-4">
             <h3 className="mb-2 font-semibold text-bone">Start with one small change</h3>
             <p className="text-sm text-ash">
               Open an app, describe the change you want in the chat, and check the result in

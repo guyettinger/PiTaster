@@ -74,16 +74,16 @@ export function setupMonaco(): typeof monaco {
   window.MonacoEnvironment = { getWorker: () => new EditorWorker() }
 
   // The palette, so the editor reads as part of the app rather than as VS Code embedded
-  // in it. Token colours map onto the same brass/patina/rust the chat's code blocks use.
+  // in it. Token colours map onto the same keylime/patina/rust the chat's code blocks use.
   monaco.editor.defineTheme('pitaster', {
     base: 'vs-dark',
     inherit: true,
     rules: [
-      { token: 'keyword', foreground: 'd2a24c' },
-      { token: 'string', foreground: '6fa292' },
-      { token: 'number', foreground: '6fa292' },
+      { token: 'keyword', foreground: 'b7e081' },
+      { token: 'string', foreground: '5e9ba8' },
+      { token: 'number', foreground: '5e9ba8' },
       { token: 'comment', foreground: '878d97', fontStyle: 'italic' },
-      { token: 'type', foreground: 'd2a24c' },
+      { token: 'type', foreground: 'b7e081' },
       { token: 'delimiter', foreground: 'e7e5e0' }
     ],
     colors: {

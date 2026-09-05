@@ -104,7 +104,7 @@ describe('summarizeActivity', () => {
     expect(reading.label).toBe('Summarizing…')
     // Compaction, a retry and a long prefill are three different situations and used
     // to render identically. The colour is what tells them apart.
-    expect(reading.dot).toBe('bg-brass')
+    expect(reading.dot).toBe('bg-keylime')
   })
 
   test('a retry earns the warning colour, because something already went wrong', () => {

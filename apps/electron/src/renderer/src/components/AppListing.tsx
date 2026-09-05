@@ -100,7 +100,7 @@ export function AppListing({ onAppSelect, activeAppId }: AppListingProps) {
           </div>
           <button
             onClick={() => setIsCreating(true)}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brass px-3 py-1.5 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
+            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-keylime px-3 py-1.5 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
           >
             <PlusIcon size={14} />
             New app
@@ -220,7 +220,7 @@ function CreateAppForm({
                 onClick={() => onTemplateChange(t.id)}
                 className={`rounded border p-2 text-left text-sm transition-colors ${
                   template === t.id
-                    ? 'border-brass/40 bg-brass/10'
+                    ? 'border-keylime/40 bg-keylime/10'
                     : 'border-line hover:border-line'
                 }`}
               >
@@ -235,7 +235,7 @@ function CreateAppForm({
           <button
             onClick={onCreate}
             disabled={!name.trim()}
-            className="flex-1 rounded bg-brass px-3 py-2 text-sm text-ground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex-1 rounded bg-keylime px-3 py-2 text-sm text-ground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Create App
           </button>
@@ -278,7 +278,7 @@ function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
     <li
       className={`relative rounded-lg border p-4 transition-colors ${
         isActive
-          ? 'border-brass/50 bg-brass/10'
+          ? 'border-keylime/50 bg-keylime/10'
           : 'border-line bg-panel hover:border-ash/50'
       }`}
     >
@@ -302,7 +302,7 @@ function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
                 <button
                   onClick={onSelect}
                   aria-current={isActive ? 'true' : undefined}
-                  className="cursor-pointer text-left after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-brass"
+                  className="cursor-pointer text-left after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-keylime"
                 >
                   {app.name}
                 </button>
@@ -311,7 +311,7 @@ function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
               {status && (
                 <span className={`h-2 w-2 rounded-full ${
                   status === 'running' ? 'bg-patina' :
-                  status === 'starting' ? 'animate-pulse bg-brass' :
+                  status === 'starting' ? 'animate-pulse bg-keylime' :
                   status === 'error' ? 'bg-rust' : ''
                 }`}>
                   <span className="sr-only">{status}</span>
@@ -373,8 +373,8 @@ function AppCard({ app, isActive, onSelect, onDelete }: AppCardProps) {
           </span>
         )}
         {app.hasChanges && (
-          <span className="flex items-center gap-1 text-brass">
-            <span className="h-1.5 w-1.5 rounded-full bg-brass" />
+          <span className="flex items-center gap-1 text-keylime">
+            <span className="h-1.5 w-1.5 rounded-full bg-keylime" />
             Uncommitted
           </span>
         )}
@@ -406,7 +406,7 @@ function EmptyState({ onCreateClick }: { onCreateClick: () => void }) {
       </p>
       <button
         onClick={onCreateClick}
-        className="mt-4 rounded-lg bg-brass px-4 py-2 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
+        className="mt-4 rounded-lg bg-keylime px-4 py-2 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
       >
         New app
       </button>

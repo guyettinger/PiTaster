@@ -26,7 +26,7 @@ export function EmptyDock({ containerApi }: IWatermarkPanelProps) {
 
       <button
         onClick={() => resetLayout(containerApi)}
-        className="rounded-md bg-brass px-4 py-2 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
+        className="rounded-md bg-keylime px-4 py-2 text-[13px] font-medium text-ground transition-opacity hover:opacity-90"
       >
         Restore default layout
       </button>

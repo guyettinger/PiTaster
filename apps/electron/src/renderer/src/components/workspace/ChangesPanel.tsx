@@ -62,8 +62,8 @@ export function ChangesPanel() {
   return (
     <div className="h-full overflow-y-auto bg-panel">
       {writingPath && (
-        <p className="flex items-center gap-2 border-b border-line px-3 py-2 text-[11px] text-brass">
-          <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-brass" />
+        <p className="flex items-center gap-2 border-b border-line px-3 py-2 text-[11px] text-keylime">
+          <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-keylime" />
           <span className="truncate font-mono">Writing {writingPath}</span>
         </p>
       )}
