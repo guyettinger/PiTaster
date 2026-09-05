@@ -268,7 +268,6 @@ export function Chat({
 
   const sessionChanges = useSessionChanges({
     appId: app.id,
-    appPath: app.path,
     sessionId: activeSessionId,
     revision: turnRevision + changesRevision
   })

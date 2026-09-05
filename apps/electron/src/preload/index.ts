@@ -693,64 +693,64 @@ const electronAPI = {
 
   /**
    * Get current version control state.
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  getVersionState: (appPath?: string): Promise<VersionState> => {
-    return ipcRenderer.invoke('version:get-state', appPath)
+  getVersionState: (appId: string): Promise<VersionState> => {
+    return ipcRenderer.invoke('version:get-state', appId)
   },
 
   /**
    * Get all branches.
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  getBranches: (appPath?: string): Promise<Branch[]> => {
-    return ipcRenderer.invoke('version:get-branches', appPath)
+  getBranches: (appId: string): Promise<Branch[]> => {
+    return ipcRenderer.invoke('version:get-branches', appId)
   },
 
   /**
    * Get commit history.
    * @param depth - Maximum number of commits to return
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  getHistory: (depth?: number, appPath?: string): Promise<Commit[]> => {
-    return ipcRenderer.invoke('version:get-history', depth, appPath)
+  getHistory: (depth: number | undefined, appId: string): Promise<Commit[]> => {
+    return ipcRenderer.invoke('version:get-history', depth, appId)
   },
 
   /**
    * Switch to a branch.
    * @param name - Branch name to switch to
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  switchBranch: (name: string, appPath?: string): Promise<void> => {
-    return ipcRenderer.invoke('version:switch-branch', name, appPath)
+  switchBranch: (name: string, appId: string): Promise<void> => {
+    return ipcRenderer.invoke('version:switch-branch', name, appId)
   },
 
   /**
    * Create a new branch.
    * @param name - Name for the new branch
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  createBranch: (name: string, appPath?: string): Promise<Branch> => {
-    return ipcRenderer.invoke('version:create-branch', name, appPath)
+  createBranch: (name: string, appId: string): Promise<Branch> => {
+    return ipcRenderer.invoke('version:create-branch', name, appId)
   },
 
   /**
    * Rollback to a specific commit.
    * @param oid - Commit SHA to rollback to
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  rollback: (oid: string, appPath?: string): Promise<void> => {
-    return ipcRenderer.invoke('version:rollback', oid, appPath)
+  rollback: (oid: string, appId: string): Promise<void> => {
+    return ipcRenderer.invoke('version:rollback', oid, appId)
   },
 
   /**
    * Get diff between two commits.
    * @param from - Source commit SHA
    * @param to - Target commit SHA
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  getDiff: (from: string, to: string, appPath?: string): Promise<FileDiff[]> => {
-    return ipcRenderer.invoke('version:diff', from, to, appPath)
+  getDiff: (from: string, to: string, appId: string): Promise<FileDiff[]> => {
+    return ipcRenderer.invoke('version:diff', from, to, appId)
   },
 
   /**
@@ -775,29 +775,29 @@ const electronAPI = {
    * Confined in the main process by the same `isWithinRoot` the agent's permission gate
    * uses, so this can never show a file the agent could not reach.
    *
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  getFileTree: (appPath?: string): Promise<FileNode[]> => {
-    return ipcRenderer.invoke('files:tree', appPath)
+  getFileTree: (appId: string): Promise<FileNode[]> => {
+    return ipcRenderer.invoke('files:tree', appId)
   },
 
   /**
    * Read one file from inside the sub-app.
    * @param filePath - Path relative to the app root
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  readFile: (filePath: string, appPath?: string): Promise<FileContents> => {
-    return ipcRenderer.invoke('files:read', filePath, appPath)
+  readFile: (filePath: string, appId: string): Promise<FileContents> => {
+    return ipcRenderer.invoke('files:read', filePath, appId)
   },
 
   /**
    * Compiler errors for one file, from the same language service that checks the
    * agent's writes.
    * @param filePath - Path relative to the app root
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  getFileDiagnostics: (filePath: string, appPath?: string): Promise<FileDiagnostic[]> => {
-    return ipcRenderer.invoke('files:diagnostics', filePath, appPath)
+  getFileDiagnostics: (filePath: string, appId: string): Promise<FileDiagnostic[]> => {
+    return ipcRenderer.invoke('files:diagnostics', filePath, appId)
   },
 
   // Sources methods

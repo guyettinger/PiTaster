@@ -145,7 +145,7 @@ export function App() {
   const handleVersionRollback = useCallback(
     async (commitId: string) => {
       if (!focusedApp) return
-      await window.electronAPI.rollback(commitId, focusedApp.path)
+      await window.electronAPI.rollback(commitId, focusedApp.id)
       await refreshActiveApp(focusedApp.id)
     },
     [focusedApp, refreshActiveApp]
@@ -154,7 +154,7 @@ export function App() {
   const handleBranchSwitch = useCallback(
     async (branchName: string) => {
       if (!focusedApp) return
-      await window.electronAPI.switchBranch(branchName, focusedApp.path)
+      await window.electronAPI.switchBranch(branchName, focusedApp.id)
       await refreshActiveApp(focusedApp.id)
     },
     [focusedApp, refreshActiveApp]
@@ -163,7 +163,7 @@ export function App() {
   const handleBranchCreate = useCallback(
     async (name: string) => {
       if (!focusedApp) return
-      await window.electronAPI.createBranch(name, focusedApp.path)
+      await window.electronAPI.createBranch(name, focusedApp.id)
       await refreshActiveApp(focusedApp.id)
     },
     [focusedApp, refreshActiveApp]

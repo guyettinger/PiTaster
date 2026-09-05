@@ -31,7 +31,6 @@ export function ChangesPanel() {
 
   const changes = useSessionChanges({
     appId: app.id,
-    appPath: app.path,
     sessionId: activeSessionId,
     revision: turnRevision + changesRevision
   })

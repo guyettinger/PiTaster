@@ -123,7 +123,7 @@ function HistoryPanel() {
   return (
     <div className="h-full bg-panel">
       <VersionControl
-        appPath={app.path}
+        appId={app.id}
         onRollback={onRollback}
         onBranchSwitch={onBranchSwitch}
         onBranchCreate={onBranchCreate}
@@ -168,7 +168,7 @@ function FilesPanel() {
   useEffect(() => {
     let cancelled = false
     window.electronAPI
-      .getFileTree(app.path)
+      .getFileTree(app.id)
       .then((nodes) => {
         if (!cancelled) setTree(nodes)
       })
@@ -178,7 +178,7 @@ function FilesPanel() {
     return () => {
       cancelled = true
     }
-  }, [app.path])
+  }, [app.id])
 
   if (error) {
     return <p className="p-3 text-sm text-rust">{error}</p>
@@ -209,7 +209,7 @@ function CodeFilePanel({ params }: IDockviewPanelProps<CodePanelParams>) {
     setDiagnostics([])
 
     window.electronAPI
-      .readFile(path, app.path)
+      .readFile(path, app.id)
       .then((file) => {
         if (cancelled) return
         setText(file.text)
@@ -226,7 +226,7 @@ function CodeFilePanel({ params }: IDockviewPanelProps<CodePanelParams>) {
     // request for an app pays for building the whole program, and blocking the
     // file's text on that would make every first open feel broken.
     window.electronAPI
-      .getFileDiagnostics(path, app.path)
+      .getFileDiagnostics(path, app.id)
       .then((entries) => {
         if (!cancelled) setDiagnostics(entries)
       })
@@ -237,7 +237,7 @@ function CodeFilePanel({ params }: IDockviewPanelProps<CodePanelParams>) {
     return () => {
       cancelled = true
     }
-  }, [path, app.path])
+  }, [path, app.id])
 
   const errors = diagnostics.filter((entry) => entry.category === 'error')
 

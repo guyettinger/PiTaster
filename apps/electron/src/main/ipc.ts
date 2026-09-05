@@ -1067,38 +1067,6 @@ async function requireFocusedWorkspace(): Promise<Workspace> {
   return workspace
 }
 
-/**
- * Resolve a renderer-supplied app path to a real sub-app root.
- *
- * The renderer is untrusted, and `rootPath` is the value every path check is performed
- * *against* — `isWithinRoot` only ever means "inside whatever string the caller called
- * the root". So a handler that takes `appPath` on faith is not confined at all: a
- * compromised renderer could ask for `~/.ssh/id_rsa` with `appPath` set to the home
- * directory and the confinement would agree that the file is inside the root.
- *
- * Every path here has to come from `AppManager`, which is the only authority on where
- * sub-apps actually live.
- *
- * @param appPath - The path the renderer supplied, if any
- * @returns The verified sub-app root
- * @throws {Error} If no app is selected, or the path is not a known sub-app
- */
-async function resolveAppRoot(appPath?: string): Promise<string> {
-  if (appPath === undefined) {
-    const active = await getActiveApp()
-    if (!active) throw new Error('No app selected')
-    return active.path
-  }
-
-  if (typeof appPath !== 'string' || appPath.length === 0 || appPath.length > 4096) {
-    throw new Error('Invalid app path')
-  }
-
-  const known = await appManager.listApps()
-  const match = known.find((app) => app.path === appPath)
-  if (!match) throw new Error('Unknown app path')
-  return match.path
-}
 
 /**
  * Split a renderer prompt into plain text and attached element contexts.
@@ -1537,55 +1505,55 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
   // Version control IPC handlers.
   //
-  // Every one of these routes its `appPath` through `resolveAppRoot`. They took it on
-  // faith for as long as they existed, which was dormant while nothing in the renderer
-  // passed one — `getDiff` had no caller at all. The code panel and the commit diff are
-  // the first real consumers, so the check is no longer theoretical.
-  ipcMain.handle('version:get-state', async (_, appPath?: string) => {
-    const vm = new VersionManager(await resolveAppRoot(appPath))
-    return vm.getState()
-  })
+  // Every one of these takes an app *id* now, not a path. Two reasons, and the
+  // second is the important one. A path had to be matched against `listApps()` on
+  // every call to prove it was real, which is a `statusMatrix` per app to answer a
+  // question `AppManager.appDir` answers from the id alone. And the id was optional,
+  // falling back to "whichever app is active" — harmless while only one could be
+  // open, and with several mounted it is a rollback aimed at the app you were
+  // looking at a moment ago. `withWorkspace` refuses rather than guesses.
+  ipcMain.handle('version:get-state', async (_, appId: unknown) =>
+    withWorkspace(appId, ({ root }) => new VersionManager(root).getState())
+  )
 
-  ipcMain.handle('version:get-branches', async (_, appPath?: string) => {
-    const vm = new VersionManager(await resolveAppRoot(appPath))
-    return vm.listBranches()
-  })
+  ipcMain.handle('version:get-branches', async (_, appId: unknown) =>
+    withWorkspace(appId, ({ root }) => new VersionManager(root).listBranches())
+  )
 
-  ipcMain.handle('version:get-history', async (_, depth?: number, appPath?: string) => {
-    const vm = new VersionManager(await resolveAppRoot(appPath))
-    return vm.getHistory({ depth })
-  })
+  ipcMain.handle('version:get-history', async (_, depth: unknown, appId: unknown) =>
+    withWorkspace(appId, ({ root }) =>
+      new VersionManager(root).getHistory({
+        depth: typeof depth === 'number' && Number.isInteger(depth) && depth > 0 ? depth : undefined
+      })
+    )
+  )
 
-  ipcMain.handle('version:switch-branch', async (_, name: string, appPath?: string) => {
+  ipcMain.handle('version:switch-branch', async (_, name: unknown, appId: unknown) => {
     if (typeof name !== 'string' || name.length === 0) {
       throw new Error('Invalid branch name')
     }
-    const vm = new VersionManager(await resolveAppRoot(appPath))
-    return vm.switchBranch(name)
+    return withWorkspace(appId, ({ root }) => new VersionManager(root).switchBranch(name))
   })
 
-  ipcMain.handle('version:create-branch', async (_, name: string, appPath?: string) => {
+  ipcMain.handle('version:create-branch', async (_, name: unknown, appId: unknown) => {
     if (typeof name !== 'string' || name.length === 0) {
       throw new Error('Invalid branch name')
     }
-    const vm = new VersionManager(await resolveAppRoot(appPath))
-    return vm.createBranch({ name })
+    return withWorkspace(appId, ({ root }) => new VersionManager(root).createBranch({ name }))
   })
 
-  ipcMain.handle('version:rollback', async (_, oid: string, appPath?: string) => {
+  ipcMain.handle('version:rollback', async (_, oid: unknown, appId: unknown) => {
     if (typeof oid !== 'string' || oid.length === 0) {
       throw new Error('Invalid commit OID')
     }
-    const vm = new VersionManager(await resolveAppRoot(appPath))
-    return vm.rollback(oid)
+    return withWorkspace(appId, ({ root }) => new VersionManager(root).rollback(oid))
   })
 
-  ipcMain.handle('version:diff', async (_, from: string, to: string, appPath?: string) => {
+  ipcMain.handle('version:diff', async (_, from: unknown, to: unknown, appId: unknown) => {
     if (typeof from !== 'string' || typeof to !== 'string') {
       throw new Error('Invalid commit OIDs')
     }
-    const vm = new VersionManager(await resolveAppRoot(appPath))
-    return vm.diff(from, to)
+    return withWorkspace(appId, ({ root }) => new VersionManager(root).diff(from, to))
   })
 
   /**
@@ -1611,17 +1579,17 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
    * Confinement comes from `files.ts`, which uses the same `isWithinRoot` the agent's
    * gate uses — so the tree can never show a file the agent could not reach.
    */
-  ipcMain.handle('files:tree', async (_, appPath?: string) => {
-    return listAppFiles(await resolveAppRoot(appPath))
+  ipcMain.handle('files:tree', async (_, appId: unknown) => {
+    return withWorkspace(appId, ({ root }) => listAppFiles(root))
   })
 
-  ipcMain.handle('files:read', async (_, filePath: string, appPath?: string) => {
+  ipcMain.handle('files:read', async (_, filePath: unknown, appId: unknown) => {
     // The renderer is untrusted. Length is bounded here as well as type, so a path built
     // by a runaway loop cannot be handed to the filesystem.
     if (typeof filePath !== 'string' || filePath.length === 0 || filePath.length > 4096) {
       throw new Error('Invalid file path')
     }
-    return readAppFile({ rootPath: await resolveAppRoot(appPath), path: filePath })
+    return withWorkspace(appId, ({ root }) => readAppFile({ rootPath: root, path: filePath }))
   })
 
   /**
@@ -1631,22 +1599,24 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
    * from the registry rather than started separately — so the human and the model are
    * never shown two different accounts of whether the code compiles.
    */
-  ipcMain.handle('files:diagnostics', async (_, filePath: string, appPath?: string) => {
+  ipcMain.handle('files:diagnostics', async (_, filePath: unknown, appId: unknown) => {
     if (typeof filePath !== 'string' || filePath.length === 0 || filePath.length > 4096) {
       throw new Error('Invalid file path')
     }
 
-    const lease = acquireTsService(await resolveAppRoot(appPath))
-    try {
-      await lease.client.request({ kind: 'invalidate', paths: [filePath] })
-      const response = await lease.client.request({ kind: 'diagnostics', path: filePath })
-      // Anything but a diagnostics answer means the service could not say — an app with
-      // no TypeScript in it, a crashed worker. The viewer shows no squiggles, which is
-      // the truthful rendering of "no information".
-      return response.kind === 'diagnostics' ? response.diagnostics : []
-    } finally {
-      lease.release()
-    }
+    return withWorkspace(appId, async ({ root }) => {
+      const lease = acquireTsService(root)
+      try {
+        await lease.client.request({ kind: 'invalidate', paths: [filePath] })
+        const response = await lease.client.request({ kind: 'diagnostics', path: filePath })
+        // Anything but a diagnostics answer means the service could not say — an app with
+        // no TypeScript in it, a crashed worker. The viewer shows no squiggles, which is
+        // the truthful rendering of "no information".
+        return response.kind === 'diagnostics' ? response.diagnostics : []
+      } finally {
+        lease.release()
+      }
+    })
   })
 
   // App management IPC handlers

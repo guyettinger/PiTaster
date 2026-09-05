@@ -391,19 +391,19 @@ interface ElectronAPI {
   
   // Version control methods
   /** Get current version control state. */
-  getVersionState: (appPath?: string) => Promise<VersionState>
+  getVersionState: (appId: string) => Promise<VersionState>
   /** Get all branches. */
-  getBranches: (appPath?: string) => Promise<Branch[]>
+  getBranches: (appId: string) => Promise<Branch[]>
   /** Get commit history. */
-  getHistory: (depth?: number, appPath?: string) => Promise<Commit[]>
+  getHistory: (depth: number | undefined, appId: string) => Promise<Commit[]>
   /** Switch to a branch. */
-  switchBranch: (name: string, appPath?: string) => Promise<void>
+  switchBranch: (name: string, appId: string) => Promise<void>
   /** Create a new branch. */
-  createBranch: (name: string, appPath?: string) => Promise<Branch>
+  createBranch: (name: string, appId: string) => Promise<Branch>
   /** Rollback to a specific commit. */
-  rollback: (oid: string, appPath?: string) => Promise<void>
+  rollback: (oid: string, appId: string) => Promise<void>
   /** Get diff between two commits. */
-  getDiff: (from: string, to: string, appPath?: string) => Promise<FileDiff[]>
+  getDiff: (from: string, to: string, appId: string) => Promise<FileDiff[]>
 
   /**
    * The commit a chat session started from, for the changed-files strip.
@@ -414,11 +414,11 @@ interface ElectronAPI {
   getSessionBaseline: (appId: string, sessionId: string) => Promise<string | null>
 
   /** List the sub-app's source files as a tree. */
-  getFileTree: (appPath?: string) => Promise<FileNode[]>
+  getFileTree: (appId: string) => Promise<FileNode[]>
   /** Read one file from inside the sub-app. */
-  readFile: (filePath: string, appPath?: string) => Promise<FileContents>
+  readFile: (filePath: string, appId: string) => Promise<FileContents>
   /** Compiler errors for one file, from the agent's own language service. */
-  getFileDiagnostics: (filePath: string, appPath?: string) => Promise<FileDiagnostic[]>
+  getFileDiagnostics: (filePath: string, appId: string) => Promise<FileDiagnostic[]>
 
   // Sources methods
   /** Get all connected sources with their state. */
