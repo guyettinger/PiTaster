@@ -12,11 +12,13 @@ interface LogoProps {
  * The Pi Taster mark: a slice of key lime pie shaped like π under a dollop of
  * whipped cream, seen isometrically.
  *
- * The π is a slab extruded back and to the right at the 2:1 slope. The face
+ * The π is a slab extruded back and to the right at the 2:1 slope, two blocks
+ * deep, and **the far depth row is crust on every face it shows**. The face
  * turned toward you is the cut face — key lime filling on a graham base — and
- * the surfaces catching the light above and to the right are the crust. The
- * name is the thesis: this is a place to *taste* Pi on local models, so the mark
- * is the thing being tasted.
+ * the near row carries that same filling on its top and its right-facing walls.
+ * The far row is the pie's rim: crust across the back of the top, crust down the
+ * walls, running into the graham base. The name is the thesis: this is a place to
+ * *taste* Pi on local models, so the mark is the thing being tasted.
  *
  * The colors are the app's own. Key lime is the accent everywhere in the UI —
  * the agent acting — and it is the filling here because the thing the mark is
@@ -25,22 +27,33 @@ interface LogoProps {
  *
  * ## Geometry
  *
- * Built in a 24-unit space of its own and then scaled 1.05 and centred, which is
- * why no number below is round. In that space: extrusion **e = (2.8, -1.4)**, a
- * bar 2.8 thick, legs 2.6 wide, a 2.5 overhang at each end of the bar, a 5.6
- * counter between the legs, and a graham base 4.0 deep at the foot of each leg.
+ * Everything sits on a **block grid**. One block is 2.04 units of the 24-unit
+ * viewBox, and every dimension below is a whole number of blocks — which is why
+ * the numbers in the paths are all multiples of 2.04 off the origin (1.8, 9.55).
+ * Reading a path, the landmarks are:
+ *
+ * | | x | | | y |
+ * |---|---|---|---|---|
+ * | slab left | 1.80 | | bar top | 9.55 |
+ * | left leg | 3.84 – 5.88 | | bar bottom / legs | 11.59 |
+ * | right leg | 14.04 – 16.08 | | filling ends / base | 19.75 |
+ * | slab right | 18.12 | | foot | 21.79 |
+ *
+ * In blocks: a bar 8 wide and 1 thick, legs 1 wide under a 1-block overhang at
+ * each end, a 4-block counter between them, filling running 4 blocks down the
+ * legs, and a 1-block graham base at each foot. **Extrusion e = (2, -1) blocks**
+ * — `(4.08, -2.04)` in units.
  *
  * **The counter and the extrusion are sized against each other**, and that is
  * the one proportion worth protecting. The counter wall's width on screen is
  * exactly `e.x`, so the background visible through the π is `counter - e.x`. At
- * the proportions first tried — a 4.6 counter under a 3.2 extrusion — that left
- * 1.4, and at 19px the mark closed up into a slab with a notch. Evenly split, it
- * survives the header: after the scale the wall runs x 7.59..10.53 and the right
- * leg's front edge is at 13.47, so wall and void are 2.94 each.
+ * two blocks of depth a two-block counter would leave *nothing* — the π closes
+ * up into a slab with a notch. Four blocks of counter split it evenly, two of
+ * wall and two of void, which is the same even split the one-block-deep mark
+ * had and is what survives the 22px header.
  *
- * The graham base is 4.0 rather than the 2.6 first drawn, because a thin base
- * leaves the legs reading as furniture — the mass at the foot is what keeps this
- * a slice rather than a table.
+ * The whole drawing is scaled to fill 85% of the box and centred, which lands
+ * the silhouette on x 1.8..22.2 and y 2.21..21.79 — centred on 12 both ways.
  *
  * ## Why exactly four extruded faces
  *
@@ -54,11 +67,31 @@ interface LogoProps {
  * wall, seen *through* the counter of the π, and it is what makes the slice read
  * as a solid rather than as a flat letter with a drop shadow.
  *
- * **Draw order is the whole occlusion model**: the four quads, then the front
- * face over them, then the dollop over the bar's top face. The bar's front face
- * is what covers the part of the counter wall which rises behind it, and the
- * bar's right-end quad is what covers the top of the right leg's side wall. Draw
- * the front face first and both seams open.
+ * **Every visible face is two strips, one per depth row**, and only the near one
+ * is filling. On a wall the far strip is `brass-deep` from the bar all the way to
+ * the foot, so it runs into the graham base and the two read as one continuous
+ * crust; the near strip is `keylime-deep` above the base line and `brass-deep`
+ * below it, the same split the front face makes. The top face splits the same
+ * way — `brass` across the back, `keylime-lit` in front of it. Drawing all of
+ * this in brass was defensible while the slab was one block deep and the faces
+ * were slivers; at two blocks they are a third of the mark, and crust on all of
+ * them makes the pie read as solid crust with a green stripe painted on the
+ * front.
+ *
+ * **The top's near strip needs its own green**, which is why `keylime-lit`
+ * exists. It shares an edge with the front face, so drawing both in `keylime`
+ * erases the bar's front top edge and the slab reads flat. Brass never needed a
+ * third step because no lit brass surface touches a brass front face.
+ *
+ * **Draw order is the whole occlusion model**: the top's two strips, then the
+ * walls' far row, then their near row, then the front face over both, then the
+ * graham base, then the dollop. Far before near is what puts the bar's right-end
+ * *near* strip over the top of the right leg's *far* strip — the only place two
+ * strips overlap, and a place where two different colors meet, so getting it
+ * backwards paints crust over filling. The bar's front face is what covers the
+ * part of the counter wall which rises behind it; draw it first and that seam
+ * opens. The top strips go first of all: they meet every wall edge-to-edge and
+ * overlap none.
  *
  * ## The dollop goes on the bar, never in the counter
  *
@@ -67,22 +100,25 @@ interface LogoProps {
  * whipped cream rather than a scoop — without it the mark reads as a marshmallow
  * — and it leans right, with the light. Same-fill overlaps mean no seams.
  *
- * Its height is set against the top face's front edge at y 6.15: the shade
- * ellipse's underside lands just below that, so the cream reads as *resting on*
- * the crust with a slight settle. Lower and it sinks into the lime bar; higher
- * and crust shows beneath it and it perches.
+ * **Its underside clears the front face entirely.** The shade ellipse bottoms
+ * out at y 9.35, a fifth of a block above the top face's front edge at 9.55, so
+ * the cream sits *on* the slab rather than lapping over the lit edge onto the
+ * front. It used to overlap by most of a block, which read as the dollop being
+ * in front of the slice instead of on top of it.
+ *
+ * **It is centred on its own bounding box, not on any one ellipse.** The tiers
+ * are offset from each other and the peak leans right, so the stack's mass does
+ * not sit under any of the four centres — placing the *shade ellipse* on the
+ * mark's midline left the whole dollop reading a block to the left. The bbox
+ * spans x 7.85..16.15 and centres on 12.00, which is exactly where the mark's
+ * silhouette (1.8..22.2) and the top face's own centroid both centre. If a tier
+ * or the peak ever moves, that measurement has to be redone — the numbers below
+ * carry no offset that would keep it true on its own.
  *
  * The counter stays empty. An earlier mark held a drop there, and anything
  * sitting in that space competes with the counter wall and flattens the slice
  * back into a letter. On top of the bar is a different place, and it is where a
  * dollop would actually be.
- *
- * ## Centring
- *
- * The silhouette spans y 1.56..21.9, so it centres on 11.7 rather than 12. That
- * is deliberate and should not be "corrected": the top of that range is the
- * peak's thin tip, which carries almost no visual weight, and centring on it
- * would push the slab low in the box.
  *
  * The dock icon is built separately by `dockIconSvg()` in `@pitaster/shared`,
  * which adds the macOS app tile and scales this same geometry. Keep the two in
@@ -99,32 +135,43 @@ export function Logo({ size = 22, className }: LogoProps) {
       role="img"
       aria-label="Pi Taster"
     >
-      {/* Crust, lit: the bar's top surface. */}
-      <path d="M2.23 6.15L18.82 6.15L21.77 4.68L5.17 4.68Z" fill="var(--color-brass)" />
-      {/* Crust, in shadow: three right-facing walls. */}
+      {/* The top face, far depth row: crust — the pie's rim. */}
+      <path d="M3.84 8.53L20.16 8.53L22.2 7.51L5.88 7.51Z" fill="var(--color-brass)" />
+      {/* …and its near row: filling, lifted so the bar's front top edge reads. */}
+      <path d="M1.8 9.55L18.12 9.55L20.16 8.53L3.84 8.53Z" fill="var(--color-keylime-lit)" />
+      {/* The far depth row of every wall is crust, top to foot — and so is the
+          near row below the base line. Drawn before the near row: see above. */}
       <g fill="var(--color-brass-deep)">
-        <path d="M18.82 6.15L18.82 9.09L21.77 7.62L21.77 4.68Z" />
-        <path d="M16.2 9.09L16.2 21.9L19.14 20.43L19.14 7.62Z" />
+        <path d="M7.92 10.57L7.92 20.77L9.96 19.75L9.96 9.55Z" />
+        <path d="M18.12 10.57L18.12 20.77L20.16 19.75L20.16 9.55Z" />
+        <path d="M20.16 8.53L20.16 10.57L22.2 9.55L22.2 7.51Z" />
+        <path d="M5.88 19.75L5.88 21.79L7.92 20.77L7.92 18.73Z" />
+        <path d="M16.08 19.75L16.08 21.79L18.12 20.77L18.12 18.73Z" />
+      </g>
+      {/* The near depth row above the base line is filling — it is a cut face. */}
+      <g fill="var(--color-keylime-deep)">
         {/* The counter wall — see the note above before removing it. */}
-        <path d="M7.59 9.09L7.59 21.9L10.53 20.43L10.53 7.62Z" />
+        <path d="M5.88 11.59L5.88 19.75L7.92 18.73L7.92 10.57Z" />
+        <path d="M16.08 11.59L16.08 19.75L18.12 18.73L18.12 10.57Z" />
+        <path d="M18.12 9.55L18.12 11.59L20.16 10.57L20.16 8.53Z" />
       </g>
       {/* The cut face: filling above, graham base below. */}
       <path
-        d="M2.23 6.15H18.82V9.09H16.2V17.7H13.47V9.09H7.59V17.7H4.86V9.09H2.23Z"
+        d="M1.8 9.55H18.12V11.59H16.08V19.75H14.04V11.59H5.88V19.75H3.84V11.59H1.8Z"
         fill="var(--color-keylime)"
       />
       <g fill="var(--color-brass)">
-        <path d="M4.86 17.7L7.59 17.7L7.59 21.9L4.86 21.9Z" />
-        <path d="M13.47 17.7L16.2 17.7L16.2 21.9L13.47 21.9Z" />
+        <path d="M3.84 19.75H5.88V21.79H3.84Z" />
+        <path d="M14.04 19.75H16.08V21.79H14.04Z" />
       </g>
 
       {/* The dollop: underside, three tiers, then the peak. */}
-      <ellipse cx="12.31" cy="6.46" rx="3.55" ry="1.47" fill="var(--color-cream-shade)" />
+      <ellipse cx="12.17" cy="7.7" rx="3.98" ry="1.65" fill="var(--color-cream-shade)" />
       <g fill="var(--color-cream)">
-        <ellipse cx="11.88" cy="5.85" rx="3.43" ry="1.41" />
-        <ellipse cx="12" cy="4.56" rx="2.51" ry="1.16" />
-        <ellipse cx="12.24" cy="3.46" rx="1.59" ry="0.92" />
-        <path d="M11.84 3.15C12.14 2.05 12.74 1.68 13.34 1.56C13.14 2.42 13.14 2.91 13.09 3.34Z" />
+        <ellipse cx="11.69" cy="7.02" rx="3.84" ry="1.58" />
+        <ellipse cx="11.82" cy="5.57" rx="2.81" ry="1.3" />
+        <ellipse cx="12.09" cy="4.34" rx="1.78" ry="1.03" />
+        <path d="M11.64 3.99C11.98 2.76 12.65 2.34 13.32 2.21C13.1 3.17 13.1 3.72 13.04 4.2Z" />
       </g>
     </svg>
   )
