@@ -1,5 +1,5 @@
 /**
- * Tests for the anyapp → Pi Taster workspace migration.
+ * Tests for the workspace migration chain: anyapp → Pi Taster → Key Lime Pi.
  *
  * This is the one piece of the rebrand that touches data the user owns and cannot
  * regenerate — their sub-apps, the git history inside each one, their transcripts and
@@ -22,17 +22,30 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import * as git from 'isomorphic-git'
 import fs from 'node:fs'
 import { SessionManager } from '@earendil-works/pi-coding-agent'
-import { getAppSessionDir } from '@pitaster/shared'
-import { META_FILE, migrateWorkspace, rewriteTranscriptCwd } from './migrate-workspace'
+import { getAppSessionDir } from '@keylimepi/shared'
+import {
+  LEGACY_META_FILES,
+  LEGACY_WORKSPACE_DIRS,
+  META_FILE,
+  migrateWorkspace,
+  rewriteTranscriptCwd
+} from './migrate-workspace'
 
 let scratch: string
 let legacyRoot: string
+let pitasterRoot: string
 let root: string
 
+/** Every legacy root in the order {@link migrateWorkspace} defaults to: newest first. */
+function allLegacyRoots(): string[] {
+  return [pitasterRoot, legacyRoot]
+}
+
 beforeEach(async () => {
-  scratch = await mkdtemp(join(tmpdir(), 'pitaster-migrate-'))
+  scratch = await mkdtemp(join(tmpdir(), 'keylimepi-migrate-'))
   legacyRoot = join(scratch, '.anyapp')
-  root = join(scratch, '.pitaster')
+  pitasterRoot = join(scratch, '.pitaster')
+  root = join(scratch, '.keylimepi')
 })
 
 /** Whether a path exists, for assertions. */
@@ -49,17 +62,24 @@ async function exists(path: string): Promise<boolean> {
  * Builds a sub-app under a workspace root, with a git repo and a committed
  * pre-rebrand metadata file — the shape every existing install has on disk.
  *
- * @param params - Which workspace root to build under, and the app's id
+ * @param params - Which workspace root to build under, the app's id, and which era's
+ *   metadata filename to write — the app has had three, and an install can be carrying
+ *   either of the older two
  * @returns The app's absolute path
  */
-async function seedLegacyApp(params: { under: string; id: string }): Promise<string> {
+async function seedLegacyApp(params: {
+  under: string
+  id: string
+  metaFile?: string
+}): Promise<string> {
+  const metaFile = params.metaFile ?? '.anyapp-meta.json'
   const appPath = join(params.under, 'apps', params.id)
   await mkdir(appPath, { recursive: true })
-  await writeFile(join(appPath, '.anyapp-meta.json'), JSON.stringify({ id: params.id }))
+  await writeFile(join(appPath, metaFile), JSON.stringify({ id: params.id }))
   await writeFile(join(appPath, 'index.ts'), 'export const value = 1\n')
 
   await git.init({ fs, dir: appPath, defaultBranch: 'main' })
-  await git.add({ fs, dir: appPath, filepath: '.anyapp-meta.json' })
+  await git.add({ fs, dir: appPath, filepath: metaFile })
   await git.add({ fs, dir: appPath, filepath: 'index.ts' })
   await git.commit({
     fs,
@@ -138,7 +158,7 @@ describe('migrateWorkspace', () => {
     await mkdir(legacyRoot, { recursive: true })
     await writeFile(join(legacyRoot, 'config.json'), '{"model":"qwen"}')
 
-    const result = await migrateWorkspace({ legacyRoot, root })
+    const result = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     expect(result.movedWorkspace).toBe(true)
     expect(await exists(legacyRoot)).toBe(false)
@@ -149,15 +169,15 @@ describe('migrateWorkspace', () => {
     await mkdir(legacyRoot, { recursive: true })
     await writeFile(join(legacyRoot, 'config.json'), '{}')
 
-    await migrateWorkspace({ legacyRoot, root })
-    const second = await migrateWorkspace({ legacyRoot, root })
+    await migrateWorkspace({ legacyRoots: [legacyRoot], root })
+    const second = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     expect(second.movedWorkspace).toBe(false)
     expect(second.migratedApps).toEqual([])
   })
 
   test('does nothing on a fresh install where neither root exists', async () => {
-    const result = await migrateWorkspace({ legacyRoot, root })
+    const result = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     expect(result.movedWorkspace).toBe(false)
     expect(await exists(root)).toBe(false)
@@ -170,7 +190,7 @@ describe('migrateWorkspace', () => {
     await writeFile(join(legacyRoot, 'config.json'), '{"model":"stale"}')
     await writeFile(join(legacyRoot, 'layouts.json'), '{"a":1}')
 
-    await migrateWorkspace({ legacyRoot, root })
+    await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     // The live config wins; the gap beside it is filled.
     expect(await readFile(join(root, 'config.json'), 'utf-8')).toBe('{"model":"current"}')
@@ -180,19 +200,19 @@ describe('migrateWorkspace', () => {
   })
 
   test('migrates into an empty destination left behind by something else', async () => {
-    // The case that actually bit: a stray `~/.pitaster/apps` is enough to create the
+    // The case that actually bit: a stray `~/.keylimepi/apps` is enough to create the
     // destination, and a migration keyed on mere existence would strand the real
     // workspace next door — the app opening with no apps, history or settings.
     await mkdir(join(root, 'apps'), { recursive: true })
     await seedLegacyApp({ under: legacyRoot, id: 'weather' })
     await writeFile(join(legacyRoot, 'config.json'), '{"model":"qwen"}')
 
-    const result = await migrateWorkspace({ legacyRoot, root })
+    const result = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     expect(result.movedWorkspace).toBe(true)
     expect(result.migratedApps).toEqual(['weather'])
     expect(await readFile(join(root, 'config.json'), 'utf-8')).toBe('{"model":"qwen"}')
-    expect(await exists(join(root, 'apps', 'weather', '.pitaster-meta.json'))).toBe(true)
+    expect(await exists(join(root, 'apps', 'weather', '.keylimepi-meta.json'))).toBe(true)
     expect(await exists(legacyRoot)).toBe(false)
   })
 
@@ -200,7 +220,7 @@ describe('migrateWorkspace', () => {
     await seedLegacyApp({ under: root, id: 'already-here' })
     await seedLegacyApp({ under: legacyRoot, id: 'incoming' })
 
-    await migrateWorkspace({ legacyRoot, root })
+    await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     expect(await exists(join(root, 'apps', 'already-here'))).toBe(true)
     expect(await exists(join(root, 'apps', 'incoming'))).toBe(true)
@@ -210,12 +230,12 @@ describe('migrateWorkspace', () => {
   test("renames each app's metadata file and commits the rename", async () => {
     await seedLegacyApp({ under: legacyRoot, id: 'weather' })
 
-    const result = await migrateWorkspace({ legacyRoot, root })
+    const result = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     expect(result.migratedApps).toEqual(['weather'])
 
     const appPath = join(root, 'apps', 'weather')
-    expect(await exists(join(appPath, '.pitaster-meta.json'))).toBe(true)
+    expect(await exists(join(appPath, '.keylimepi-meta.json'))).toBe(true)
     expect(await exists(join(appPath, '.anyapp-meta.json'))).toBe(false)
 
     // The whole point of committing: the app must not be left dirty.
@@ -224,21 +244,21 @@ describe('migrateWorkspace', () => {
     // Found by message rather than by position: a migration is several independent
     // repairs and any of the others may legitimately commit after this one.
     const log = await git.log({ fs, dir: appPath })
-    const rename = log.find((entry) => entry.commit.message.includes('Pi Taster rebrand'))
+    const rename = log.find((entry) => entry.commit.message.includes('Key Lime Pi rebrand'))
     expect(rename).toBeDefined()
-    expect(rename?.commit.author.name).toBe('Pi Taster Agent')
+    expect(rename?.commit.author.name).toBe('Key Lime Pi Agent')
   })
 
   test('migrates every app, and leaves already-migrated ones alone', async () => {
     await seedLegacyApp({ under: legacyRoot, id: 'weather' })
     await seedLegacyApp({ under: legacyRoot, id: 'notes' })
 
-    const first = await migrateWorkspace({ legacyRoot, root })
+    const first = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
     expect(first.migratedApps.sort()).toEqual(['notes', 'weather'])
 
     // A second pass finds nothing to do and adds no further commits.
     const before = await git.log({ fs, dir: join(root, 'apps', 'weather') })
-    const second = await migrateWorkspace({ legacyRoot, root })
+    const second = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
     const after = await git.log({ fs, dir: join(root, 'apps', 'weather') })
 
     expect(second.migratedApps).toEqual([])
@@ -250,11 +270,11 @@ describe('migrateWorkspace', () => {
     // inside it still carries the pre-rebrand metadata file.
     await seedLegacyApp({ under: root, id: 'weather' })
 
-    const result = await migrateWorkspace({ legacyRoot, root })
+    const result = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     expect(result.movedWorkspace).toBe(false)
     expect(result.migratedApps).toEqual(['weather'])
-    expect(await exists(join(root, 'apps', 'weather', '.pitaster-meta.json'))).toBe(true)
+    expect(await exists(join(root, 'apps', 'weather', '.keylimepi-meta.json'))).toBe(true)
   })
 
   test('still renames the metadata file when the app has no git repository', async () => {
@@ -262,17 +282,17 @@ describe('migrateWorkspace', () => {
     await mkdir(appPath, { recursive: true })
     await writeFile(join(appPath, '.anyapp-meta.json'), '{"id":"bare"}')
 
-    const result = await migrateWorkspace({ legacyRoot, root })
+    const result = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     expect(result.migratedApps).toEqual(['bare'])
-    expect(await exists(join(root, 'apps', 'bare', '.pitaster-meta.json'))).toBe(true)
+    expect(await exists(join(root, 'apps', 'bare', '.keylimepi-meta.json'))).toBe(true)
   })
 
   test('tolerates a workspace with no apps directory', async () => {
     await mkdir(legacyRoot, { recursive: true })
     await writeFile(join(legacyRoot, 'config.json'), '{}')
 
-    const result = await migrateWorkspace({ legacyRoot, root })
+    const result = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     expect(result.movedWorkspace).toBe(true)
     expect(result.migratedApps).toEqual([])
@@ -282,7 +302,7 @@ describe('migrateWorkspace', () => {
     await mkdir(join(legacyRoot, 'apps', 'not-an-app'), { recursive: true })
     await writeFile(join(legacyRoot, 'apps', 'not-an-app', 'stray.txt'), 'hello')
 
-    const result = await migrateWorkspace({ legacyRoot, root })
+    const result = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     expect(result.migratedApps).toEqual([])
     expect(await exists(join(root, 'apps', 'not-an-app', 'stray.txt'))).toBe(true)
@@ -291,7 +311,7 @@ describe('migrateWorkspace', () => {
 
 describe('rewriteTranscriptCwd', () => {
   const from = '/Users/someone/.anyapp/apps/moon-phase'
-  const to = '/Users/someone/.pitaster/apps/moon-phase'
+  const to = '/Users/someone/.keylimepi/apps/moon-phase'
 
   test('rewrites the recorded cwd and leaves the body byte-identical', () => {
     const body =
@@ -339,7 +359,7 @@ describe('rewriteTranscriptCwd', () => {
 describe('migrateWorkspace: chat transcripts', () => {
   test("moves a migrated app's transcripts into the directory it now reads", async () => {
     // The defect this covers: renaming the workspace changed the app's absolute path,
-    // which changed the slug Pi Taster derives a session directory from *and* invalidated
+    // which changed the slug Key Lime Pi derives a session directory from *and* invalidated
     // the cwd recorded inside every transcript. Both have to be fixed or the history is
     // invisible, so the assertion is Pi's own listing rather than the file's location.
     const legacyAppPath = await seedLegacyApp({ under: legacyRoot, id: 'moon-phase' })
@@ -347,7 +367,7 @@ describe('migrateWorkspace: chat transcripts', () => {
     await seedTranscript({ agentDir, appPath: legacyAppPath, id: 'sess-1', userText: 'one' })
     await seedTranscript({ agentDir, appPath: legacyAppPath, id: 'sess-2', userText: 'two' })
 
-    const result = await migrateWorkspace({ legacyRoot, root })
+    const result = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     const appPath = join(root, 'apps', 'moon-phase')
     expect(result.migratedSessions).toEqual(['moon-phase'])
@@ -365,7 +385,7 @@ describe('migrateWorkspace: chat transcripts', () => {
       userText: 'the message that must survive'
     })
 
-    await migrateWorkspace({ legacyRoot, root })
+    await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     const appPath = join(root, 'apps', 'moon-phase')
     const dir = getAppSessionDir({ agentDir: agentDirFor(root), appPath })
@@ -386,7 +406,7 @@ describe('migrateWorkspace: chat transcripts', () => {
       userText: 'one'
     })
 
-    await migrateWorkspace({ legacyRoot, root })
+    await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     expect(await exists(legacyDir)).toBe(false)
   })
@@ -409,7 +429,7 @@ describe('migrateWorkspace: chat transcripts', () => {
       userText: 'live'
     })
 
-    await migrateWorkspace({ legacyRoot, root })
+    await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     const dir = getAppSessionDir({ agentDir: agentDirFor(root), appPath })
     const [info] = await SessionManager.list(appPath, dir)
@@ -425,8 +445,8 @@ describe('migrateWorkspace: chat transcripts', () => {
       userText: 'one'
     })
 
-    await migrateWorkspace({ legacyRoot, root })
-    const second = await migrateWorkspace({ legacyRoot, root })
+    await migrateWorkspace({ legacyRoots: [legacyRoot], root })
+    const second = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     expect(second.migratedSessions).toEqual([])
     // And the run that did nothing did not cost the app its history.
@@ -448,7 +468,7 @@ describe('migrateWorkspace: chat transcripts', () => {
       userText: 'one'
     })
 
-    const result = await migrateWorkspace({ legacyRoot, root })
+    const result = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     expect(result.movedWorkspace).toBe(false)
     expect(result.migratedSessions).toEqual(['moon-phase'])
@@ -460,7 +480,7 @@ describe('migrateWorkspace: .gitignore backfill', () => {
   test('gives an app scaffolded without one the default, and commits it', async () => {
     await seedLegacyApp({ under: legacyRoot, id: 'magic-8-ball' })
 
-    const result = await migrateWorkspace({ legacyRoot, root })
+    const result = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     const appPath = join(root, 'apps', 'magic-8-ball')
     expect(result.backfilledGitignore).toEqual(['magic-8-ball'])
@@ -478,7 +498,7 @@ describe('migrateWorkspace: .gitignore backfill', () => {
     await writeFile(join(appPath, 'node_modules', 'pkg', 'index.js'), 'x\n')
 
     const before = await dirtyPaths(appPath)
-    await migrateWorkspace({ legacyRoot, root })
+    await migrateWorkspace({ legacyRoots: [legacyRoot], root })
     const after = await dirtyPaths(join(root, 'apps', 'magic-8-ball'))
 
     expect(before).toContain('node_modules/pkg/index.js')
@@ -489,7 +509,7 @@ describe('migrateWorkspace: .gitignore backfill', () => {
     const appPath = await seedLegacyApp({ under: legacyRoot, id: 'moon-phase' })
     await writeFile(join(appPath, '.gitignore'), 'just-this\n')
 
-    const result = await migrateWorkspace({ legacyRoot, root })
+    const result = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     expect(result.backfilledGitignore).toEqual([])
     expect(await readFile(join(root, 'apps', 'moon-phase', '.gitignore'), 'utf-8')).toBe(
@@ -502,7 +522,7 @@ describe('migrateWorkspace: .gitignore backfill', () => {
     await mkdir(appPath, { recursive: true })
     await writeFile(join(appPath, '.anyapp-meta.json'), JSON.stringify({ id: 'half-scaffolded' }))
 
-    const result = await migrateWorkspace({ legacyRoot, root })
+    const result = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     expect(result.backfilledGitignore).toEqual(['half-scaffolded'])
   })
@@ -524,7 +544,7 @@ describe('migrateWorkspace: active-session pointer', () => {
       JSON.stringify({ activeSessionId: 'belongs-to-another-app' })
     )
 
-    const result = await migrateWorkspace({ legacyRoot, root })
+    const result = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     const pointer = join(root, 'apps', 'pony-pony-pony', '.chat-sessions.json')
     expect(result.repairedPointers).toEqual(['pony-pony-pony'])
@@ -544,7 +564,7 @@ describe('migrateWorkspace: active-session pointer', () => {
       JSON.stringify({ activeSessionId: 'sess-1' })
     )
 
-    const result = await migrateWorkspace({ legacyRoot, root })
+    const result = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     const pointer = join(root, 'apps', 'moon-phase', '.chat-sessions.json')
     expect(result.repairedPointers).toEqual([])
@@ -566,7 +586,7 @@ describe('migrateWorkspace: active-session pointer', () => {
       JSON.stringify({ activeSessionId: 'restored' })
     )
 
-    await migrateWorkspace({ legacyRoot, root })
+    await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     const pointer = join(root, 'apps', 'moon-phase', '.chat-sessions.json')
     expect(JSON.parse(await readFile(pointer, 'utf-8')).activeSessionId).toBe('restored')
@@ -580,7 +600,7 @@ describe('migrateWorkspace: restraint', () => {
     await mkdir(join(legacyRoot, 'apps', 'not-an-app'), { recursive: true })
     await writeFile(join(legacyRoot, 'apps', 'not-an-app', 'stray.txt'), 'hello')
 
-    const result = await migrateWorkspace({ legacyRoot, root })
+    const result = await migrateWorkspace({ legacyRoots: [legacyRoot], root })
 
     expect(result.backfilledGitignore).toEqual([])
     expect(result.migratedSessions).toEqual([])
@@ -590,6 +610,87 @@ describe('migrateWorkspace: restraint', () => {
   })
 })
 
+
+describe('the rename chain', () => {
+  test('the legacy roots are ordered newest first', () => {
+    // Load-bearing, not cosmetic: `moveMissingEntries` never overwrites, so the root
+    // merged first wins every collision. Verified by the collision test below, which
+    // fails outright if this array is reversed.
+    expect(LEGACY_WORKSPACE_DIRS).toEqual(['.pitaster', '.anyapp'])
+    expect(LEGACY_META_FILES).toEqual(['.pitaster-meta.json', '.anyapp-meta.json'])
+  })
+
+  test('carries a Pi Taster-era install to the current name in one launch', async () => {
+    const legacyAppPath = await seedLegacyApp({
+      under: pitasterRoot,
+      id: 'moon-phase',
+      metaFile: '.pitaster-meta.json'
+    })
+    await seedTranscript({
+      agentDir: agentDirFor(pitasterRoot),
+      appPath: legacyAppPath,
+      id: 'sess-1',
+      userText: 'what phase is the moon in'
+    })
+
+    const result = await migrateWorkspace({ legacyRoots: allLegacyRoots(), root })
+
+    const appPath = join(root, 'apps', 'moon-phase')
+    expect(result.movedWorkspace).toBe(true)
+    expect(result.migratedApps).toEqual(['moon-phase'])
+    expect(result.migratedSessions).toEqual(['moon-phase'])
+    expect(await exists(join(appPath, META_FILE))).toBe(true)
+    expect(await exists(join(appPath, '.pitaster-meta.json'))).toBe(false)
+
+    // Through Pi's own listing, not the file's location: the header `cwd` names the old
+    // path until it is rewritten, and a transcript Pi will not list is a lost chat.
+    expect(
+      await listedSessionIds({ agentDir: agentDirFor(root), appPath })
+    ).toEqual(['sess-1'])
+
+    // The metadata rename must be committed, or the app opens permanently dirty.
+    expect(await dirtyPaths(appPath)).toEqual([])
+  })
+
+  test('drains an anyapp-era and a Pi Taster-era app in the same launch', async () => {
+    await seedLegacyApp({ under: legacyRoot, id: 'old-one' })
+    await seedLegacyApp({
+      under: pitasterRoot,
+      id: 'newer-one',
+      metaFile: '.pitaster-meta.json'
+    })
+
+    const result = await migrateWorkspace({ legacyRoots: allLegacyRoots(), root })
+
+    expect(result.migratedApps.sort()).toEqual(['newer-one', 'old-one'])
+    expect(await exists(join(root, 'apps', 'old-one', META_FILE))).toBe(true)
+    expect(await exists(join(root, 'apps', 'newer-one', META_FILE))).toBe(true)
+  })
+
+  test('keeps the newer copy when both legacy roots hold the same file', async () => {
+    // `moveMissingEntries` fills gaps and never overwrites, so whichever root is merged
+    // first wins. This asserts the loop order is newest-first: getting it backwards
+    // silently restores an abandoned `~/.anyapp` over the workspace actually in use.
+    await mkdir(legacyRoot, { recursive: true })
+    await mkdir(pitasterRoot, { recursive: true })
+    await writeFile(join(legacyRoot, 'config.json'), '{"model":"stale"}')
+    await writeFile(join(pitasterRoot, 'config.json'), '{"model":"current"}')
+
+    await migrateWorkspace({ legacyRoots: allLegacyRoots(), root })
+
+    expect(await readFile(join(root, 'config.json'), 'utf-8')).toBe('{"model":"current"}')
+  })
+
+  test('leaves a current metadata file alone when an older one sits beside it', async () => {
+    const appPath = await seedLegacyApp({ under: pitasterRoot, id: 'weather' })
+    await writeFile(join(appPath, META_FILE), JSON.stringify({ id: 'weather', kept: true }))
+
+    await migrateWorkspace({ legacyRoots: allLegacyRoots(), root })
+
+    const migrated = join(root, 'apps', 'weather', META_FILE)
+    expect(JSON.parse(await readFile(migrated, 'utf-8')).kept).toBe(true)
+  })
+})
 
 afterEach(async () => {
   await rm(scratch, { recursive: true, force: true })

@@ -3,11 +3,11 @@ import { dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import * as git from 'isomorphic-git'
 import fs from 'node:fs'
-import type { SubApp, AppMetadata, CreateAppParams } from '@pitaster/core'
+import type { SubApp, AppMetadata, CreateAppParams } from '@keylimepi/core'
 import { DEFAULT_GITIGNORE, getTemplate } from './templates.js'
+import { COMMIT_AUTHOR } from '../versions/manager.js'
 
-const APPS_DIR = join(homedir(), '.pitaster', 'apps')
-const AUTHOR = { name: 'Pi Taster Agent', email: 'agent@Pi Taster.local' }
+const APPS_DIR = join(homedir(), '.keylimepi', 'apps')
 
 /**
  * Whether a string can name a sub-app directory.
@@ -120,7 +120,7 @@ export class AppManager {
     const appPath = this.appDir(id)
     if (!appPath) return null
 
-    const metaPath = join(appPath, '.pitaster-meta.json')
+    const metaPath = join(appPath, '.keylimepi-meta.json')
 
     try {
       const metaContent = await readFile(metaPath, 'utf-8')
@@ -283,7 +283,7 @@ export class AppManager {
       disabledSkills: updates.disabledSkills ?? app.disabledSkills
     }
 
-    await writeFile(join(app.path, '.pitaster-meta.json'), JSON.stringify(meta, null, 2))
+    await writeFile(join(app.path, '.keylimepi-meta.json'), JSON.stringify(meta, null, 2))
 
     return (await this.getApp(id))!
   }
@@ -336,7 +336,7 @@ export class AppManager {
       fs,
       dir: appPath,
       message: initialMessage,
-      author: AUTHOR
+      author: COMMIT_AUTHOR
     })
   }
 
@@ -344,6 +344,6 @@ export class AppManager {
    * Write metadata file for an app.
    */
   async writeMetadata(appPath: string, meta: AppMetadata): Promise<void> {
-    await writeFile(join(appPath, '.pitaster-meta.json'), JSON.stringify(meta, null, 2))
+    await writeFile(join(appPath, '.keylimepi-meta.json'), JSON.stringify(meta, null, 2))
   }
 }

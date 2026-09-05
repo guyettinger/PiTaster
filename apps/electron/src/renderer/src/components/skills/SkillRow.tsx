@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { ChevronDownIcon, PencilIcon, TrashIcon } from '../icons'
 import { Markdown } from '../Markdown'
-import type { Skill } from '@pitaster/core'
+import type { Skill } from '@keylimepi/core'
 
 /**
  * Props for the SkillRow component.

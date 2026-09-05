@@ -6,7 +6,7 @@
 ## What Was Built
 
 The app shell was rebuilt around one rule — **the rail holds what exists without
-an app, a second column holds what belongs to the open app** — and Pi Taster got a
+an app, a second column holds what belongs to the open app** — and Key Lime Pi got a
 visual identity: a token system, two bundled typefaces, one icon set, a logo, and
 a macOS dock icon.
 

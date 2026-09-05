@@ -1,7 +1,7 @@
 /**
  * Compiler errors, attached to the tool result of the write that caused them.
  *
- * This is the highest-value thing Pi Taster can do for a local model and it costs nothing
+ * This is the highest-value thing Key Lime Pi can do for a local model and it costs nothing
  * in the tool manifest, which is why it is a hook rather than a tool. `bash` is
  * deliberately absent from `FILE_TOOLS` in `permission-gate.ts`, so in `acceptEdits` —
  * the mode this app is built to be run in — the model cannot run `tsc` without stopping

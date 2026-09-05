@@ -27,8 +27,8 @@ import {
   touchRuntime,
   withWorkspace
 } from './workspaces'
-import { isValidAppId } from '@pitaster/shared'
-import type { SubApp } from '@pitaster/core'
+import { isValidAppId } from '@keylimepi/shared'
+import type { SubApp } from '@keylimepi/core'
 import type { AgentHost } from './agent/session'
 import type { Telemetry } from './agent/telemetry'
 

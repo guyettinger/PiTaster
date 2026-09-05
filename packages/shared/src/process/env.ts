@@ -1,7 +1,7 @@
 /**
  * Environment filtering for spawned subprocesses.
  *
- * Every child process Pi Taster spawns — MCP servers, `bun install`, anything the
+ * Every child process Key Lime Pi spawns — MCP servers, `bun install`, anything the
  * agent can reach — inherits the Electron main process environment unless it is
  * filtered first. That environment can hold the user's API keys and tokens, none
  * of which any subprocess needs. One list, used everywhere, so a new spawn site

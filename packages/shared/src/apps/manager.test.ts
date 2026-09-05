@@ -58,7 +58,7 @@ describe('AppManager.getApp', () => {
   test('reports a traversing id as not found rather than reading it', async () => {
     const manager = new AppManager()
 
-    // `~/.pitaster` is a real directory one level above the apps root. Before the id was
+    // `~/.keylimepi` is a real directory one level above the apps root. Before the id was
     // validated, this resolved there and only failed for want of a metadata file.
     expect(await manager.getApp('..')).toBeNull()
     expect(await manager.getApp('../../..')).toBeNull()
@@ -96,7 +96,7 @@ describe('getAppPath', () => {
   })
 
   test('resolves a real id inside the apps root', () => {
-    expect(getAppPath('magic-8-ball')).toMatch(/[/\\]\.pitaster[/\\]apps[/\\]magic-8-ball$/)
+    expect(getAppPath('magic-8-ball')).toMatch(/[/\\]\.keylimepi[/\\]apps[/\\]magic-8-ball$/)
   })
 })
 

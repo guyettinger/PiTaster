@@ -9,7 +9,7 @@
 #   ./drive.sh 'open-app Magic 8 Ball' 'panel Preview' 'shot preview'
 set -u
 
-DIR="${TMPDIR:-/tmp}/pitaster-drive"
+DIR="${TMPDIR:-/tmp}/keylimepi-drive"
 FIFO="$DIR/in.fifo"
 LOG="$DIR/out.log"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,7 +37,7 @@ case "${1:-}" in
     [ -p "$FIFO" ] && echo 'quit' > "$FIFO" && sleep 3
     pkill -f "$HERE/driver.mjs" 2>/dev/null
     # The fifo-holder outlives node; without this it lingers on a deleted fifo.
-    pkill -f 'tail -f .*pitaster-drive/in.fifo' 2>/dev/null
+    pkill -f 'tail -f .*keylimepi-drive/in.fifo' 2>/dev/null
     rm -rf "$DIR"
     echo 'stopped'
     ;;

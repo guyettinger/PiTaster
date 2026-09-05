@@ -1,5 +1,5 @@
 /**
- * The settings Pi Taster layers over Pi's, and the loader that makes them stick.
+ * The settings Key Lime Pi layers over Pi's, and the loader that makes them stick.
  *
  * Split out of `session.ts` so it can be tested: `session.ts` reaches `electron`
  * transitively, so the suite cannot import it, and this seam is precisely the one
@@ -39,17 +39,17 @@ const LOCAL_RETRY_ATTEMPTS = 4
 const LOCAL_RETRY_BASE_DELAY_MS = 2000
 
 // `HTTP_IDLE_TIMEOUT_MS` lives in `./http-dispatcher`, next to the dispatcher that
-// enforces the streaming half of it. Pi DOES read this setting on the path Pi Taster
+// enforces the streaming half of it. Pi DOES read this setting on the path Key Lime Pi
 // uses — `streamFn` resolves `getHttpIdleTimeoutMs()` and hands it to the OpenAI SDK
 // as that request's `timeout` — so it is the bound on how long prefill may run before
 // a request is abandoned. It reached Pi only once the overrides stopped being wiped;
-// see `PiTasterResourceLoader`.
+// see `KeyLimePiResourceLoader`.
 
 /**
  * Translate a context budget into the Pi settings that enforce it.
  *
  * Pi's own `DEFAULT_COMPACTION_SETTINGS` reserves 16384 tokens and retains 20000 —
- * 36k of budget, which is more than the whole window on the models Pi Taster targets.
+ * 36k of budget, which is more than the whole window on the models Key Lime Pi targets.
  * Left alone it either never compacts or compacts in a loop.
  *
  * Provider-level retries are disabled deliberately. Pi's own retry policy is the one
@@ -73,11 +73,11 @@ export function buildPiSettings(budget: ContextBudget): PiSettingsOverrides {
 }
 
 /**
- * A resource loader that puts Pi Taster's settings back after every reload.
+ * A resource loader that puts Key Lime Pi's settings back after every reload.
  *
  * `SettingsManager.applyOverrides` is not durable: `reload()` recomputes `settings`
  * from the global and project files alone, and there is no settings file, so every
- * override Pi Taster applied became `{}` and Pi fell back to its own defaults. Applying
+ * override Key Lime Pi applied became `{}` and Pi fell back to its own defaults. Applying
  * them before `createAgentHost`'s own `loader.reload()` was therefore applying them
  * to a value about to be discarded — one reload was all it took.
  *
@@ -91,15 +91,15 @@ export function buildPiSettings(budget: ContextBudget): PiSettingsOverrides {
  * the per-request timeout, so a prefill longer than five minutes failed as
  * `Request timed out.` Measured across the author's sessions, 50 replies failed that
  * way, every one between 300.004s and 308.028s, and not one anywhere near the ceiling
- * Pi Taster had configured. Compaction thresholds and the retry policy were lost with it.
+ * Key Lime Pi had configured. Compaction thresholds and the retry policy were lost with it.
  *
  * Re-applying AFTER the reload rather than before is what makes this hold no matter
  * who reloads.
  */
-export class PiTasterResourceLoader extends DefaultResourceLoader {
+export class KeyLimePiResourceLoader extends DefaultResourceLoader {
   /**
    * @param options - Pi's own loader options
-   * @param reapplySettings - Puts Pi Taster's overrides back on the settings manager
+   * @param reapplySettings - Puts Key Lime Pi's overrides back on the settings manager
    */
   constructor(
     options: ConstructorParameters<typeof DefaultResourceLoader>[0],

@@ -57,7 +57,7 @@ The implementation followed the plan exactly. All template configurations and th
 
 The `createApp(params: CreateAppParams)` method:
 
-1. Ensures apps directory exists (`~/.pitaster/apps/`)
+1. Ensures apps directory exists (`~/.keylimepi/apps/`)
 2. Generates URL-safe ID from app name
 3. Validates no existing app with same ID
 4. Creates app directory structure
@@ -66,7 +66,7 @@ The `createApp(params: CreateAppParams)` method:
    - `{{APP_DESCRIPTION}}` → Description
    - `{{APP_ID}}` → Generated ID
 6. Generates `package.json` if template has dependencies/scripts
-7. Writes `.pitaster-meta.json` metadata file
+7. Writes `.keylimepi-meta.json` metadata file
 8. Initializes git repository with initial commit
 9. Returns the created `SubApp` object
 

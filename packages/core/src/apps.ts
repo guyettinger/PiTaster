@@ -74,7 +74,7 @@ export interface AppContext {
 }
 
 /**
- * Metadata stored in .pitaster-meta.json
+ * Metadata stored in .keylimepi-meta.json
  */
 export interface AppMetadata {
   /** Unique identifier, matching the directory name. */
@@ -201,7 +201,7 @@ export interface AppRunConfig {
  * The shell's open-app set — which sub-apps have a rail tile, and which is focused.
  *
  * Shell state rather than app state: it describes what the *window* was showing,
- * so it is persisted beside `config.json` under `~/.pitaster` and never in an
+ * so it is persisted beside `config.json` under `~/.keylimepi` and never in an
  * app's own directory, which is a git repo every agent write commits to.
  */
 export interface OpenAppsState {

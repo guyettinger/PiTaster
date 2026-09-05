@@ -22,7 +22,7 @@ This sub-session builds the React components for managing sub-apps in the UI.
 
 ```tsx
 import { useState, useEffect, useCallback } from 'react'
-import type { SubApp, AppTemplate } from '@pitaster/core'
+import type { SubApp, AppTemplate } from '@keylimepi/core'
 
 interface AppListingProps {
   onAppSelect: (app: SubApp) => void
@@ -343,7 +343,7 @@ function formatRelativeTime(iso: string): string {
 ### Create apps/electron/src/renderer/src/components/AppHeader.tsx
 
 ```tsx
-import type { SubApp, AppTemplate } from '@pitaster/core'
+import type { SubApp, AppTemplate } from '@keylimepi/core'
 
 interface AppHeaderProps {
   app: SubApp | null

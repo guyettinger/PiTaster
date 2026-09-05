@@ -36,7 +36,7 @@ export function GeneralTab({ config, onChange }: GeneralTabProps) {
 
       <div className="mt-8 space-y-4 border-t border-line pt-6">
         <div>
-          <h2 className="text-[14px] font-semibold text-bone">Pi Taster 0.1.0</h2>
+          <h2 className="text-[14px] font-semibold text-bone">Key Lime Pi 0.1.0</h2>
           <p className="mt-1 max-w-prose text-[13px] text-ash">
             Delicious Pi, served locally — the coding agent, running on models served by
             your own Ollama. It writes its own source and the source of the apps it
@@ -45,7 +45,7 @@ export function GeneralTab({ config, onChange }: GeneralTabProps) {
         </div>
         <div>
           <p className="eyebrow text-ash">Workspace</p>
-          <p className="mt-1 font-mono text-[12.5px] text-bone">~/.pitaster/</p>
+          <p className="mt-1 font-mono text-[12.5px] text-bone">~/.keylimepi/</p>
           <p className="mt-1 text-[12px] text-ash">
             Apps, skills, sources, and chat history are all stored here.
           </p>

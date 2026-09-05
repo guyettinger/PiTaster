@@ -13,7 +13,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ContextEvent } from '@earendil-works/pi-coding-agent'
-import type { SubApp } from '@pitaster/core'
+import type { SubApp } from '@keylimepi/core'
 import { buildContextReport } from './context-report'
 import { deriveContextBudget } from './context-budget'
 
@@ -27,7 +27,7 @@ import { deriveContextBudget } from './context-budget'
  */
 const BUILTIN_TOOLS = ['read', 'write', 'edit', 'bash', 'grep', 'find', 'ls']
 
-/** A representative full profile: Pi's built-ins plus Pi Taster's own. */
+/** A representative full profile: Pi's built-ins plus Key Lime Pi's own. */
 const FULL_TOOLS = [
   ...BUILTIN_TOOLS,
   'replace_lines',
@@ -58,7 +58,7 @@ const budget = deriveContextBudget({ daemonWindow: 65536 })
 const toolNames = FULL_TOOLS
 
 beforeAll(async () => {
-  root = await mkdtemp(join(tmpdir(), 'pitaster-report-'))
+  root = await mkdtemp(join(tmpdir(), 'keylimepi-report-'))
   app = {
     id: 'test-app',
     name: 'Test App',

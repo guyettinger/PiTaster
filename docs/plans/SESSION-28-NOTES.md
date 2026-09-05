@@ -55,7 +55,7 @@ a pending approval at once, with token generation serialized behind one visible 
      unserialized read-modify-write of two keys loses one
 
 4. **`main/open-apps-store.ts`** + tests (12 tests)
-   - `~/.pitaster/open-apps.json`, capped at 4, pruned against live app ids
+   - `~/.keylimepi/open-apps.json`, capped at 4, pruned against live app ids
 
 5. **`renderer/components/workspace/MountedWorkspace.tsx`**
    - One per open app, all mounted; the unfocused ones hidden with
@@ -199,7 +199,7 @@ main process on one. The `.catch(() => {})` is attached at `acquire`, not in `wa
 
 **Switching a sub-app to a pre-rebrand branch makes the app vanish from the Apps list.**
 Found by accident while probing the new refusals: `main` on an older app predates the
-rebrand and has no `.pitaster-meta.json`, so checking it out deletes the file from the
+rebrand and has no `.keylimepi-meta.json`, so checking it out deletes the file from the
 working tree and `listApps` drops the app entirely — no error, no explanation. The
 directory is still there and switching back restores it. **Not fixed this session.**
 

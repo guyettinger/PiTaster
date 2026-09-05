@@ -2,7 +2,7 @@
 
 ## Overview
 
-Replace Pi Taster's hand-rolled Anthropic agent loop with [Pi](https://pi.dev/)
+Replace Key Lime Pi's hand-rolled Anthropic agent loop with [Pi](https://pi.dev/)
 (`@earendil-works/pi-coding-agent`, MIT), configured to run entirely on local
 models served by [Ollama](https://ollama.com/).
 
@@ -19,7 +19,7 @@ session tree, working cancellation, and correct tool correlation.
 
 ## Why This Matters
 
-- **No API key, no network.** Inference is local. `~/.pitaster/.apikey` and the
+- **No API key, no network.** Inference is local. `~/.keylimepi/.apikey` and the
   `safeStorage` plumbing go away entirely.
 - **Cancellation actually exists.** `runAgentQuery` accepts a `signal` and checks it
   (`agent.ts:1116`), but `ipc.ts` never passes one. There is no `AbortController`,
@@ -110,7 +110,7 @@ flowchart TB
 ```
 
 **Key principle**: Pi owns the loop, the tools, the transcript, and the provider.
-Pi Taster keeps only what is genuinely its own — the permission modes, the git
+Key Lime Pi keeps only what is genuinely its own — the permission modes, the git
 auto-commit, the version tools, the element-context capture, and the UI.
 
 ---
@@ -157,7 +157,7 @@ after `write`/`edit`. It is no longer a per-tool structural guarantee.
 
 **3. Version tools stay custom.** Pi has no equivalent for `create_branch`,
 `switch_branch`, `list_branches`, `get_history`, `rollback`, `git_status`. These are
-Pi Taster domain tools over `isomorphic-git`, not coding built-ins, so they are ported to
+Key Lime Pi domain tools over `isomorphic-git`, not coding built-ins, so they are ported to
 `defineTool()` rather than dropped.
 
 ---
@@ -194,7 +194,7 @@ ollama pull qwen3-coder:30b   # or llama3.1, gpt-oss, mistral-nemo
 ## Verification Checklist
 
 - [ ] 15.1 — app launches on Electron 39 with an ESM main process, behaviour unchanged
-- [ ] 15.2 — Settings lists locally pulled Ollama models; `~/.pitaster/pi/models.json` matches
+- [ ] 15.2 — Settings lists locally pulled Ollama models; `~/.keylimepi/pi/models.json` matches
 - [ ] 15.3 — agent responds, tools pair correctly, all four permission modes behave
 - [ ] 15.3 — escape attempts (`/etc/passwd`, `~/`, `~/.ssh/id_rsa`) are all blocked
 - [ ] 15.4 — sessions persist across restart with full tool fidelity

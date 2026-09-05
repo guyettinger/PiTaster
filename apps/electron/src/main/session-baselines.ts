@@ -6,8 +6,8 @@
  * session became active. Nothing else in the app records that. Pi's transcript
  * knows what was said, not what the repo looked like before it was said.
  *
- * It is kept beside `config.json` under `~/.pitaster` for the same reason layouts
- * are — see `layout-store.ts`. `.pitaster-meta.json` is the obvious home and the
+ * It is kept beside `config.json` under `~/.keylimepi` for the same reason layouts
+ * are — see `layout-store.ts`. `.keylimepi-meta.json` is the obvious home and the
  * wrong one: it is absent from `DEFAULT_GITIGNORE` and `AppManager.initGitRepo`
  * adds every file, so it is tracked and committed. A baseline stored there would
  * be rolled back by a rollback of the code, which destroys the exact reference

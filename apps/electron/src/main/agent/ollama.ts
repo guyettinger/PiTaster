@@ -1,14 +1,14 @@
 /**
  * Ollama provider discovery and Pi model configuration.
  *
- * Pi Taster runs entirely on models served by a local Ollama daemon. Pi reads custom
+ * Key Lime Pi runs entirely on models served by a local Ollama daemon. Pi reads custom
  * providers from `<agentDir>/models.json`, so this module discovers what the daemon
  * has pulled and writes that file.
  */
 
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
-import type { DaemonHealth } from '@pitaster/core'
+import type { DaemonHealth } from '@keylimepi/core'
 import { deriveContextBudget, type ContextBudget, type ContextWindowSource } from './context-budget'
 
 /** Default address of the local Ollama daemon, without the `/v1` suffix. */
@@ -21,7 +21,7 @@ const DISCOVERY_TIMEOUT_MS = 5000
  * How long to wait for a model to load into memory.
  *
  * A 27B model on Apple Silicon takes tens of seconds to page in. This is the one
- * Ollama call Pi Taster makes that is expected to be slow.
+ * Ollama call Key Lime Pi makes that is expected to be slow.
  */
 const WARM_TIMEOUT_MS = 180_000
 
@@ -48,7 +48,7 @@ export interface OllamaModel {
    * hand it to Pi — see {@link effectiveContextWindow}.
    */
   contextWindow: number
-  /** The window Pi Taster actually configures, from {@link deriveContextBudget}. */
+  /** The window Key Lime Pi actually configures, from {@link deriveContextBudget}. */
   effectiveContextWindow: number
   /** Where {@link effectiveContextWindow} came from. */
   contextWindowSource: ContextWindowSource
@@ -93,7 +93,7 @@ interface OllamaShowResponse {
  * Parameters for {@link writeOllamaModelsFile}.
  */
 export interface WriteOllamaModelsFileParams {
-  /** Pi agent directory, for example `~/.pitaster/pi`. */
+  /** Pi agent directory, for example `~/.keylimepi/pi`. */
   agentDir: string
   /** Ollama daemon base URL, without the `/v1` suffix. */
   baseUrl: string
@@ -105,7 +105,7 @@ export interface WriteOllamaModelsFileParams {
  * Parameters for {@link syncOllamaModels}.
  */
 export interface SyncOllamaModelsParams {
-  /** Pi agent directory, for example `~/.pitaster/pi`. */
+  /** Pi agent directory, for example `~/.keylimepi/pi`. */
   agentDir: string
   /** Ollama daemon base URL, without the `/v1` suffix. */
   baseUrl: string
@@ -246,7 +246,7 @@ async function describeModel(
  * OpenAI-compatible `/v1/models` listing, and `/api/show` reports per-model
  * capabilities. Embedding-only models are excluded — they cannot drive an agent.
  *
- * The selected model's entry also carries the window Pi Taster will actually configure,
+ * The selected model's entry also carries the window Key Lime Pi will actually configure,
  * resolved from the user's override, the daemon's loaded context length, and the
  * advertised maximum — in that order.
  *
@@ -496,7 +496,7 @@ export async function isOllamaReachable(baseUrl: string): Promise<boolean> {
  * are all accepted, and `low` and `high` measurably change both the prompt token
  * count — so the daemon injects something into the template — and the length of the
  * reasoning produced. `medium` is byte-identical to sending nothing. Disabling the
- * flag stripped the one working control Pi Taster had over how long a model thinks.
+ * flag stripped the one working control Key Lime Pi had over how long a model thinks.
  *
  * What it does *not* buy is an off switch. With `thinkingLevel: 'off'` Pi sends no
  * `reasoning_effort` at all, and the audit found the models reasoning on every
@@ -545,11 +545,11 @@ export async function writeOllamaModelsFile(
   await fs.mkdir(agentDir, { recursive: true })
   const modelsPath = join(agentDir, 'models.json')
 
-  // Merge rather than clobber. Pi Taster owns the `ollama` provider and nothing else in
-  // this file, so a provider a user added by hand — or one a future Pi Taster writes —
+  // Merge rather than clobber. Key Lime Pi owns the `ollama` provider and nothing else in
+  // this file, so a provider a user added by hand — or one a future Key Lime Pi writes —
   // must survive a re-sync, which happens on every config save and every session
   // start. An unreadable or malformed file is replaced, because a file Pi cannot parse
-  // is worse than one Pi Taster overwrote.
+  // is worse than one Key Lime Pi overwrote.
   let existing: Record<string, unknown> = {}
   try {
     const parsed: unknown = JSON.parse(await fs.readFile(modelsPath, 'utf-8'))
@@ -608,7 +608,7 @@ export async function syncOllamaModels(
  * `ModelRuntime` reads it.
  *
  * @param params - Agent directory, daemon URL, selected model, and any user override
- * @returns The budget Pi Taster configured for the selected model
+ * @returns The budget Key Lime Pi configured for the selected model
  */
 export async function prepareModelForSession(
   params: SyncOllamaModelsParams & { selectedModel: string }
@@ -643,7 +643,7 @@ const inFlightPreparations = new Map<string, Promise<ContextBudget>>()
  * The warm-probe-rewrite itself, run at most once per key at a time.
  *
  * @param params - Agent directory, daemon URL, selected model, and any user override
- * @returns The budget Pi Taster configured for the selected model
+ * @returns The budget Key Lime Pi configured for the selected model
  */
 async function runPreparation(
   params: SyncOllamaModelsParams & { selectedModel: string }

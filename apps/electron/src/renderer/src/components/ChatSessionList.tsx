@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { PlusIcon, PencilIcon, TrashIcon } from './icons'
 import { formatCompactTime, dayBucketOf, DAY_BUCKETS, type DayBucket } from '../lib/relativeTime'
-import type { ChatSession } from '@pitaster/core'
+import type { ChatSession } from '@keylimepi/core'
 
 /** The title a session carries until it has a message to be named after. */
 const UNTITLED_SESSION = 'New Chat'
@@ -9,7 +9,7 @@ const UNTITLED_SESSION = 'New Chat'
 /**
  * The longest title the rename box accepts.
  *
- * Mirrors `MAX_SESSION_TITLE_CHARS` in `@pitaster/shared`, which is where the bound
+ * Mirrors `MAX_SESSION_TITLE_CHARS` in `@keylimepi/shared`, which is where the bound
  * is actually enforced — main re-checks it, and so does `ChatHistoryManager` at the
  * write. This copy exists so an honest rename is stopped at the keyboard rather than
  * rejected by IPC with nothing on screen to explain it.

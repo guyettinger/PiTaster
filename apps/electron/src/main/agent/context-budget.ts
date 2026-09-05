@@ -1,7 +1,7 @@
 /**
  * The single source of truth for how much context the agent actually has.
  *
- * Every context-sized number in the app derives from here: what Pi Taster writes into
+ * Every context-sized number in the app derives from here: what Key Lime Pi writes into
  * Pi's `models.json`, the compaction thresholds it hands Pi's `SettingsManager`, and
  * the cap the context trimmer applies to tool results.
  *
@@ -33,7 +33,7 @@ export const FALLBACK_CONTEXT_WINDOW = 32768
  */
 export const MIN_CONTEXT_WINDOW = 2048
 
-/** Largest window Pi Taster will configure, whatever the daemon claims. */
+/** Largest window Key Lime Pi will configure, whatever the daemon claims. */
 export const MAX_CONTEXT_WINDOW = 262144
 
 /** Share of the window one assistant turn may spend on output. */
@@ -100,7 +100,7 @@ const HARD_TOOL_RESULT_SHARE = 0.5
  * prefill of the whole prompt — 133.5s on the audited model. Advancing too eagerly
  * pays that repeatedly; advancing too rarely carries this much untrimmed history in
  * every request meanwhile. A quarter of the window puts the advance several turns
- * apart on the windows Pi Taster targets, against the previous design's every turn.
+ * apart on the windows Key Lime Pi targets, against the previous design's every turn.
  */
 const SEAL_ADVANCE_SHARE = 0.25
 
@@ -159,7 +159,7 @@ export interface ContextBudget {
   /**
    * Tokens of new, untrimmed history carried before the context seal advances.
    *
-   * See `agent/context-trim.ts`: the seal is the one moment Pi Taster deliberately
+   * See `agent/context-trim.ts`: the seal is the one moment Key Lime Pi deliberately
    * invalidates the daemon's prefix cache, and this is how much it lets accumulate
    * before deciding that is worth doing.
    */

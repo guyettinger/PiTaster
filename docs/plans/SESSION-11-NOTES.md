@@ -25,7 +25,7 @@ Session 11 adds support for multiple named chat sessions per app. Users can crea
 Each app now has a `.chat-sessions.json` manifest and session-scoped subdirectories under `.chat-history/`:
 
 ```
-~/.pitaster/apps/{app-id}/
+~/.keylimepi/apps/{app-id}/
 ├── .chat-sessions.json              ← Session manifest
 ├── .chat-history/
 │   ├── {session-id-1}/              ← Messages for session 1

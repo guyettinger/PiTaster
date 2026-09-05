@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { RefreshIcon, PlusIcon } from './icons'
 import { formatRelativeTime } from '../lib/relativeTime'
 import type { Branch, Commit, VersionState } from '../types/electron'
-import type { FilePatch } from '@pitaster/core'
+import type { FilePatch } from '@keylimepi/core'
 import { buildPatchFromDiff } from '../lib/commitPatches'
 import { PatchList } from './DiffView'
 

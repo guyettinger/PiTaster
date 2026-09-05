@@ -1,7 +1,7 @@
 /**
  * Rendering the skill manifest that goes into every system prompt.
  *
- * This is Pi Taster's own, not Pi's. Pi builds one too — `formatSkillsForPrompt` — but it
+ * This is Key Lime Pi's own, not Pi's. Pi builds one too — `formatSkillsForPrompt` — but it
  * tells the model to reach a skill with the `read` tool, and every skill outside the
  * open app is refused by `checkConfinement` when it tries. The manifest below names
  * `load_skill` instead, which takes a name rather than a path and so has nothing for
@@ -12,7 +12,7 @@
  * guessed from the description's length.
  */
 
-import type { Skill } from '@pitaster/core'
+import type { Skill } from '@keylimepi/core'
 
 /**
  * Escape the five XML entities.

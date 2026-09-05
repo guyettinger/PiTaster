@@ -1,13 +1,14 @@
-# Pi Taster
+# Key Lime Pi
 
 Self-modifying Electron desktop app. The agent reads and writes its own source
 code — and the source of sandboxed sub-apps it creates — with every write
 auto-committed to git so any change can be rolled back.
 
-The name is the thesis: this is a place to *taste* Pi on local models. The app
-was called **anyapp** until Session 27; `migrate-workspace.ts` moves an older
-install's `~/.anyapp` to `~/.pitaster` on first launch, and three strings still
-say `anyapp` on purpose — see **Names that must not be rebranded** below.
+The name is the thesis: key lime pie is the mark, and Pi is what the app runs. It
+was called **anyapp** until Session 27 and **Pi Taster** until Session 29;
+`migrate-workspace.ts` carries an older install from `~/.anyapp` *or* `~/.pitaster`
+to `~/.keylimepi` on first launch, and several strings still say `anyapp` or
+`Pi Taster` on purpose — see **Names that must not be rebranded** below.
 
 The agent is [Pi](https://pi.dev/) (`@earendil-works/pi-coding-agent`), embedded
 through its SDK in `apps/electron/src/main/agent/`. It runs entirely on local
@@ -16,7 +17,7 @@ The agent can reach the internet with its `web_fetch` tool, but inference itself
 never leaves the machine.
 
 Pi owns the agent loop, the built-in tools (`read`, `write`, `edit`, `bash`,
-`grep`, `find`, `ls`), and the session transcript. Pi Taster adds the permission
+`grep`, `find`, `ls`), and the session transcript. Key Lime Pi adds the permission
 gate, path confinement, git auto-commit, its own version-control, network and
 skill tools, and a bridge that exposes connected MCP sources' tools as
 `mcp__<source>__<tool>`.
@@ -27,9 +28,9 @@ Bun workspaces. Inter-package dependencies use `"workspace:*"`.
 
 | Path | Package | Contents |
 |------|---------|----------|
-| `apps/electron/` | `@pitaster/electron` | The desktop app |
-| `packages/core/` | `@pitaster/core` | Shared TypeScript types only |
-| `packages/shared/` | `@pitaster/shared` | Business logic: apps, chat, skills, sources, versions, inspector |
+| `apps/electron/` | `@keylimepi/electron` | The desktop app |
+| `packages/core/` | `@keylimepi/core` | Shared TypeScript types only |
+| `packages/shared/` | `@keylimepi/shared` | Business logic: apps, chat, skills, sources, versions, inspector |
 
 `apps/electron/` follows the electron-vite convention:
 
@@ -37,7 +38,7 @@ Bun workspaces. Inter-package dependencies use `"workspace:*"`.
 - `src/preload/` — context bridge (isolated); the only channel between main and renderer
 - `src/renderer/` — React 19 UI (browser context, Vite + Tailwind v4)
 
-Import types from `@pitaster/core`, business logic from `@pitaster/shared`. Neither
+Import types from `@keylimepi/core`, business logic from `@keylimepi/shared`. Neither
 package may import from `apps/electron/`.
 
 ## Commands
@@ -49,7 +50,7 @@ package may import from `apps/electron/`.
 | `bun run build` | Build all packages |
 | `bun run typecheck:all` | Type check the entire monorepo |
 | `bun run sync:skills` | Regenerate the seeded skills from `docs/skills/` |
-| `bun run --filter @pitaster/electron dev` | Run one workspace |
+| `bun run --filter @keylimepi/electron dev` | Run one workspace |
 
 Run `bun run typecheck:all` after changing any source file. It is the gate that
 the self-modification flow relies on.
@@ -64,7 +65,7 @@ ollama serve
 ollama pull qwen3-coder:30b   # or llama3.1, gpt-oss, mistral-nemo
 ```
 
-Models are discovered from the daemon and written to `~/.pitaster/pi/models.json`;
+Models are discovered from the daemon and written to `~/.keylimepi/pi/models.json`;
 pick one in Settings. Electron 39+ is required — Pi needs Node >= 22.19.
 
 ## The context window is not what Ollama advertises
@@ -82,7 +83,7 @@ and writes that into `models.json`. `agent/context-budget.ts` derives everything
 else from it — Pi's compaction thresholds, `maxTokens`, and the trimmer's
 tool-result cap — keeping `reserveTokens + keepRecentTokens < window * 0.9` so
 compaction always frees more than it reserves. Pi's own defaults reserve 36k,
-which is more than the whole window on the models Pi Taster targets.
+which is more than the whole window on the models Key Lime Pi targets.
 
 Settings carries an override for when both the daemon and the default are wrong.
 
@@ -90,7 +91,7 @@ Settings carries an override for when both the daemon and the default are wrong.
 
 Four things keep a long session coherent on a local model, all configurable:
 
-- **Compaction** is Pi's, with Pi Taster's thresholds. `compaction_end` nudges the
+- **Compaction** is Pi's, with Key Lime Pi's thresholds. `compaction_end` nudges the
   agent to re-read `NOTES.md`, which is on disk and survives being summarized.
 - **`agent/context-trim.ts`** shapes what is *sent*: long tool results truncated
   with a pointer to resume from, a read whose every line a later read returned
@@ -104,14 +105,14 @@ Four things keep a long session coherent on a local model, all configurable:
   to run per request and was stable only *within* one message list: the current
   turn's exemption expired at each turn boundary, superseding rewrote an earlier
   read the moment a later one covered it, and the screenshot cutoff advanced. Every
-  one of those is an edit in the middle of the prefix, so Pi Taster paid a full cold
+  one of those is an edit in the middle of the prefix, so Key Lime Pi paid a full cold
   prefill once per turn, on itself. `tool-guidance.ts` had carried the principle all
   along — *"a prompt that reorders between requests defeats prefix caching"*.
 
   The invariant now is that **once a byte has been sent it does not change until a
   deliberate, rare reset**. Nothing is trimmed until the seal advances, which
   happens when `sealAdvanceTokens` of new history has accumulated — one invalidation
-  Pi Taster chose, several turns apart, instead of one per turn it did not. The seal
+  Key Lime Pi chose, several turns apart, instead of one per turn it did not. The seal
   stops at the current turn, so what rides untrimmed is bounded by one turn plus
   that threshold, and everything past the seal still gets `hardToolResultTokens`.
   Superseding is the one rule that can never be settled — any later read might cover
@@ -151,7 +152,7 @@ Four things keep a long session coherent on a local model, all configurable:
   them straight back (`session-manager.js:166-176`), so a mutation survives the
   rebuild compaction and branching do; the JSONL entry is written when the message
   is appended, so a later mutation cannot rewrite it, and the seal never reaches into
-  the current turn, which keeps that true; Pi Taster's chat UI reads the transcript from
+  the current turn, which keeps that true; Key Lime Pi's chat UI reads the transcript from
   disk through its own `SessionManager`, never this list; and Pi mutates messages in
   place itself, for the same reason (`agent-session.js:453-460`).
 
@@ -217,7 +218,7 @@ Three things the module has to keep doing:
   parts charges the user twice for every skill they enable, and turning one off would
   appear to shrink two blocks. The base block is the prompt minus the three.
 - **Price an image by difference, never by restating Pi's constant.** Pi bills an image at
-  a flat character count Pi Taster has no business knowing. Subtracting the image-stripped
+  a flat character count Key Lime Pi has no business knowing. Subtracting the image-stripped
   estimate from the whole one recovers exactly that charge, and keeps recovering it if Pi
   changes the number.
 - **Build tool definitions, never run them.** Sizing a schema means calling every factory —
@@ -236,7 +237,7 @@ derived there, because that module is deliberately buildable cold and a rate is 
 definition something only a session that has run can know; before there is a sample the
 line is absent rather than invented, for the same reason the window itself is
 discovered and not assumed. `Summarize now` calls Pi's `session.compact()` — the
-first thing in Pi Taster to do so — and is refused mid-turn, because compacting a
+first thing in Key Lime Pi to do so — and is refused mid-turn, because compacting a
 conversation Pi is still appending to summarizes a moving target.
 
 Segment colors are assigned by **rank within a group**, not by block id. Keyed by id, the
@@ -262,7 +263,7 @@ be unique. Supplying `systemPromptOverride` puts `buildSystemPrompt` on its
 `customPrompt` early return, which appends context files, skills and the cwd and **drops
 `toolSnippets` and `promptGuidelines` for every tool**. So none of it had ever reached
 the model. `agent/tool-guidance.ts` reads the text back off Pi's live definitions —
-never a copy, so a Pi revision cannot leave Pi Taster restating something Pi no longer
+never a copy, so a Pi revision cannot leave Key Lime Pi restating something Pi no longer
 says — and `system-prompt.ts` renders it. Recovering it costs about 330 tokens, which is
 the whole reason it must come off the definitions rather than grow by hand.
 
@@ -291,18 +292,18 @@ indentation and does not emit it. Pi exposes no sampling controls — not in
 `models.json`, not in `SettingsManager`, not on `createAgentSession` — so `session.ts`
 sets them through the `before_provider_request` hook, whose handler's *return value
 replaces* the request payload. Ollama otherwise takes its default from the model's
-Modelfile, which is 0.7 or higher on the models Pi Taster targets.
+Modelfile, which is 0.7 or higher on the models Key Lime Pi targets.
 
-**But one number cannot serve both jobs, and Pi Taster shipped one number.** A temperature
+**But one number cannot serve both jobs, and Key Lime Pi shipped one number.** A temperature
 of 0 is right for reproducing an `oldText` byte for byte and wrong for a Qwen3 thinking
 model, which is documented to degrade and loop under greedy decoding — the symptom
 `agent/loop-guard.ts` exists to catch, which raises the question of whether the guard
-was treating a cause Pi Taster introduced. `agent/sampling.ts` resolves per model instead:
-`RECOMMENDED_SAMPLING` in `@pitaster/core` gives a reasoning model Qwen3's documented
+was treating a cause Key Lime Pi introduced. `agent/sampling.ts` resolves per model instead:
+`RECOMMENDED_SAMPLING` in `@keylimepi/core` gives a reasoning model Qwen3's documented
 0.6/0.95 and everything else greedy with no `top_p` at all.
 
 A setting has **three** states, because two were not enough: a number pins it, `null`
-sends nothing and leaves the Modelfile default alone, and `'auto'` asks Pi Taster to
+sends nothing and leaves the Modelfile default alone, and `'auto'` asks Key Lime Pi to
 choose. A number input alone cannot express that — empty has to mean *something*, and
 when it meant "the model's own default" there was nowhere left to say "choose for me".
 
@@ -311,7 +312,7 @@ whenever the temperature in effect is 0, from either source, because a nucleus c
 modifying a greedy temperature has nothing to do. A `top_p` the *user* pinned is still
 sent — the suppression is a property of the recommendation, not a rule imposed on them.
 
-**An old pinned 0 is flagged, not overwritten.** Pi Taster's previous default was a pinned
+**An old pinned 0 is flagged, not overwritten.** Key Lime Pi's previous default was a pinned
 0 written into `config.json`, which on disk is indistinguishable from a 0 someone chose,
 so an install that predates this keeps decoding greedily. Settings says so — *Recommended
 for this model: 0.6* — rather than silently changing a value the user may have meant.
@@ -325,7 +326,7 @@ honoured, which is exactly the shape of a control that does nothing.
 ## The compiler is a tool, and mostly not one
 
 The agent could not check its own work. `typecheck:all` is the gate the self-modification
-flow relies on, but that gate is Pi Taster's, run by a human — a confined agent inside a
+flow relies on, but that gate is Key Lime Pi's, run by a human — a confined agent inside a
 sub-app has none. `bash` is deliberately absent from `PLAN_READ_TOOLS` and `FILE_TOOLS`,
 so in `acceptEdits`, the mode this app is built to be run in, the model writes TypeScript
 and cannot run `tsc` without stopping to ask. Every edit was unverified until someone ran
@@ -384,7 +385,7 @@ exact offset gets it wrong for the same reason it gets an `edit`'s leading inden
 wrong, and unlike a failed `edit` a wrong offset does not fail — it resolves whatever
 token sits there and answers confidently about the wrong thing. Ambiguity returns the
 candidates with their lines. The one exception is `apply_fix`'s `line`, which is a number
-Pi Taster printed in the diagnostics attached to the model's last write: the same pairing
+Key Lime Pi printed in the diagnostics attached to the model's last write: the same pairing
 that makes `replace_lines` usable.
 
 **`getCodeFixesAtPosition` must be asked at the diagnostic's own span, not the line's.**
@@ -429,7 +430,7 @@ and returns nothing at all if any of them does not land.
 **Monaco, not Theia.** Theia is a framework that owns an application — Inversify, Lumino,
 its own webpack frontend/backend split — and running it embedded in a larger app has been
 an open request on its tracker for years. Its editor and its diff view *are* Monaco, so
-Pi Taster takes those directly. Two constraints: **no CDN**, because `@monaco-editor/react`
+Key Lime Pi takes those directly. Two constraints: **no CDN**, because `@monaco-editor/react`
 loads Monaco remotely by default and an editor that needs the network is the wrong shape
 for an app whose identity is that inference never leaves the machine; and **only the
 tokenizers this app needs**, because importing `monaco-editor` whole registers all
@@ -460,8 +461,8 @@ commit HEAD was at when the session became active against HEAD now. The optimist
 still comes off the stream, so the strip moves during a turn; the git read at the end of
 the turn is what makes it accurate.
 
-**The baseline lives in `~/.pitaster/session-baselines.json`**, for a sharper version of the
-reason layouts do. `.pitaster-meta.json` is tracked and `initGitRepo` adds every file, so a
+**The baseline lives in `~/.keylimepi/session-baselines.json`**, for a sharper version of the
+reason layouts do. `.keylimepi-meta.json` is tracked and `initGitRepo` adds every file, so a
 baseline kept there would be rolled back by a rollback of the *code* — destroying the exact
 reference that rollback should be measured against. `ensureSessionBaseline` is
 **first-write-wins**: every caller passes the current HEAD, so an implementation that
@@ -493,7 +494,7 @@ the chat pointer, and is replayed into `ensureSessionBaseline` on every later ap
 so a bound checked at one channel is a bound the other channel does not have. It is
 checked at both.
 
-**`.pitaster-meta.json` is permanently modified**, being tracked and rewritten whenever
+**`.keylimepi-meta.json` is permanently modified**, being tracked and rewritten whenever
 anything about the app changes, `updatedAt` included. Without `HOUSEKEEPING_FILES` the
 strip opened every session announcing one changed file before the agent had done anything,
 and a strip that is never empty is a strip nobody reads. It is hidden from the strip, not
@@ -534,7 +535,7 @@ It used to carry a `contextUsage` nobody read for exactly that reason, and a
 `rate_limit` variant nothing has ever produced; both are gone. The gap between the prompt figure and the prefilled figure
 *is* W1's saving, which is why both are shown rather than the total alone. The cache
 verdict is the quietest when it is `reused` — a healthy turn should not decorate
-itself — and coloured only for `invalidated`, which is Pi Taster having re-sent a prompt
+itself — and coloured only for `invalidated`, which is Key Lime Pi having re-sent a prompt
 the daemon already held.
 
 **`DaemonHealthStrip` renders nothing when nothing is wrong.** Health was checked in
@@ -575,7 +576,7 @@ one on screen.
 
 How long a turn may stay silent is not Pi's setting to enforce. Pi applies
 `httpIdleTimeoutMs` only from its own CLI, RPC and interactive entry points,
-never from the SDK path Pi Taster embeds — and does not export the function that
+never from the SDK path Key Lime Pi embeds — and does not export the function that
 does it. Left alone, the real ceiling is undici's default `headersTimeout` of
 300s, and Ollama sends no headers until the first token, so a prefill past five
 minutes dies as `Request timed out.` and is retried — one attempt plus four
@@ -710,7 +711,7 @@ depend on that and would break silently without it:
 
 - `PreviewPanel` hosts an Electron `<webview>`. Re-parenting one destroys and recreates its
   `WebContents`, so under any library that re-renders children into a new parent the running
-  app reloads on every drag and the injected `window.__piTasterInspector` is lost.
+  app reloads on every drag and the injected `window.__keyLimePiInspector` is lost.
 - `Chat` keeps its transcript, `isStreaming` and `pendingApproval` in component-local state and
   auto-scrolls off `scrollHeight`. Hidden panels are hidden with `visibility`, not
   `display: none`, so the box survives and auto-scroll keeps working in a background tab.
@@ -763,11 +764,11 @@ panels through `WorkspaceContext`, whose value must stay memoized: panels render
 dockview's tree, not as children of whoever owns the state, so an object rebuilt each render
 re-renders all of them including the transcript.
 
-**Layouts are per app and deliberately not in the app.** `.pitaster-meta.json` is the obvious home
+**Layouts are per app and deliberately not in the app.** `.keylimepi-meta.json` is the obvious home
 and the wrong one — it is absent from `DEFAULT_GITIGNORE` and `initGitRepo` adds every file, so
 it is tracked and committed. In a repo where every agent write auto-commits, a layout rewritten
 on each drag would mean a permanently dirty tree, commit noise, and a rollback of the *code*
-also rolling back the *layout*. So `main/layout-store.ts` keeps them in `~/.pitaster/layouts.json`
+also rolling back the *layout*. So `main/layout-store.ts` keeps them in `~/.keylimepi/layouts.json`
 beside `config.json`, keyed by app id, size-capped because the renderer is untrusted, and pruned
 of dead apps whenever anything is written. A layout that is missing, corrupt, or written against
 a different `LAYOUT_VERSION` falls back to the default — nobody can hand-repair that file, and a
@@ -794,9 +795,9 @@ There are three populations, and they used to fail in complementary ways.
 
 | Population | Lives in | Whose it is |
 |---|---|---|
-| Claude Code skills | `.claude/skills/` | The agent building **Pi Taster**. Nothing to do with the running app. |
+| Claude Code skills | `.claude/skills/` | The agent building **Key Lime Pi**. Nothing to do with the running app. |
 | App skills | `<app-root>/skills/` | Pi, for one sub-app. Committed with it, so they roll back with it. |
-| Workspace skills | `~/.pitaster/skills/` | Pi, offered to every app. Seeded from `docs/skills/`. |
+| Workspace skills | `~/.keylimepi/skills/` | Pi, offered to every app. Seeded from `docs/skills/`. |
 
 **A skill's description and its body are paid for differently, and that is the whole
 design.** The description rides in the manifest in *every* request and is the only text
@@ -825,24 +826,24 @@ it against the two roots itself, and returns the body; there is no path argument
 confinement to refuse and no way to spell one that reaches another file. The tool is
 classified with `read` in `checkPermission`, and the load is visible in the transcript,
 which pointing at a path never was. `session.ts` therefore suppresses Pi's manifest
-(`skillsOverride` returns no skills) and `system-prompt.ts` renders Pi Taster's.
+(`skillsOverride` returns no skills) and `system-prompt.ts` renders Key Lime Pi's.
 
 **App skills win a name collision**, and the workspace copy is shown as shadowed rather
 than hidden — a user looking for why their workspace skill has no effect needs to see it.
 Nothing else discovers `<app>/skills/`: Pi's project scope is `.pi/skills` and
-`DefaultResourceLoader` runs with `includeDefaults: false`, so the path is Pi Taster's to
+`DefaultResourceLoader` runs with `includeDefaults: false`, so the path is Key Lime Pi's to
 define. The agent had already invented it, writing skills there because it is the only
 place it can write, and registering them by hand in the app's `AGENTS.md`.
 
 **Turning a skill off is real.** `SubApp.disabledSkills` is per-app, persisted in
-`.pitaster-meta.json`, and a disabled skill is left out of the manifest entirely — so the
+`.keylimepi-meta.json`, and a disabled skill is left out of the manifest entirely — so the
 page's "N tokens in every request" drops when you turn one off. That number is the honest
 answer to what a skill costs, and it is why the count is in the header.
 
 **Seeding corrects itself.** `seedSkills` never overwrites, which is right for a file the
-user edited and wrong for one Pi Taster shipped with a defect — `manage-versions` documented
+user edited and wrong for one Key Lime Pi shipped with a defect — `manage-versions` documented
 nine `version_*` tools that have never existed, and every install kept them forever. A
-body that still matches one Pi Taster shipped exactly (`SUPERSEDED_SEEDS`) is replaced, or
+body that still matches one Key Lime Pi shipped exactly (`SUPERSEDED_SEEDS`) is replaced, or
 deleted where the correction is that the skill should not exist. A body that differs by
 one character is left alone and flagged **Outdated** in the panel.
 
@@ -868,39 +869,70 @@ visible tool call in the transcript, and the Skills panel shows the body.
 
 ## Names that must not be rebranded
 
-The app was renamed from **anyapp** to **Pi Taster**. Three strings kept the old
-name deliberately, and each one is a correctness trap rather than an oversight.
-Renaming any of them breaks quietly, on users' machines, in a way no test here
-would catch.
+The app has been renamed **twice**: **anyapp** to **Pi Taster**, then Pi Taster to
+**Key Lime Pi**. Some strings kept an older name deliberately, and each one is a
+correctness trap rather than an oversight. Renaming any of them breaks quietly, on
+users' machines, in a way no test here would catch.
+
+The rule that generates this list: **a string this app has ever written onto a user's
+disk is an identifier, not a word.** Renaming one silently breaks the code that reads
+it back. Before renaming any literal, ask whether it is persisted anywhere.
 
 - **`SUPERSEDED_SEEDS` bodies** (`packages/shared/src/skills/superseded-seeds.ts`).
   Byte-exact copies of skill text already shipped, compared with
   `parseSkillBody(onDisk) !== seed.body`. They are equality keys against files on
-  users' disks, not documentation. Change one character and the check answers "the
-  user edited this" for a file nobody touched, and the defective seed it exists to
-  repair is kept forever. The list is append-only; new content goes in `docs/skills/`.
+  users' disks, not documentation, and they now span both earlier names. Change one
+  character and the check answers "the user edited this" for a file nobody touched,
+  and the defective seed it exists to repair is kept forever. The list is append-only;
+  new content goes in `docs/skills/`.
 - **`customType: 'anyapp-compaction-notice'`** (`agent/session.ts`). Written into Pi's
   session transcripts on disk. Renaming orphans every notice in a conversation the
   user can still open.
-- **`LEGACY_TRUNCATION_MARKER`** (`agent/context-trim.ts`). The trimmer writes its
+- **`LEGACY_TRUNCATION_MARKERS`** (`agent/context-trim.ts`). The trimmer writes its
   marker into Pi's *stored* messages, and reads it back to stay idempotent. A
-  conversation sealed before the rename carries the old prefix when it is restored,
-  so the check must keep recognising it or the next seal re-truncates an already
-  truncated result.
+  conversation sealed under an earlier name carries that era's prefix when it is
+  restored, so the check must keep recognising every one of them or the next seal
+  re-truncates an already truncated result. The array holds `'…[Pi Taster truncated'`
+  and `'…[anyapp truncated'` and **grows by one entry per rename, never shrinking**.
 
-Two more carry the old name for a reason that is not "do not touch":
+`SUPERSEDED_MARKER`, beside it, deliberately has *no* legacy list: its idempotence is
+exact equality against a freshly computed marker rather than a prefix test, so a stored
+marker under an old name is rewritten once and then matches. The cost is one
+prefix-cache invalidation on a resumed conversation's first seal, which converges —
+against a permanent list of dead names to carry.
 
-- **`HOUSEKEEPING_FILES`** (`hooks/useSessionChanges.ts`) lists *both*
-  `.pitaster-meta.json` and `.anyapp-meta.json`. The strip diffs a commit range, so a
-  session whose baseline predates the rebrand still sees the old path.
-- **`migrate-workspace.ts`** names `.anyapp` and `.anyapp-meta.json` because migrating
-  from them is its entire job.
+Two more carry an old name for a reason that is not "do not touch":
 
-Everything else — the `@pitaster/*` scope, `~/.pitaster`, `__piTasterInspector`,
-`pitaster:element-selected`, the Monaco and dockview theme ids — was renamed, and the
+- **`HOUSEKEEPING_FILES`** (`hooks/useSessionChanges.ts`) lists **all three** metadata
+  names — `.keylimepi-meta.json`, `.pitaster-meta.json` and `.anyapp-meta.json`. The
+  strip diffs a commit range, so a session whose baseline predates either rebrand still
+  sees the old path.
+- **`migrate-workspace.ts`** names `.pitaster`, `.anyapp` and both their metadata files
+  because migrating from them is its entire job. `LEGACY_WORKSPACE_DIRS` and
+  `LEGACY_META_FILES` are **ordered newest first**, and that order is load-bearing:
+  `moveMissingEntries` fills gaps and never overwrites, so on a machine carrying two
+  legacy roots whichever is merged first wins every collision. Oldest-first would
+  silently restore an abandoned `~/.anyapp` over the `~/.pitaster` workspace the user
+  has actually been using. There is a test that fails if the array is reversed.
+
+Everything else — the `@keylimepi/*` scope, `~/.keylimepi`, `__keyLimePiInspector`,
+`keylimepi:element-selected`, the Monaco and dockview theme ids — was renamed, and the
 pairs were renamed together. The inspector global and the postMessage channel each
 have a sender and a receiver that must always match.
 
+**Two lessons from the Pi Taster rename, both of which cost real breakage:**
+
+- **Substitute narrowest-first and grep the result.** That rename ran the display name
+  over the codebase in one pass and produced `email: 'agent@Pi Taster.local'` in
+  `apps/manager.ts` — an address with a space in the domain — plus test fixtures naming
+  a directory `/Users/someone/.Pi Taster/apps`. Do the slug and scope passes first, the
+  display name last, then grep for the display name appearing inside a path, email or
+  scope.
+- **A seed edited without an entry in `SUPERSEDED_SEEDS` reaches nobody.** That rename
+  changed `docs/skills/create-skill/SKILL.md` and appended nothing, so `seedSkills` —
+  which never overwrites — left every existing install telling the agent to avoid
+  `~/.anyapp/skills`, flagged Outdated forever with no way to converge. Both bodies are
+  now in the list, and `seed.test.ts` asserts a rename cannot strand a third one.
 
 ## Conventions
 
@@ -947,7 +979,7 @@ bypasses the permission mode.
 
 **The root itself is validated, not just the paths measured against it.** Every check
 above asks whether a path is inside `SubApp.path` — so that value is the one input the
-whole boundary rests on, and it is built by joining an app id onto `~/.pitaster/apps`. The
+whole boundary rests on, and it is built by joining an app id onto `~/.keylimepi/apps`. The
 id arrives from the renderer on nearly every channel there is — around forty of them since
 Session 28 — and `join` resolves `../../../tmp` without complaint. `isValidAppId` and
 `AppManager.appDir` (`packages/shared/src/apps/manager.ts`) are therefore part of the
@@ -989,8 +1021,8 @@ tokenizer never looked inside quotes, so `cat "/etc/passwd"` had been passing th
 for as long as the scan existed.
 
 **Pi's context-file discovery is confined.** Pi looks for `AGENTS.md` and `CLAUDE.md` by
-walking *up* from `cwd` and also reads `agentDir`. Sub-apps live under `~/.pitaster/apps/`,
-so without `agentsFilesOverride` a file at `~/.pitaster/AGENTS.md` or `~/AGENTS.md` entered
+walking *up* from `cwd` and also reads `agentDir`. Sub-apps live under `~/.keylimepi/apps/`,
+so without `agentsFilesOverride` a file at `~/.keylimepi/AGENTS.md` or `~/AGENTS.md` entered
 every session's prompt: unbounded text against a 32k window, invisible in the UI, and
 describing a different project. `agent/context-files.ts` filters that list through
 `isWithinRoot`. A sub-app's own `AGENTS.md` still works; only the ancestry is dropped.
@@ -1051,7 +1083,7 @@ the gate refuse it, so treating it more strictly would restore the original bug.
 **MCP source tools are the exception to `acceptEdits`**: they always prompt
 outside `bypassPermissions`, and `plan` denies them outright. Path confinement
 cannot reach inside a separate server process, so approval is their only
-boundary — and a tool Pi Taster cannot inspect cannot be called read-only.
+boundary — and a tool Key Lime Pi cannot inspect cannot be called read-only.
 
 **`install_deps` is the other**, for the same reason `bash` is. Its command is
 fixed (`bun install`), which looks safe but is not: `bun` runs the project's own
@@ -1073,7 +1105,7 @@ the first `git_status` after an `install_deps` answers with every path under
 `node_modules/` — hundreds of kilobytes, more than the whole window.
 
 Chat history is Pi's own tree-structured JSONL transcript, stored under
-`~/.pitaster/pi/sessions/`, adapted to the app's types by
+`~/.keylimepi/pi/sessions/`, adapted to the app's types by
 `packages/shared/src/chat/manager.ts`.
 
 ## Where things live
@@ -1084,15 +1116,15 @@ Chat history is Pi's own tree-structured JSONL transcript, stored under
 | `.claude/skills/` | On-demand workflows (`/session-plan`, `/session-notes`, `run-app`) and reference material. |
 | `.claude/agents/` | Read-only review subagents for Electron security and the agent tool surface. |
 | `docs/plans/` | One document per implementation session, plus notes. See `docs/plans/README.md`. |
-| `docs/skills/` | **Pi Taster's own runtime skills** — app content, not Claude Code skills. See below. |
+| `docs/skills/` | **Key Lime Pi's own runtime skills** — app content, not Claude Code skills. See below. |
 
 `docs/skills/*/SKILL.md` are the editable source for the skills the *running app*
-seeds into `~/.pitaster/skills`. They are application domain content. Do not move or
+seeds into `~/.keylimepi/skills`. They are application domain content. Do not move or
 edit them when the task is about configuring Claude Code — that lives in `.claude/`.
 
 ## Config location
 
-User data is stored at `~/.pitaster/` — sub-apps, skills, sources, chat history.
+User data is stored at `~/.keylimepi/` — sub-apps, skills, sources, chat history.
 
 Four files there are **shell state, not app state**, and each is outside an app's
 directory for the same reason: an app's directory is a git repo that every agent write

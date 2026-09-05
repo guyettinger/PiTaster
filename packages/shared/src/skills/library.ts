@@ -6,7 +6,7 @@
  * turned off, and which of the workspace's copies are still worth showing the user.
  */
 
-import type { Skill, SkillLibrary } from '@pitaster/core'
+import type { Skill, SkillLibrary } from '@keylimepi/core'
 import { SkillsLoader } from './loader.js'
 import { isSupersededSeed } from './superseded-seeds.js'
 
@@ -16,7 +16,7 @@ import { isSupersededSeed } from './superseded-seeds.js'
 export interface BuildSkillLibraryParams {
   /** The open app's `skills/` directory, or null when no app is open. */
   appSkillsDir: string | null
-  /** The workspace skills directory, normally `~/.pitaster/skills`. */
+  /** The workspace skills directory, normally `~/.keylimepi/skills`. */
   workspaceSkillsDir: string
   /** Names the app has turned off. */
   disabledSkills?: string[]

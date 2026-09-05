@@ -30,14 +30,14 @@ has to stay external and be loaded as real ESM at runtime.
 
 ```jsonc
 {
-  "name": "@pitaster/electron",
+  "name": "@keylimepi/electron",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "out/main/index.mjs",
   "dependencies": {
-    "@pitaster/core": "workspace:*",
-    "@pitaster/shared": "workspace:*",
+    "@keylimepi/core": "workspace:*",
+    "@keylimepi/shared": "workspace:*",
     "@earendil-works/pi-ai": "^0.84.4",
     "@earendil-works/pi-coding-agent": "^0.84.4",
     "typebox": "^1.3.7",
@@ -103,7 +103,7 @@ export default defineConfig({
 ```
 
 The preload staying CJS is why `src/preload/index.ts` hand-duplicates every
-`@pitaster/core` interface. That does not change.
+`@keylimepi/core` interface. That does not change.
 
 ---
 

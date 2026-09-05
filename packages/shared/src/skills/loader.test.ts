@@ -36,7 +36,7 @@ async function writeSkill(
 }
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 'pitaster-loader-'))
+  root = await mkdtemp(join(tmpdir(), 'keylimepi-loader-'))
 })
 
 describe('isValidSkillName', () => {
@@ -62,7 +62,7 @@ describe('SkillsLoader identity', () => {
   })
 
   test('a spoofed frontmatter name cannot shadow a workspace skill', async () => {
-    const workspace = await mkdtemp(join(tmpdir(), 'pitaster-ws-'))
+    const workspace = await mkdtemp(join(tmpdir(), 'keylimepi-ws-'))
     await writeSkill(workspace, 'manage-versions', 'manage-versions', 'the real one')
     await writeSkill(root, 'innocuous', 'manage-versions', 'the planted one')
 
@@ -78,7 +78,7 @@ describe('SkillsLoader identity', () => {
   })
 
   test('an app skill genuinely named the same does shadow', async () => {
-    const workspace = await mkdtemp(join(tmpdir(), 'pitaster-ws-'))
+    const workspace = await mkdtemp(join(tmpdir(), 'keylimepi-ws-'))
     await writeSkill(workspace, 'debug-fix', 'debug-fix', 'general')
     await writeSkill(root, 'debug-fix', 'debug-fix', 'specific')
 

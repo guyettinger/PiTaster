@@ -110,7 +110,7 @@ await run_command({ command: 'sudo apt install' })  // -> Error: Command blocked
 
 ## Notes
 
-- All file operations are sandboxed to `~/.pitaster/apps/<app-id>/`
+- All file operations are sandboxed to `~/.keylimepi/apps/<app-id>/`
 - Git operations use isomorphic-git directly in scoped tools
 - Each scoped tool has its own handler function (not a switch statement)
 - VersionManager is instantiated per createScopedTools call for the active app

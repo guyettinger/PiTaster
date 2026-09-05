@@ -17,8 +17,8 @@
  * become a path.
  */
 
-import { isValidAppId } from '@pitaster/shared'
-import type { SubApp, PermissionMode, ContextReport } from '@pitaster/core'
+import { isValidAppId } from '@keylimepi/shared'
+import type { SubApp, PermissionMode, ContextReport } from '@keylimepi/core'
 import type { AgentHost } from './agent/session'
 import type { Telemetry } from './agent/telemetry'
 

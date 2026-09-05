@@ -1,19 +1,24 @@
 /**
- * One-time migration of the workspace directory from the anyapp name to Pi Taster.
+ * Migration of the workspace directory across every name this app has had.
  *
  * The workspace holds everything the user owns that is not in this repository —
  * their sub-apps and the git history inside each one, their chat transcripts, their
- * skills, their config. The rebrand moves it from `~/.anyapp` to `~/.pitaster`, so
- * this runs before anything reads those paths and is the only thing standing between
- * an existing install and an app that opens empty.
+ * skills, their config. It has been renamed twice: `~/.anyapp` to `~/.pitaster` for the
+ * Pi Taster rebrand, then `~/.pitaster` to `~/.keylimepi` for Key Lime Pi. This runs
+ * before anything reads those paths and is the only thing standing between an existing
+ * install and an app that opens empty.
+ *
+ * **It is a chain, not a hop.** An install that never launched Pi Taster is still on
+ * `~/.anyapp` and must reach `~/.keylimepi` in one launch, so every prior name is tried,
+ * and {@link LEGACY_WORKSPACE_DIRS} grows by one entry per rename and never shrinks.
  *
  * Five steps, in order:
  *
  * 1. **The directory.** A single `rename`, not a copy — it is one inode move within
  *    the home directory, so there is no window in which the data exists twice or half.
- * 2. **The per-app metadata file.** `.anyapp-meta.json` is *tracked* in each sub-app's
- *    git repo, so renaming it on disk alone would leave every app permanently dirty.
- *    The rename is committed in the same pass.
+ * 2. **The per-app metadata file.** `.anyapp-meta.json`, then `.pitaster-meta.json`, is
+ *    *tracked* in each sub-app's git repo, so renaming it on disk alone would leave
+ *    every app permanently dirty. The rename is committed in the same pass.
  * 3. **The chat transcripts.** Renaming the workspace directory is not enough to carry
  *    a conversation across, because Pi keys a session directory on the *absolute path*
  *    of the app it belongs to and records that path again inside every transcript. See
@@ -38,19 +43,27 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import * as git from 'isomorphic-git'
 import fs from 'node:fs'
-import { COMMIT_AUTHOR, DEFAULT_GITIGNORE, getAppSessionDir } from '@pitaster/shared'
-
-/** The workspace directory's name before the Pi Taster rebrand. */
-export const LEGACY_WORKSPACE_DIR = '.anyapp'
+import { COMMIT_AUTHOR, DEFAULT_GITIGNORE, getAppSessionDir } from '@keylimepi/shared'
 
 /** The workspace directory's name now. */
-export const WORKSPACE_DIR = '.pitaster'
+export const WORKSPACE_DIR = '.keylimepi'
 
-/** The per-app metadata file's name before the rebrand. */
-export const LEGACY_META_FILE = '.anyapp-meta.json'
+/**
+ * Every earlier name of the workspace directory, **newest first**.
+ *
+ * The order is load-bearing rather than cosmetic. {@link moveMissingEntries} fills gaps
+ * and never overwrites, so on the rare machine carrying two legacy roots the one merged
+ * *first* wins every collision. Newest-first therefore keeps the user's most recent
+ * data; oldest-first would silently restore an abandoned `~/.anyapp` copy over the
+ * `~/.pitaster` workspace they have actually been using.
+ */
+export const LEGACY_WORKSPACE_DIRS = ['.pitaster', '.anyapp']
 
 /** The per-app metadata file's name now. */
-export const META_FILE = '.pitaster-meta.json'
+export const META_FILE = '.keylimepi-meta.json'
+
+/** Every earlier name of the per-app metadata file, newest first, for the same reason. */
+export const LEGACY_META_FILES = ['.pitaster-meta.json', '.anyapp-meta.json']
 
 /** Filename holding a sub-app's active-session pointer. Mirrors `ChatHistoryManager`. */
 const ACTIVE_SESSION_FILE = '.chat-sessions.json'
@@ -59,9 +72,12 @@ const ACTIVE_SESSION_FILE = '.chat-sessions.json'
  * Parameters for {@link migrateWorkspace}.
  */
 export interface MigrateWorkspaceParams {
-  /** The pre-rebrand workspace root. Defaults to `~/.anyapp`. */
-  legacyRoot?: string
-  /** The current workspace root. Defaults to `~/.pitaster`. */
+  /**
+   * The pre-rebrand workspace roots, newest first. Defaults to {@link
+   * LEGACY_WORKSPACE_DIRS} resolved against the home directory.
+   */
+  legacyRoots?: string[]
+  /** The current workspace root. Defaults to `~/.keylimepi`. */
   root?: string
 }
 
@@ -108,18 +124,31 @@ async function exists(path: string): Promise<boolean> {
  * not a reason to leave the file under its old name. The rename still happens; only
  * the commit is skipped.
  *
+ * Every earlier name is tried, newest first, so an app that never passed through the
+ * Pi Taster release still arrives at the current name in one launch.
+ *
  * @param appPath - Absolute path to the sub-app root
  * @returns Whether the metadata file was renamed
  */
 async function migrateAppMeta(appPath: string): Promise<boolean> {
-  const legacyMeta = join(appPath, LEGACY_META_FILE)
   const meta = join(appPath, META_FILE)
 
-  // Already migrated, or never an app directory at all.
-  if (!(await exists(legacyMeta))) return false
+  // Already migrated. Checked before the legacy names so a directory carrying both is
+  // left alone rather than having the current file overwritten by an older one.
   if (await exists(meta)) return false
 
-  await rename(legacyMeta, meta)
+  let legacyName: string | undefined
+  for (const candidate of LEGACY_META_FILES) {
+    if (await exists(join(appPath, candidate))) {
+      legacyName = candidate
+      break
+    }
+  }
+
+  // Never an app directory at all.
+  if (legacyName === undefined) return false
+
+  await rename(join(appPath, legacyName), meta)
 
   // An app directory with no repository is a legitimate state — a scaffold that
   // failed part-way, or a directory the user made by hand. The rename above is the
@@ -127,12 +156,12 @@ async function migrateAppMeta(appPath: string): Promise<boolean> {
   if (!(await exists(join(appPath, '.git')))) return true
 
   try {
-    await git.remove({ fs, dir: appPath, filepath: LEGACY_META_FILE })
+    await git.remove({ fs, dir: appPath, filepath: legacyName })
     await git.add({ fs, dir: appPath, filepath: META_FILE })
     await git.commit({
       fs,
       dir: appPath,
-      message: 'chore: rename metadata file for the Pi Taster rebrand',
+      message: 'chore: rename metadata file for the Key Lime Pi rebrand',
       author: COMMIT_AUTHOR
     })
   } catch (error) {
@@ -152,7 +181,7 @@ async function migrateAppMeta(appPath: string): Promise<boolean> {
  * invisible even after it has been moved to the right directory.
  *
  * The filter is only skipped when the session directory is Pi's *own* default for that
- * cwd, and Pi Taster always passes `~/.pitaster/pi` where Pi would use `~/.pi/agent`.
+ * cwd, and Key Lime Pi always passes `~/.keylimepi/pi` where Pi would use `~/.pi/agent`.
  * So the filter is always on here, and rewriting the header is not optional.
  *
  * Only the `cwd` is touched, and only when it is exactly the path this app used to live
@@ -230,8 +259,8 @@ async function moveTranscript(params: {
  *
  * This is the step that decides whether a migrated install opens with its chat history
  * or without it. Pi names a session directory after the absolute path of the app the
- * conversation belongs to — `~/.pitaster/pi/sessions/--Users-you-.anyapp-apps-x--` — so
- * moving `~/.anyapp` to `~/.pitaster` renamed the *app*, changed the slug Pi Taster
+ * conversation belongs to — `~/.keylimepi/pi/sessions/--Users-you-.anyapp-apps-x--` — so
+ * renaming the workspace directory renamed the *app*, changed the slug Key Lime Pi
  * computes from it, and left every existing transcript filed under the old one. The app
  * then finds no sessions for the app and `apps:set-active` creates an empty one, which
  * is why the symptom reads as "my chats are gone" rather than as an error.
@@ -247,63 +276,65 @@ async function moveTranscript(params: {
  * filename embeds a uuid so a collision is not expected, but where one occurs the file
  * already in the live directory is the one being used.
  *
+ * Each earlier app path is drained in turn, newest first, because the agent directory
+ * can hold a session directory slugged from *every* name the workspace has had —
+ * `--…-.anyapp-apps-x--` and `--…-.pitaster-apps-x--` both, on an install that skipped a
+ * release. Newest first matches {@link LEGACY_WORKSPACE_DIRS}: on the collision a uuid
+ * makes unlikely, the more recent transcript is the one kept.
+ *
  * @param params - The agent directory and the app's old and new paths
  * @returns How many transcripts were moved
  */
 async function migrateAppSessions(params: {
-  /** The Pi agent directory, for example `~/.pitaster/pi`. */
+  /** The Pi agent directory, for example `~/.keylimepi/pi`. */
   agentDir: string
-  /** Where the app used to live, before the workspace was renamed. */
-  legacyAppPath: string
+  /** Where the app used to live under each earlier workspace name, newest first. */
+  legacyAppPaths: string[]
   /** Where the app lives now. */
   appPath: string
 }): Promise<number> {
-  const from = getAppSessionDir({
-    agentDir: params.agentDir,
-    appPath: params.legacyAppPath
-  })
   const to = getAppSessionDir({ agentDir: params.agentDir, appPath: params.appPath })
 
-  // Nothing orphaned for this app — the ordinary case on every launch after the first.
-  if (from === to) return 0
-
-  let entries: string[]
-  try {
-    entries = await readdir(from)
-  } catch {
-    return 0
-  }
-
-  await mkdir(to, { recursive: true })
-
   let moved = 0
-  for (const name of entries) {
-    if (!name.endsWith('.jsonl')) continue
+  for (const legacyAppPath of params.legacyAppPaths) {
+    const from = getAppSessionDir({ agentDir: params.agentDir, appPath: legacyAppPath })
 
-    const source = join(from, name)
-    const target = join(to, name)
-    if (await exists(target)) continue
+    // Nothing orphaned under this name — the ordinary case on every launch after the
+    // first, and always true of the name the app already lives at.
+    if (from === to) continue
 
+    let entries: string[]
     try {
-      await moveTranscript({
-        source,
-        target,
-        legacyAppPath: params.legacyAppPath,
-        appPath: params.appPath
-      })
-      moved += 1
-    } catch (error) {
-      console.error(`Could not migrate the transcript ${source}:`, error)
+      entries = await readdir(from)
+    } catch {
+      continue
     }
-  }
 
-  // Only succeeds once everything moved, which is exactly when it should. Anything left
-  // behind — a file that failed, a name the destination already had — keeps the
-  // directory as the record of it.
-  try {
-    await rmdir(from)
-  } catch {
-    // Intended outcome, not a failure.
+    await mkdir(to, { recursive: true })
+
+    for (const name of entries) {
+      if (!name.endsWith('.jsonl')) continue
+
+      const source = join(from, name)
+      const target = join(to, name)
+      if (await exists(target)) continue
+
+      try {
+        await moveTranscript({ source, target, legacyAppPath, appPath: params.appPath })
+        moved += 1
+      } catch (error) {
+        console.error(`Could not migrate the transcript ${source}:`, error)
+      }
+    }
+
+    // Only succeeds once everything moved, which is exactly when it should. Anything
+    // left behind — a file that failed, a name the destination already had — keeps the
+    // directory as the record of it.
+    try {
+      await rmdir(from)
+    } catch {
+      // Intended outcome, not a failure.
+    }
   }
 
   return moved
@@ -358,7 +389,7 @@ async function backfillGitignore(appPath: string): Promise<boolean> {
 /**
  * Clears an active-session pointer that names a session the app does not have.
  *
- * `.chat-sessions.json` is the one piece of chat state Pi Taster owns rather than Pi,
+ * `.chat-sessions.json` is the one piece of chat state Key Lime Pi owns rather than Pi,
  * and nothing writing it has ever checked that the session belongs to the app being
  * written — `sessions:set-active` validated the id's shape and then trusted it. A click
  * on a session row that lands while the active app is changing therefore files one
@@ -381,7 +412,7 @@ async function backfillGitignore(appPath: string): Promise<boolean> {
  * @returns Whether the pointer was cleared
  */
 async function repairSessionPointer(params: {
-  /** The Pi agent directory, for example `~/.pitaster/pi`. */
+  /** The Pi agent directory, for example `~/.keylimepi/pi`. */
   agentDir: string
   /** Absolute path to the sub-app root. */
   appPath: string
@@ -437,7 +468,7 @@ async function repairSessionPointer(params: {
  * using can never be clobbered by a stale copy of itself.
  *
  * This exists because "the destination already exists" turned out to be a much weaker
- * signal than "the migration already ran". An empty `~/.pitaster/apps` is enough to
+ * signal than "the migration already ran". An empty `~/.keylimepi/apps` is enough to
  * create the directory, and a refusal keyed on mere existence would then strand the
  * user's real workspace next door, permanently and silently — the app would open with
  * no apps, no history and no settings, and every later launch would repeat the
@@ -479,7 +510,7 @@ async function moveMissingEntries(from: string, to: string): Promise<void> {
  * Safe to call on every launch: once the legacy root is gone there is nothing to do,
  * and on a fresh install it never existed. Where the destination is absent this is a
  * single `rename`; where it exists, {@link moveMissingEntries} fills it in without
- * overwriting anything, so an empty or half-populated `~/.pitaster` cannot strand the
+ * overwriting anything, so an empty or half-populated `~/.keylimepi` cannot strand the
  * user's real data.
  *
  * @param params - Roots to migrate between; both default to the real home directory
@@ -488,7 +519,8 @@ async function moveMissingEntries(from: string, to: string): Promise<void> {
 export async function migrateWorkspace(
   params: MigrateWorkspaceParams = {}
 ): Promise<MigrateWorkspaceResult> {
-  const legacyRoot = params.legacyRoot ?? join(homedir(), LEGACY_WORKSPACE_DIR)
+  const legacyRoots =
+    params.legacyRoots ?? LEGACY_WORKSPACE_DIRS.map((name) => join(homedir(), name))
   const root = params.root ?? join(homedir(), WORKSPACE_DIR)
 
   const result: MigrateWorkspaceResult = {
@@ -499,7 +531,12 @@ export async function migrateWorkspace(
     repairedPointers: []
   }
 
-  if (await exists(legacyRoot)) {
+  // Newest first. `moveMissingEntries` never overwrites, so on a machine carrying two
+  // legacy roots whichever is merged first wins every collision — and that must be the
+  // more recent one.
+  for (const legacyRoot of legacyRoots) {
+    if (!(await exists(legacyRoot))) continue
+
     if (await exists(root)) {
       await moveMissingEntries(legacyRoot, root)
     } else {
@@ -528,8 +565,14 @@ export async function migrateWorkspace(
     // `AppManager` reads. Everything below writes into the app — a `.gitignore`, a
     // commit, a pointer — so a stray directory the user happens to keep here must be
     // left alone rather than quietly turned into something that looks like an app.
-    const isApp =
-      (await exists(join(appPath, META_FILE))) || (await exists(join(appPath, LEGACY_META_FILE)))
+    const metaNames = [META_FILE, ...LEGACY_META_FILES]
+    let isApp = false
+    for (const name of metaNames) {
+      if (await exists(join(appPath, name))) {
+        isApp = true
+        break
+      }
+    }
 
     try {
       if (await migrateAppMeta(appPath)) result.migratedApps.push(id)
@@ -545,7 +588,7 @@ export async function migrateWorkspace(
     try {
       const moved = await migrateAppSessions({
         agentDir,
-        legacyAppPath: join(legacyRoot, 'apps', id),
+        legacyAppPaths: legacyRoots.map((legacyRoot) => join(legacyRoot, 'apps', id)),
         appPath
       })
       if (moved > 0) {

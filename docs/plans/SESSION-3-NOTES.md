@@ -23,7 +23,7 @@ Added explicit type annotations in several places where TypeScript couldn't infe
 
 ### Package Build Order
 
-The monorepo requires packages to be built in order (`@pitaster/core` → `@pitaster/shared` → `@pitaster/electron`) because:
+The monorepo requires packages to be built in order (`@keylimepi/core` → `@keylimepi/shared` → `@keylimepi/electron`) because:
 - Packages reference `dist/` directories in their `main` and `types` fields
 - TypeScript needs the compiled `.d.ts` files for cross-package imports
 

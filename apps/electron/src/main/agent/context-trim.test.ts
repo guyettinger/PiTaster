@@ -378,17 +378,25 @@ describe('createContextSealer', () => {
       createContextSealer(budget(100)).seal(conversation)
 
       const text = textOf(conversation[2])
-      expect(text).toContain('…[Pi Taster truncated')
+      expect(text).toContain('…[Key Lime Pi truncated')
       expect(text).toContain('more lines')
       expect(text.length).toBeLessThan(1000)
     })
 
-    test('recognises a result truncated under the pre-rebrand marker', () => {
+    test.each([
+      ['anyapp', '…[anyapp truncated'],
+      ['Pi Taster', '…[Pi Taster truncated']
+    ])('recognises a result truncated under the %s marker', (_era, marker) => {
       // The marker is written into Pi's *stored* messages, so a conversation sealed
-      // before the app was renamed carries the old prefix when it is restored from
-      // disk. If that were not recognised, this seal would truncate an already
-      // truncated result and report a wrong count of dropped lines.
-      const alreadyShort = `${'line\n'.repeat(3)}…[anyapp truncated 1997 more lines to fit the context window.]`
+      // under an earlier name carries that era's prefix when it is restored from
+      // disk. If one were not recognised, this seal would truncate an already
+      // truncated result and report a wrong count of dropped lines. The app has been
+      // renamed twice, so there are two such prefixes and the list only ever grows.
+      // Deliberately *over* the cap. `truncateResult` returns early on a body that
+      // already fits, so a small fixture passes whether or not the marker is
+      // recognised — which is exactly how the original version of this test stayed
+      // green while asserting nothing.
+      const alreadyShort = `${'line\n'.repeat(500)}${marker} 1997 more lines to fit the context window.]`
       const conversation: AgentMessage[] = [
         user('one'),
         call('a', 'read', { path: '/x' }),
@@ -444,13 +452,13 @@ describe('createContextSealer', () => {
 
       createContextSealer(budget(100)).seal(conversation)
 
-      const body = textOf(conversation[2]).split('\n\n…[Pi Taster truncated')[0]
+      const body = textOf(conversation[2]).split('\n\n…[Key Lime Pi truncated')[0]
       expect(body.split('\n').every((line) => line === 'aaaaaaaaaa')).toBe(true)
     })
 
     test('does not treat a file quoting the marker as already truncated', () => {
       const quoting =
-        `${'line\n'.repeat(2000)}…[Pi Taster truncated something] in the middle\n` +
+        `${'line\n'.repeat(2000)}…[Key Lime Pi truncated something] in the middle\n` +
         'line\n'.repeat(2000)
       const conversation: AgentMessage[] = [
         user('one'),

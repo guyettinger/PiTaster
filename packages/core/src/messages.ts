@@ -1,5 +1,5 @@
 /**
- * Message-related type definitions for Pi Taster.
+ * Message-related type definitions for Key Lime Pi.
  */
 
 import type { ToolResult } from './agent.js'

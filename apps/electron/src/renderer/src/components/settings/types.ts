@@ -38,7 +38,7 @@ export interface OllamaModel {
   parameterSize?: string
   /** Context window the model's metadata advertises: its architectural maximum. */
   contextWindow: number
-  /** The window Pi Taster actually configures, probed from the daemon when it can be. */
+  /** The window Key Lime Pi actually configures, probed from the daemon when it can be. */
   effectiveContextWindow: number
   /** Where the effective window came from. */
   contextWindowSource: 'user' | 'daemon' | 'fallback'

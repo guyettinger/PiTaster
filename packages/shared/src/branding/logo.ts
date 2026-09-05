@@ -1,5 +1,5 @@
 /**
- * The Pi Taster mark.
+ * The Key Lime Pi mark.
  *
  * A slice of key lime pie shaped like π under a dollop of whipped cream, seen
  * isometrically. The app is a place to taste Pi on local models, and the mark is

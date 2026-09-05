@@ -2,7 +2,7 @@ import { app, BrowserWindow, nativeImage } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import sharp from 'sharp'
-import { dockIconSvg } from '@pitaster/shared'
+import { dockIconSvg } from '@keylimepi/shared'
 import {
   setupIpcHandlers,
   cleanupIpcHandlers,
@@ -153,7 +153,7 @@ function createWindow(): void {
 }
 
 /**
- * Rasterises the Pi Taster mark and installs it as the macOS dock icon.
+ * Rasterises the Key Lime Pi mark and installs it as the macOS dock icon.
  *
  * There is no packaging config and no `resources/` directory in this repo, so
  * the icon is rendered from the shared SVG at startup rather than read from
@@ -177,12 +177,12 @@ async function setDockIcon(): Promise<void> {
 }
 
 // Handle app lifecycle
-app.setName('Pi Taster')
+app.setName('Key Lime Pi')
 
 app.whenReady().then(async () => {
   // Move the workspace to its post-rebrand home before anything reads it. Every
   // path constant below — config, skills, apps, chat transcripts — is built from
-  // `~/.pitaster`, so an install that predates the rename would otherwise open with
+  // `~/.keylimepi`, so an install that predates the rename would otherwise open with
   // no apps, no history and no settings while its data sat intact next door. Await
   // it: this is the one startup step everything else depends on.
   //

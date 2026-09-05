@@ -139,9 +139,9 @@ import { nanoid } from 'nanoid'
 // 3. Local components
 import { MessageBubble } from './MessageBubble'
 
-// 4. Types — IPC types from ../types/electron, domain types from @pitaster/core
+// 4. Types — IPC types from ../types/electron, domain types from @keylimepi/core
 import type { PermissionMode, StreamChunk } from '../types/electron'
-import type { SerializedContentBlock } from '@pitaster/core'
+import type { SerializedContentBlock } from '@keylimepi/core'
 ```
 
 ## Electron IPC Integration

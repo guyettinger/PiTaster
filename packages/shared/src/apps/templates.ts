@@ -1,4 +1,4 @@
-import type { AppTemplate, AppTemplateConfig } from '@pitaster/core'
+import type { AppTemplate, AppTemplateConfig } from '@keylimepi/core'
 
 /**
  * The `.gitignore` every new sub-app is seeded with.
@@ -11,7 +11,7 @@ import type { AppTemplate, AppTemplateConfig } from '@pitaster/core'
  * skipped by `statusMatrix`, which is what keeps the result small.
  *
  * `.chat-history/` is the pre-Pi transcript store. Nothing writes it any more, but an
- * app scaffolded before Pi Taster adopted Pi's own sessions still has one on disk, and
+ * app scaffolded before Key Lime Pi adopted Pi's own sessions still has one on disk, and
  * an entry that only ever matches a legacy directory is far cheaper than the alternative
  * — the backfill in `migrate-workspace.ts` writes *this* file into apps that were
  * scaffolded before there was a default at all, so anything it must cover belongs here
@@ -39,7 +39,7 @@ yarn-debug.log*
 .env.local
 .env.*.local
 
-# Pi Taster runtime state
+# Key Lime Pi runtime state
 .chat-sessions.json
 .chat-history/
 

@@ -9,7 +9,7 @@ interface LogoProps {
 }
 
 /**
- * The Pi Taster mark: a slice of key lime pie shaped like π under a dollop of
+ * The Key Lime Pi mark: a slice of key lime pie shaped like π under a dollop of
  * whipped cream, seen isometrically.
  *
  * The π is a slab extruded back and to the right at the 2:1 slope, two blocks
@@ -120,7 +120,7 @@ interface LogoProps {
  * back into a letter. On top of the bar is a different place, and it is where a
  * dollop would actually be.
  *
- * The dock icon is built separately by `dockIconSvg()` in `@pitaster/shared`,
+ * The dock icon is built separately by `dockIconSvg()` in `@keylimepi/shared`,
  * which adds the macOS app tile and scales this same geometry. Keep the two in
  * step — they are one drawing at two scales.
  */
@@ -133,7 +133,7 @@ export function Logo({ size = 22, className }: LogoProps) {
       fill="none"
       className={className}
       role="img"
-      aria-label="Pi Taster"
+      aria-label="Key Lime Pi"
     >
       {/* The top face, far depth row: crust — the pie's rim. */}
       <path d="M3.84 8.53L20.16 8.53L22.2 7.51L5.88 7.51Z" fill="var(--color-brass)" />

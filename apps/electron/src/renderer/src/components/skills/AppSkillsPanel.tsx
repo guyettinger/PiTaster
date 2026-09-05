@@ -5,7 +5,7 @@ import { filterSkills } from './filterSkills'
 import { SkillEditor } from './SkillEditor'
 import { SkillRow } from './SkillRow'
 import { SkillSection } from './SkillSection'
-import type { Skill, SkillDraft } from '@pitaster/core'
+import type { Skill, SkillDraft } from '@keylimepi/core'
 
 /**
  * Props for the AppSkillsPanel component.
@@ -28,7 +28,7 @@ interface AppSkillsPanelProps {
  * The split shown is the one the agent actually reads. **This app's** skills
  * live in its own `skills/` directory: inside what the agent can write, committed
  * with the app, and they win a name collision. **Workspace** skills live in
- * `~/.pitaster/skills` and are offered to every app — togglable here because the
+ * `~/.keylimepi/skills` and are offered to every app — togglable here because the
  * toggle is this app's, but authored in Settings, because the body is not.
  *
  * The header states what this app pays. Every enabled skill's description rides

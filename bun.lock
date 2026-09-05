@@ -10,7 +10,7 @@
       },
     },
     "apps/electron": {
-      "name": "@pitaster/electron",
+      "name": "@keylimepi/electron",
       "version": "0.1.0",
       "dependencies": {
         "@earendil-works/pi-ai": "^0.84.4",
@@ -18,8 +18,8 @@
         "@fontsource-variable/archivo": "5.3.0",
         "@fontsource/ibm-plex-mono": "5.3.0",
         "@img/sharp-darwin-arm64": "^0.34.5",
-        "@pitaster/core": "workspace:*",
-        "@pitaster/shared": "workspace:*",
+        "@keylimepi/core": "workspace:*",
+        "@keylimepi/shared": "workspace:*",
         "ansi-to-html": "^0.7.2",
         "diff": "^9.0.0",
         "dockview-react": "^8.2.0",
@@ -53,19 +53,19 @@
       },
     },
     "packages/core": {
-      "name": "@pitaster/core",
+      "name": "@keylimepi/core",
       "version": "0.1.0",
       "devDependencies": {
         "typescript": "^5.5.0",
       },
     },
     "packages/shared": {
-      "name": "@pitaster/shared",
+      "name": "@keylimepi/shared",
       "version": "0.1.0",
       "dependencies": {
         "@earendil-works/pi-coding-agent": "^0.84.4",
+        "@keylimepi/core": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.25.0",
-        "@pitaster/core": "workspace:*",
         "isomorphic-git": "^1.27.0",
       },
       "devDependencies": {
@@ -294,6 +294,12 @@
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
+    "@keylimepi/core": ["@keylimepi/core@workspace:packages/core"],
+
+    "@keylimepi/electron": ["@keylimepi/electron@workspace:apps/electron"],
+
+    "@keylimepi/shared": ["@keylimepi/shared@workspace:packages/shared"],
+
     "@mariozechner/clipboard": ["@mariozechner/clipboard@0.3.9", "", { "optionalDependencies": { "@mariozechner/clipboard-darwin-arm64": "0.3.9", "@mariozechner/clipboard-darwin-universal": "0.3.9", "@mariozechner/clipboard-darwin-x64": "0.3.9", "@mariozechner/clipboard-linux-arm64-gnu": "0.3.9", "@mariozechner/clipboard-linux-arm64-musl": "0.3.9", "@mariozechner/clipboard-linux-riscv64-gnu": "0.3.9", "@mariozechner/clipboard-linux-x64-gnu": "0.3.9", "@mariozechner/clipboard-linux-x64-musl": "0.3.9", "@mariozechner/clipboard-win32-arm64-msvc": "0.3.9", "@mariozechner/clipboard-win32-x64-msvc": "0.3.9" } }, "sha512-ABnA53mdfkGZwOFUdZNv2S0CWGO/EIuPj8Vv9xmBFmSYg/qFc7ihO6q5FcQjvoE67kZpWkEc4AhD6B/os04yuA=="],
 
     "@mariozechner/clipboard-darwin-arm64": ["@mariozechner/clipboard-darwin-arm64@0.3.9", "", { "os": "darwin", "cpu": "arm64" }, "sha512-BfgV7vCEWZwJwZJw03r6bP5+tf0iI/ANuQYCxi9RNn7FrWB3yzGuMKCrNLRl6V761vXRdL8+OqZ0wd4TqlsNOQ=="],
@@ -317,12 +323,6 @@
     "@mariozechner/clipboard-win32-x64-msvc": ["@mariozechner/clipboard-win32-x64-msvc@0.3.9", "", { "os": "win32", "cpu": "x64" }, "sha512-ihQC3EufqEY81vhXBgVBtK4prL+wc62zJsSvxrgz7K1hsdt6OObz6v9p3Rn1OG3GJksTTKMJF0u/guMISHPhSA=="],
 
     "@modelcontextprotocol/sdk": ["@modelcontextprotocol/sdk@1.25.3", "", { "dependencies": { "@hono/node-server": "^1.19.9", "ajv": "^8.17.1", "ajv-formats": "^3.0.1", "content-type": "^1.0.5", "cors": "^2.8.5", "cross-spawn": "^7.0.5", "eventsource": "^3.0.2", "eventsource-parser": "^3.0.0", "express": "^5.0.1", "express-rate-limit": "^7.5.0", "jose": "^6.1.1", "json-schema-typed": "^8.0.2", "pkce-challenge": "^5.0.0", "raw-body": "^3.0.0", "zod": "^3.25 || ^4.0", "zod-to-json-schema": "^3.25.0" }, "peerDependencies": { "@cfworker/json-schema": "^4.1.1" }, "optionalPeers": ["@cfworker/json-schema"] }, "sha512-vsAMBMERybvYgKbg/l4L1rhS7VXV1c0CtyJg72vwxONVX0l4ZfKVAnZEWTQixJGTzKnELjQ59e4NbdFDALRiAQ=="],
-
-    "@pitaster/core": ["@pitaster/core@workspace:packages/core"],
-
-    "@pitaster/electron": ["@pitaster/electron@workspace:apps/electron"],
-
-    "@pitaster/shared": ["@pitaster/shared@workspace:packages/shared"],
 
     "@protobufjs/aspromise": ["@protobufjs/aspromise@1.1.2", "", {}, "sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ=="],
 

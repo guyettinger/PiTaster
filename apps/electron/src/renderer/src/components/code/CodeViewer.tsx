@@ -6,7 +6,7 @@
  * buffer raises a real question about what happens when both change a file in the same
  * second, and that question deserves its own design rather than a `readOnly: false`.
  *
- * Diagnostics are applied as markers from Pi Taster's own language service — the same one
+ * Diagnostics are applied as markers from Key Lime Pi's own language service — the same one
  * that appends errors to the agent's writes — so the squiggles the human sees and the
  * errors the model reads are the same facts. Monaco's own TypeScript service is not
  * registered; see `lib/monaco.ts` for why.
@@ -52,7 +52,7 @@ export function CodeViewer({ path, text, markers }: CodeViewerProps) {
     const instance = monaco.editor.create(host, {
       value: text,
       language: languageFor(path),
-      theme: 'pitaster',
+      theme: 'keylimepi',
       readOnly: true,
       // The overview ruler and minimap are for navigating a file you are editing. In a
       // viewer they are chrome that eats width the code could use.
@@ -93,7 +93,7 @@ export function CodeViewer({ path, text, markers }: CodeViewerProps) {
 
     monaco.editor.setModelMarkers(
       model,
-      'pitaster',
+      'keylimepi',
       (markers ?? []).map((marker) => ({
         startLineNumber: marker.line,
         startColumn: marker.column,

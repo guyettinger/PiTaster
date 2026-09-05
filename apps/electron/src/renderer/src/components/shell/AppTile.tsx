@@ -1,4 +1,4 @@
-import type { SubApp } from '@pitaster/core'
+import type { SubApp } from '@keylimepi/core'
 
 /**
  * A short monogram for an app, from its name.

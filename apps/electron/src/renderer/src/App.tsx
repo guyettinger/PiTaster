@@ -11,7 +11,7 @@ import { useOpenApps } from './hooks/useOpenApps'
 import { forgetActivity, useBusyAppIds } from './state/agentActivity'
 import type { Destination } from './types/navigation'
 import type { PermissionMode } from './types/electron'
-import type { SubApp } from '@pitaster/core'
+import type { SubApp } from '@keylimepi/core'
 
 /**
  * Root application component.

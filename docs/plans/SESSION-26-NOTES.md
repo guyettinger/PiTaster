@@ -55,7 +55,7 @@ whole.
 7. **Three panels** (`components/workspace/{Activity,Daemon,Changes}Panel.tsx`)
 
 8. **`agent:get-telemetry`** — handler, bridge entry, `useTelemetry` hook; the
-   record types moved to `@pitaster/core`
+   record types moved to `@keylimepi/core`
 
 ### Removed
 
@@ -123,7 +123,7 @@ tabs intact.
 - **One wording contradiction fixed.** The Daemon panel puts "the model is resident"
   directly above the window's provenance, and the `fallback` string read "the daemon
   has not loaded this model yet" — two contradictory sentences on one screen. The
-  panel's copy now describes what *Pi Taster* knows rather than what the daemon is
+  panel's copy now describes what *Key Lime Pi* knows rather than what the daemon is
   doing. **`ContextBreakdown` still carries the original wording**; it was not
   touched, and there it sits alone with nothing to contradict it.
 

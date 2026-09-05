@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, test } from 'bun:test'
-import { RECOMMENDED_SAMPLING } from '@pitaster/core'
+import { RECOMMENDED_SAMPLING } from '@keylimepi/core'
 import { describeAutoSampling, hasSampling, resolveSampling } from './sampling'
 
 describe('resolveSampling', () => {
@@ -58,7 +58,7 @@ describe('resolveSampling', () => {
   })
 
   test('recommends no top_p beside a pinned greedy temperature', () => {
-    // The combination an install carrying Pi Taster's old pinned 0 would otherwise get the
+    // The combination an install carrying Key Lime Pi's old pinned 0 would otherwise get the
     // moment this field appeared: a nucleus cutoff modifying a temperature that leaves
     // it nothing to do.
     expect(
@@ -81,7 +81,7 @@ describe('hasSampling', () => {
   })
 
   test('is true for a pinned zero', () => {
-    // The obvious falsy-check bug: 0 is a value Pi Taster deliberately sends.
+    // The obvious falsy-check bug: 0 is a value Key Lime Pi deliberately sends.
     expect(hasSampling({ temperature: 0 })).toBe(true)
   })
 

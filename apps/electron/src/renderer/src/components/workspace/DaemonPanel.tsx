@@ -90,7 +90,7 @@ export function DaemonPanel() {
         <Row label="Prefill" value={formatRate(telemetry?.prefillRate ?? null) ?? 'no sample yet'} />
         <Row label="Decode" value={formatRate(telemetry?.decodeRate ?? null) ?? 'no sample yet'} />
         <p className="mt-1.5 text-[11px] text-ash">
-          Medians over this session&rsquo;s requests. A rate Pi Taster has not measured is
+          Medians over this session&rsquo;s requests. A rate Key Lime Pi has not measured is
           absent rather than guessed at — the same rule the context window follows.
         </p>
       </section>
@@ -155,7 +155,7 @@ interface WindowProps {
  * The context window, and where the number came from.
  *
  * The provenance is the point. `/api/show` reports a model's architectural maximum, not
- * what the daemon sized it to, so a window Pi Taster had to fall back on is usually much
+ * what the daemon sized it to, so a window Key Lime Pi had to fall back on is usually much
  * smaller than the model advertises — and believing the larger number means Ollama
  * truncates the head of the prompt with no error and no event.
  */
@@ -182,12 +182,12 @@ function describeSource(source: ContextReport['windowSource']): string {
     case 'daemon':
       return 'Reported by the daemon for the resident model.'
     case 'fallback':
-      // Deliberately about what Pi Taster knows, not about what the daemon is doing.
+      // Deliberately about what Key Lime Pi knows, not about what the daemon is doing.
       // The figure falls back whenever no session has warmed the model *in this run*,
       // which includes the case where the daemon is holding it perfectly happily — and
       // this block sits directly under a line saying the model is resident, so wording
       // it as a claim about the daemon puts two contradictory sentences on one screen.
-      return 'A conservative default — Pi Taster has not read a window figure from the daemon for this model. The real one is measured when the next turn warms it.'
+      return 'A conservative default — Key Lime Pi has not read a window figure from the daemon for this model. The real one is measured when the next turn warms it.'
   }
 }
 

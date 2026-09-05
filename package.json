@@ -1,12 +1,12 @@
 {
-  "name": "pitaster",
+  "name": "keylimepi",
   "private": true,
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run --filter @pitaster/electron dev",
+    "dev": "bun run --filter @keylimepi/electron dev",
     "build": "bun run --workspaces build",
     "typecheck:all": "bun run --workspaces typecheck",
     "test": "bun test",

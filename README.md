@@ -1,6 +1,6 @@
 <img src="docs/images/logo.png" alt="" width="104">
 
-# Pi Taster
+# Key Lime Pi
 
 **Delicious [Pi](https://pi.dev/), served locally — a real coding agent, running
 on models served by your own [Ollama](https://ollama.com).**
@@ -16,7 +16,7 @@ including the changes it makes to **its own source**.
 The workspace is a dock: chats, files, history, a terminal and a live preview,
 dragged into whatever splits and tabs suit the work, and remembered per app.
 
-![The Pi Taster workspace: chats, files and history docked to the left, the agent's transcript beside them, and the sub-app's dev server below](docs/images/workspace.png)
+![The Key Lime Pi workspace: chats docked to the left with the request meter below them, and the agent's transcript beside](docs/images/workspace.png)
 
 ## Try it
 
@@ -37,7 +37,7 @@ setup notes, the command list, and troubleshooting are in
 
 ## What you get
 
-- **Sandboxed sub-apps.** Each one is a real project in `~/.pitaster/apps/`, with its own git repo. The agent can't reach outside the one that's open.
+- **Sandboxed sub-apps.** Each one is a real project in `~/.keylimepi/apps/`, with its own git repo. The agent can't reach outside the one that's open.
 - **A live preview.** Run the app under the chat, click any element to attach it — markup, styles, screenshot — to your next message.
 - **Approval you can see.** Every tool call is gated, inline in the transcript, with a diff attached before you say yes.
 - **A history you can rewind.** Every write auto-commits. Browse the log, roll back, branch, merge.
@@ -45,17 +45,17 @@ setup notes, the command list, and troubleshooting are in
 - **Skills and MCP sources.** Reusable instructions on demand, and third-party tools bridged in.
 - **A visible context budget.** Local models have small windows. The meter shows where yours is going.
 
-The full tour, with screenshots, is in [What Pi Taster Does](docs/FEATURES.md).
+The full tour, with screenshots, is in [What Key Lime Pi Does](docs/FEATURES.md).
 
 ## How it's put together
 
 A Bun workspace: the Electron app in `apps/electron/`, shared types in
 `packages/core/`, and business logic in `packages/shared/`. Pi owns the agent loop
-and its built-in tools; Pi Taster adds the permission gate, path confinement, git
+and its built-in tools; Key Lime Pi adds the permission gate, path confinement, git
 auto-commit, code intelligence, and the MCP bridge. More in
 [Architecture](docs/ARCHITECTURE.md).
 
-Pi ships no sandbox, so confinement is Pi Taster's job and lives in one file:
+Pi ships no sandbox, so confinement is Key Lime Pi's job and lives in one file:
 [`permission-gate.ts`](apps/electron/src/main/agent/permission-gate.ts). What it
 stops, what it doesn't, and what's left open on purpose is written up in
 [Security](docs/SECURITY.md).
@@ -65,14 +65,14 @@ stops, what it doesn't, and what's left open on purpose is written up in
 | Document | What's in it |
 |----------|--------------|
 | [Getting Started](docs/GETTING_STARTED.md) | Install, model setup, commands, troubleshooting |
-| [What Pi Taster Does](docs/FEATURES.md) | The feature tour, panel by panel |
+| [What Key Lime Pi Does](docs/FEATURES.md) | The feature tour, panel by panel |
 | [Architecture](docs/ARCHITECTURE.md) | Monorepo layout, the stack, who owns what |
 | [Security](docs/SECURITY.md) | The confinement boundary, permission modes, known gaps |
 | [AGENTS.md](AGENTS.md) | The deep version: design decisions and the bugs behind them |
 | [CLAUDE.md](CLAUDE.md) | Claude Code–specific workflow on top of `AGENTS.md` |
 | [docs/plans/](docs/plans/README.md) | One plan and one notes document per implementation session |
 
-Pi Taster was built in numbered sessions, each with a plan and a record of what
+Key Lime Pi was built in numbered sessions, each with a plan and a record of what
 actually got built. [Session 15](docs/plans/SESSION-15-NOTES.md) is the move from
 a hand-rolled Anthropic loop to Pi on local models; [Session
 17](docs/plans/SESSION-17-NOTES.md) covers the shell design and visual identity.

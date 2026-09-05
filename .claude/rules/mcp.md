@@ -36,7 +36,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 ```typescript
 const client = new Client({
-  name: 'pitaster-client',
+  name: 'keylimepi-client',
   version: '1.0.0'
 })
 

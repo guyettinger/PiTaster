@@ -4,12 +4,12 @@ import { useSkills } from '../../hooks/useSkills'
 import { filterSkills } from './filterSkills'
 import { SkillEditor } from './SkillEditor'
 import { SkillRow } from './SkillRow'
-import type { Skill, SkillDraft } from '@pitaster/core'
+import type { Skill, SkillDraft } from '@keylimepi/core'
 
 /**
  * The workspace skill library, as Settings authors it.
  *
- * These live in `~/.pitaster/skills` and are offered to every app, which is what
+ * These live in `~/.keylimepi/skills` and are offered to every app, which is what
  * makes Settings their home: they belong to the workspace, not to whichever app
  * happens to be focused.
  *
@@ -50,7 +50,7 @@ export function WorkspaceSkillsSettings() {
           <h2 className="text-[14px] font-semibold text-bone">Skills</h2>
           <p className="max-w-prose text-[12px] text-ash">
             Instructions offered to every app, in{' '}
-            <code className="font-mono">~/.pitaster/skills</code>. Turn them on or off per
+            <code className="font-mono">~/.keylimepi/skills</code>. Turn them on or off per
             app from that app’s Skills panel.
           </p>
         </div>
@@ -111,7 +111,7 @@ export function WorkspaceSkillsSettings() {
         <ul className="space-y-2">
           <SkillEditor
             skill={null}
-            scopeLabel="Shared by every app, in ~/.pitaster/skills"
+            scopeLabel="Shared by every app, in ~/.keylimepi/skills"
             onSave={handleSave}
             onCancel={() => setIsAdding(false)}
           />

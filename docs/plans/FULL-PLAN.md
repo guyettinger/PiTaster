@@ -71,7 +71,7 @@ graph TB
 ## Project Structure (electron-vite conventions)
 
 ```
-PiTaster/
+KeyLimePi/
 ├── apps/
 │   └── electron/
 │       ├── src/
@@ -92,14 +92,14 @@ PiTaster/
 │       ├── electron.vite.config.ts
 │       └── package.json
 ├── packages/
-│   ├── core/                   # @pitaster/core - Shared types
+│   ├── core/                   # @keylimepi/core - Shared types
 │   │   ├── src/
 │   │   │   ├── index.ts
 │   │   │   ├── agent.ts
 │   │   │   ├── sources.ts
 │   │   │   └── skills.ts
 │   │   └── package.json
-│   └── shared/                 # @pitaster/shared - Business logic
+│   └── shared/                 # @keylimepi/shared - Business logic
 │       ├── src/
 │       │   ├── agent/          # Claude Agent SDK wrapper
 │       │   ├── sources/        # MCP client, API handlers
@@ -117,11 +117,11 @@ PiTaster/
 
 ```json
 {
-  "name": "Pi Taster",
+  "name": "Key Lime Pi",
   "private": true,
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "dev": "bun run --filter @pitaster/electron dev",
+    "dev": "bun run --filter @keylimepi/electron dev",
     "build": "bun run --workspaces build",
     "typecheck:all": "bun run --workspaces typecheck"
   }
@@ -133,18 +133,18 @@ PiTaster/
 ```json
 // packages/shared/package.json
 {
-  "name": "@pitaster/shared",
+  "name": "@keylimepi/shared",
   "dependencies": {
-    "@pitaster/core": "workspace:*"
+    "@keylimepi/core": "workspace:*"
   }
 }
 
 // apps/electron/package.json
 {
-  "name": "@pitaster/electron",
+  "name": "@keylimepi/electron",
   "dependencies": {
-    "@pitaster/core": "workspace:*",
-    "@pitaster/shared": "workspace:*"
+    "@keylimepi/core": "workspace:*",
+    "@keylimepi/shared": "workspace:*"
   }
 }
 ```
@@ -225,7 +225,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 export async function connectMcpSource(config: McpSourceConfig) {
   const client = new Client({
-    name: 'pitaster-client',
+    name: 'keylimepi-client',
     version: '1.0.0'
   });
 
@@ -249,7 +249,7 @@ export async function connectMcpSource(config: McpSourceConfig) {
 
 ### 3. Skills System
 
-Skills are markdown files with YAML frontmatter, stored in `~/.pitaster/workspaces/{id}/skills/`:
+Skills are markdown files with YAML frontmatter, stored in `~/.keylimepi/workspaces/{id}/skills/`:
 
 ```markdown
 ---
@@ -395,7 +395,7 @@ interface MergeConflict {
 import * as git from 'isomorphic-git'
 import fs from 'node:fs'
 
-const AUTHOR = { name: 'Pi Taster Agent', email: 'agent@Pi Taster.local' }
+const AUTHOR = { name: 'Key Lime Pi Agent', email: 'agent@keylimepi.local' }
 
 export class VersionManager {
   constructor(private dir: string) {}
@@ -794,7 +794,7 @@ const versionTools = [
 - Make outer Electron container immutable
 - Create AppManager for sub-app lifecycle (create, list, delete)
 - Implement app templates (React, Node CLI, Node Server, Static, Blank)
-- Each sub-app gets isolated git repository in `~/.pitaster/apps/`
+- Each sub-app gets isolated git repository in `~/.keylimepi/apps/`
 - Build App Listing UI for managing sub-apps
 - Scope agent context to active sub-app only
 - Prevent path traversal outside app directory
@@ -860,10 +860,10 @@ async function handleAgentQuery(prompt: string, webContents: WebContents) {
 
 ## Configuration Storage
 
-App configuration at `~/.pitaster/`:
+App configuration at `~/.keylimepi/`:
 
 ```
-~/.pitaster/
+~/.keylimepi/
 ├── config.json              # App settings, API keys
 ├── preferences.json         # UI preferences
 └── workspaces/
@@ -1019,17 +1019,17 @@ Create these rules in `.cursor/rules/` to provide consistent AI guidance during 
 
 ```markdown
 ---
-description: Pi Taster project architecture and conventions
+description: Key Lime Pi project architecture and conventions
 alwaysApply: true
 ---
 
-# Pi Taster Architecture
+# Key Lime Pi Architecture
 
 ## Monorepo Structure (Bun Workspaces)
 
 - `apps/electron/` - Electron desktop app
-- `packages/core/` - Shared TypeScript types (@pitaster/core)
-- `packages/shared/` - Business logic (@pitaster/shared)
+- `packages/core/` - Shared TypeScript types (@keylimepi/core)
+- `packages/shared/` - Business logic (@keylimepi/shared)
 
 ## electron-vite Folder Convention
 
@@ -1044,8 +1044,8 @@ Use `"workspace:*"` for inter-package dependencies:
 \`\`\`json
 {
   "dependencies": {
-    "@pitaster/core": "workspace:*",
-    "@pitaster/shared": "workspace:*"
+    "@keylimepi/core": "workspace:*",
+    "@keylimepi/shared": "workspace:*"
   }
 }
 \`\`\`
@@ -1056,12 +1056,12 @@ Use `"workspace:*"` for inter-package dependencies:
 - `bun run dev` - Start development with hot reload
 - `bun run build` - Build all packages
 - `bun run typecheck:all` - Type check entire monorepo
-- `bun run --filter @pitaster/electron dev` - Run specific workspace
+- `bun run --filter @keylimepi/electron dev` - Run specific workspace
 
 ## Import Conventions
 
-- Types from `@pitaster/core`
-- Business logic from `@pitaster/shared`
+- Types from `@keylimepi/core`
+- Business logic from `@keylimepi/shared`
 - UI components from `@/components/ui` (shadcn)
 ```
 
@@ -1316,7 +1316,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 \`\`\`typescript
 const client = new Client({
-  name: 'pitaster-client',
+  name: 'keylimepi-client',
   version: '1.0.0'
 })
 
@@ -1516,7 +1516,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 // 5. Local imports - types
-import type { Message } from "@pitaster/core"
+import type { Message } from "@keylimepi/core"
 \`\`\`
 
 ## Electron IPC Integration
@@ -1677,7 +1677,7 @@ async function logModification(path: string, backupPath: string) {
     action: 'update',
     success: true
   }
-  await appendJsonLine('~/.pitaster/modifications.jsonl', log)
+  await appendJsonLine('~/.keylimepi/modifications.jsonl', log)
 }
 \`\`\`
 
@@ -2057,7 +2057,7 @@ Create these skills in `.cursor/skills/` to enable specialized agent behaviors:
 ```yaml
 ---
 name: self-modify
-description: Modify the Pi Taster app's own source code safely. Use when the user wants to change app behavior, add features, or fix bugs in the app itself.
+description: Modify the Key Lime Pi app's own source code safely. Use when the user wants to change app behavior, add features, or fix bugs in the app itself.
 ---
 ```
 
@@ -2089,7 +2089,7 @@ description: Connect to external data sources including MCP servers, REST APIs, 
 - For MCP: Check if server exists (npx, local binary)
 - For REST API: Look for OpenAPI spec or documentation
 - For filesystem: Get path and access permissions
-- Create source config in `~/.pitaster/workspaces/{id}/sources/`
+- Create source config in `~/.keylimepi/workspaces/{id}/sources/`
 - Test connection before saving
 - Handle OAuth flows for APIs that require it
 
@@ -2102,7 +2102,7 @@ description: Connect to external data sources including MCP servers, REST APIs, 
 ```yaml
 ---
 name: enhance-ui
-description: Improve the Pi Taster user interface using shadcn/ui and Tailwind. Use when user requests UI changes, new components, or visual improvements.
+description: Improve the Key Lime Pi user interface using shadcn/ui and Tailwind. Use when user requests UI changes, new components, or visual improvements.
 ---
 ```
 
@@ -2124,13 +2124,13 @@ description: Improve the Pi Taster user interface using shadcn/ui and Tailwind. 
 ```yaml
 ---
 name: debug-fix
-description: Debug issues and fix bugs in Pi Taster. Use when user reports errors, unexpected behavior, or needs troubleshooting help.
+description: Debug issues and fix bugs in Key Lime Pi. Use when user reports errors, unexpected behavior, or needs troubleshooting help.
 ---
 ```
 
 **Instructions**:
 
-- Check logs at `~/Library/Logs/Pi Taster/`
+- Check logs at `~/Library/Logs/Key Lime Pi/`
 - Read error stack traces carefully
 - Identify affected module (main, preload, renderer, shared)
 - Check IPC communication if cross-process issue
@@ -2147,14 +2147,14 @@ description: Debug issues and fix bugs in Pi Taster. Use when user reports error
 ```yaml
 ---
 name: create-skill
-description: Create new skills for the Pi Taster agent. Use when user wants to add new agent capabilities or specialized behaviors.
+description: Create new skills for the Key Lime Pi agent. Use when user wants to add new agent capabilities or specialized behaviors.
 ---
 ```
 
 **Instructions**:
 
 - Ask user for skill purpose and trigger scenarios
-- Create skill directory in `~/.pitaster/workspaces/{id}/skills/`
+- Create skill directory in `~/.keylimepi/workspaces/{id}/skills/`
 - Write SKILL.md with frontmatter and instructions
 - Keep instructions under 500 lines
 - Include concrete examples
@@ -2198,10 +2198,10 @@ description: Manage version control for app modifications. Use when user wants t
 Create a `CLAUDE.md` file in the project root for Claude Code / Agent SDK context:
 
 ```markdown
-# Pi Taster - Self-Modifying Electron App
+# Key Lime Pi - Self-Modifying Electron App
 
 ## Project Overview
-Pi Taster is a self-modifying Electron app built with Claude Agent SDK. The agent can read and modify its own source code.
+Key Lime Pi is a self-modifying Electron app built with Claude Agent SDK. The agent can read and modify its own source code.
 
 ## Architecture
 - **apps/electron/**: Electron app (main, preload, renderer)
@@ -2227,7 +2227,7 @@ The agent can modify files in this project. Always:
 4. Confirm with user before restart
 
 ## Config Location
-User data stored at `~/.pitaster/`
+User data stored at `~/.keylimepi/`
 ```
 
 This documentation ensures Claude has proper context when working on the project.

@@ -2,7 +2,7 @@ import { PERMISSION_MODES } from './PermissionModeControl'
 import type { PermissionModeDescriptor } from './PermissionModeControl'
 
 /**
- * Help component that explains how to use Pi Taster to enhance the UI.
+ * Help component that explains how to use Key Lime Pi to enhance the UI.
  */
 
 import { useState } from 'react'
@@ -93,7 +93,7 @@ export function Help() {
           <HelpSection title="Quick start" defaultExpanded={true}>
             <div className="space-y-4">
               <p className="text-bone">
-                Pi Taster runs <strong>Pi</strong>, a coding agent, on models served by your
+                Key Lime Pi runs <strong>Pi</strong>, a coding agent, on models served by your
                 own Ollama. Open an app, describe a change in the chat, and the agent reads
                 and writes the app's real source files. No API key, and no inference request
                 that leaves this machine.
@@ -210,7 +210,7 @@ export function Help() {
           <HelpSection title="Design system">
             <div className="space-y-4">
               <p className="text-bone">
-                Pi Taster is built on a small set of design tokens. Ask for changes in these
+                Key Lime Pi is built on a small set of design tokens. Ask for changes in these
                 terms and the agent will keep new UI consistent with the rest of the app.
               </p>
 
@@ -317,15 +317,15 @@ export function Help() {
                 <div className="rounded border border-line bg-raised/30 p-3">
                   <h4 className="eyebrow text-ash">Workspace</h4>
                   <p className="mt-1 text-sm text-bone">
-                    Kept in <span className="font-mono">~/.pitaster/skills</span> and
-                    offered to every app. Pi Taster seeds a few to start with; they are
+                    Kept in <span className="font-mono">~/.keylimepi/skills</span> and
+                    offered to every app. Key Lime Pi seeds a few to start with; they are
                     yours to edit or delete.
                   </p>
                 </div>
               </div>
 
               <p className="text-sm text-ash">
-                Skills for the agent that builds <strong>Pi Taster itself</strong> are a
+                Skills for the agent that builds <strong>Key Lime Pi itself</strong> are a
                 different thing entirely &mdash; they live in the repository under{' '}
                 <span className="font-mono">.claude/skills/</span> and never appear here.
               </p>
