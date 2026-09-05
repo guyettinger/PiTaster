@@ -3,7 +3,12 @@
  */
 
 import { describe, expect, test } from 'bun:test'
-import { deriveTitle, isLegacyPlaceholderName } from './manager.js'
+import {
+  assertSessionTitle,
+  deriveTitle,
+  isLegacyPlaceholderName,
+  MAX_SESSION_TITLE_CHARS
+} from './manager.js'
 
 describe('deriveTitle', () => {
   test('uses the first user message', () => {
@@ -42,5 +47,29 @@ describe('isLegacyPlaceholderName', () => {
   test('leaves a name someone actually typed alone', () => {
     expect(isLegacyPlaceholderName('Chat about pixi')).toBe(false)
     expect(isLegacyPlaceholderName('New Chatter')).toBe(false)
+  })
+})
+
+describe('assertSessionTitle', () => {
+  test('accepts an ordinary title', () => {
+    expect(() => assertSessionTitle('Chat about pixi')).not.toThrow()
+  })
+
+  test('refuses a non-string, which would throw out of .trim() instead', () => {
+    for (const value of [undefined, null, 42, {}, ['a']]) {
+      expect(() => assertSessionTitle(value)).toThrow()
+    }
+  })
+
+  test('refuses a title that is empty or only whitespace', () => {
+    expect(() => assertSessionTitle('')).toThrow()
+    expect(() => assertSessionTitle('   ')).toThrow()
+  })
+
+  test('bounds the length, which is the half `sessions:rename` was missing', () => {
+    // The title is appended verbatim into Pi's transcript, so an unbounded one is
+    // written to disk and read back by every later listSessions().
+    expect(() => assertSessionTitle('x'.repeat(MAX_SESSION_TITLE_CHARS))).not.toThrow()
+    expect(() => assertSessionTitle('x'.repeat(MAX_SESSION_TITLE_CHARS + 1))).toThrow()
   })
 })

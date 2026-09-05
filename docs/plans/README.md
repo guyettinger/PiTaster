@@ -49,6 +49,7 @@ The implementation is split into **6 independent sessions**, each resulting in a
 | [24. Session Changes](SESSION-24-SESSION-CHANGES.md) | The files a session changed | Changed-files strip in the composer, per-file diffs, `VersionManager.diff` reads contents, restored diffs | Complete | [Notes](SESSION-24-NOTES.md) |
 | [25. Ollama Interaction](SESSION-25-OLLAMA-INTERACTION.md) | Prefill, prefix cache, thinking | Sealed prefix so the prompt is append-only, request telemetry, reasoning surfaced and controllable, model-aware sampling | Complete | [Notes](SESSION-25-NOTES.md) · [Audit](SESSION-25-AUDIT.md) |
 | [26. The Instrument Row](SESSION-26-INSTRUMENT-ROW.md) | Composer chrome | Four strips become one fixed-height gauge row; Activity, Daemon and Changes panels; telemetry over IPC | Complete | [Notes](SESSION-26-NOTES.md) |
+| 28. Multiple Workspaces | Concurrency + shell | Open-app rail at 64px, Skills into the dock and Settings, five Settings tabs; per-app workspace runtimes in main, one visible turn queue, every workspace mounted at once | Complete | [Notes](SESSION-28-NOTES.md) |
 
 ## Session 6 Sub-Sessions
 

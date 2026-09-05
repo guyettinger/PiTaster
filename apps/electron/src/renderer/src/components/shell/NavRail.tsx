@@ -1,38 +1,61 @@
 import { NavItem } from './NavItem'
-import { AppsIcon, LayoutIcon, SkillsIcon, HelpIcon, SettingsIcon } from '../icons'
+import { AppTile } from './AppTile'
+import { AppsIcon, HelpIcon, SettingsIcon } from '../icons'
 import type { Destination } from '../../types/navigation'
+import type { SubApp } from '@pitaster/core'
 
 /**
  * Props for the NavRail component.
  */
 interface NavRailProps {
-  /** The destination currently shown. */
-  destination: Destination
-  /** Go to a different destination. */
+  /** The destination covering the workspace, or null when a workspace is shown. */
+  destination: Destination | null
+  /** Go to a destination. */
   onNavigate: (destination: Destination) => void
+  /** The apps with a tile, in rail order. */
+  openApps: SubApp[]
+  /** The app whose workspace is shown, or null. */
+  focusedAppId: string | null
+  /** Ids of apps whose agent is mid-turn. */
+  busyAppIds: readonly string[]
+  /** Show an open app's workspace. */
+  onFocusApp: (appId: string) => void
+  /** Close an open app's tile. */
+  onCloseApp: (appId: string) => void
 }
 
 /**
  * The global nav rail.
  *
- * Holds only destinations that exist independently of any app — the app
- * library, the workspace's skills, help, and settings. Nothing here is ever
- * disabled: skills and MCP sources are workspace-global data under `~/.pitaster`,
- * so gating them on a focused app was always wrong.
+ * Two kinds of thing, deliberately drawn differently. The fixed destinations —
+ * the app library, help, settings — exist independently of any app and replace
+ * the main view. Between them sit the open apps, one tile each, and focusing one
+ * does not navigate anywhere: it uncovers the workspace that was there all along.
  *
- * Workspace is the exception that proves the rule: it needs an app to show
- * anything, but it is not disabled either — with none focused it shows the empty
- * state, the same as picking it always did. It replaced a Code item, because
- * code is now a panel inside the workspace rather than a place you go.
+ * That is why "Workspace" is gone as a destination. It was a label for a place
+ * that only ever showed one app, and at 71px it was also what forced the rail to
+ * `w-20` — a 64px rail clipped it. With the app itself as the destination the
+ * remaining labels are Apps, Help and Settings, none wider than "Settings" at
+ * 57px, so the rail fits the width its labels always wanted.
+ *
+ * Skills left for the same reason in reverse: it was a rail destination whose
+ * state — `SubApp.disabledSkills` — is per app, so with no app focused every
+ * toggle on it was disabled. It is a panel in the app's dock now, and the
+ * workspace library it also showed is in Settings.
  */
-export function NavRail({ destination, onNavigate }: NavRailProps) {
+export function NavRail({
+  destination,
+  onNavigate,
+  openApps,
+  focusedAppId,
+  busyAppIds,
+  onFocusApp,
+  onCloseApp
+}: NavRailProps) {
   return (
-    // w-20 rather than w-16: the eyebrow renders "Workspace" at 71px, and a
-    // 64px rail clipped it. "Settings" at 57px had already been spilling into
-    // the rail's padding, so this is the width the labels always wanted.
     <nav
       aria-label="Workspace"
-      className="flex w-20 shrink-0 flex-col border-r border-line bg-panel p-2"
+      className="flex w-16 shrink-0 flex-col border-r border-line bg-panel p-2"
     >
       <div className="flex flex-col gap-0.5">
         <NavItem
@@ -41,19 +64,25 @@ export function NavRail({ destination, onNavigate }: NavRailProps) {
           active={destination === 'apps'}
           onClick={() => onNavigate('apps')}
         />
-        <NavItem
-          icon={<LayoutIcon />}
-          label="Workspace"
-          active={destination === 'workspace'}
-          onClick={() => onNavigate('workspace')}
-        />
-        <NavItem
-          icon={<SkillsIcon />}
-          label="Skills"
-          active={destination === 'skills'}
-          onClick={() => onNavigate('skills')}
-        />
       </div>
+
+      {openApps.length > 0 && (
+        <>
+          <div className="my-2 border-t border-line" aria-hidden="true" />
+          <div className="flex flex-col gap-0.5">
+            {openApps.map((app) => (
+              <AppTile
+                key={app.id}
+                app={app}
+                focused={destination === null && app.id === focusedAppId}
+                busy={busyAppIds.includes(app.id)}
+                onFocus={() => onFocusApp(app.id)}
+                onClose={() => onCloseApp(app.id)}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="flex-1" />
 

@@ -28,11 +28,13 @@ export interface UseContextReportResult {
  * panel unmounting, the session changing, and the agent host being torn down, none of
  * which the old path did.
  *
+ * @param appId - The workspace this report is about
  * @param sessionId - The active chat session, refetched when it changes
  * @param revision - Bump to refetch; the chat panel bumps it when a turn completes
  * @returns The report and the actions that change it
  */
 export function useContextReport(
+  appId: string,
   sessionId: string | null,
   revision: number
 ): UseContextReportResult {
@@ -51,13 +53,13 @@ export function useContextReport(
     latest.current = ticket
 
     try {
-      const next = await window.electronAPI.getContextReport()
+      const next = await window.electronAPI.getContextReport(appId)
       if (latest.current === ticket) setReport(next)
     } catch {
       // A report is diagnostic. Failing to read one is not worth an error in the
       // composer; the meter keeps showing the last answer.
     }
-  }, [])
+  }, [appId])
 
   useEffect(() => {
     void refresh()
@@ -68,14 +70,14 @@ export function useContextReport(
     setError(null)
 
     try {
-      await window.electronAPI.compactContext()
+      await window.electronAPI.compactContext(appId)
       await refresh()
     } catch (caught) {
       setError(readableError(caught))
     } finally {
       setIsCompacting(false)
     }
-  }, [refresh])
+  }, [appId, refresh])
 
   return { report, refresh, compact, isCompacting, error }
 }

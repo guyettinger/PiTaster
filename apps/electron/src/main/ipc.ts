@@ -29,7 +29,26 @@ import {
 import { buildContextReport } from './agent/context-report'
 import { createTelemetry, type Telemetry } from './agent/telemetry'
 import { readWorkspaceLayout, writeWorkspaceLayout } from './layout-store'
+import { readOpenApps, writeOpenApps } from './open-apps-store'
+import { serialized } from './serialize'
+import { InferenceCancelled, inferenceQueue } from './inference-queue'
+import {
+  allRuntimes,
+  configureWorkspaces,
+  existingRuntime,
+  dropAllRuntimes,
+  dropRuntime,
+  focusedWorkspace,
+  getFocusedAppId,
+  hostsToEvict,
+  setFocusedAppId,
+  touchRuntime,
+  withWorkspace,
+  type Workspace,
+  type WorkspaceRuntime
+} from './workspaces'
 import { ensureSessionBaseline, readSessionBaseline } from './session-baselines'
+import { assertElementContext } from './element-context'
 import { describeNetworkUse } from './agent/permission-gate'
 import { previewPatch } from './agent/patch'
 import { listAppFiles, readAppFile } from './files'
@@ -49,9 +68,10 @@ import {
   isValidAppId,
   AppRunner,
   ChatHistoryManager,
+  assertSessionTitle,
   installDependencies
 } from '@pitaster/shared'
-import type { AgentStatus, ContextReport, DaemonHealth, TelemetrySnapshot, PermissionMode, StreamChunk, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig } from '@pitaster/core'
+import type { AgentStatus, ContextReport, DaemonHealth, TelemetrySnapshot, PermissionMode, StreamChunk, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, CreateAppParams, SubApp, AppLogEntry, AppStatusChange, RunningApp, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, SerializedContentBlock, ElementContext, AnySourceConfig, McpSourceConfig, OpenAppsState } from '@pitaster/core'
 import {
   DEFAULT_OLLAMA_BASE_URL,
   isOllamaReachable,
@@ -96,17 +116,10 @@ interface ToolApprovalResponse {
  * gate knows how to represent.
  */
 const pendingApprovals = new Map<string, {
+  /** The workspace whose turn is asking. */
+  appId: string
   resolve: (approved: boolean) => void
 }>()
-
-/** Current permission mode. */
-let currentPermissionMode: PermissionMode = 'default'
-
-/**
- * The live Pi agent session, rebuilt whenever the active app or session changes.
- * Pi owns the transcript, so there is no separate in-memory history to keep.
- */
-let agentHost: AgentHost | null = null
 
 /**
  * The budget the live host was built with, kept after that host is gone.
@@ -119,56 +132,33 @@ let agentHost: AgentHost | null = null
 let lastBudget: ContextBudget | null = null
 
 /**
- * The last report built from a live session.
+ * Drop a workspace's remembered conversation.
  *
- * `disposeAgentHost` runs on an app switch, a session switch, and every skills, sources
- * or config save. Without this the meter would drop back to the fixed floor several
- * times a minute during ordinary use and look broken. Holding the last answer lets it
- * say `as of last turn` instead of forgetting the conversation exists.
- */
-let cachedReport: ContextReport | null = null
-
-/**
- * Drop the remembered conversation.
+ * Called only where the conversation itself changes — a cleared chat, a different
+ * session. **Not** on a skills, sources or config save: those dispose the host, but
+ * the conversation it was holding is still the one on screen, and forgetting it there
+ * is what would make the meter look broken. And no longer on an app switch either —
+ * with the report living on the runtime, another app's conversation is simply another
+ * runtime's, so there is nothing to forget on the way past.
  *
- * Called only where the conversation itself changes — an app switch, a cleared chat, a
- * different session. A skills or sources save also disposes the host, but the
- * conversation it was holding is still the one on screen, and forgetting it there is
- * what would make the meter look broken.
+ * @param runtime - The workspace whose report to drop
  */
-function forgetCachedReport(): void {
-  cachedReport = null
+function forgetCachedReport(runtime: WorkspaceRuntime): void {
+  runtime.cachedReport = null
 }
 
 /**
- * What the daemon has been asked to do for the conversation on screen.
+ * Start measuring a workspace again, because its conversation changed.
  *
- * Owned here rather than by the host for the same reason {@link cachedReport} is:
- * `disposeAgentHost` runs on every skills, sources or config save, and a recorder
- * rebuilt with the host would answer "how many times did this conversation re-prefill"
- * with however many turns have passed since the last settings change. That number is
- * the acceptance test for the sealed-prefix work, so it has to span the conversation.
- */
-let sessionTelemetry: Telemetry = createTelemetry()
-
-/**
- * Start measuring again, because the conversation changed.
+ * Paired with {@link forgetCachedReport} at every site, and always after the host is
+ * disposed — a live host holds the recorder it was built with, so replacing it while
+ * one is running would leave that host writing to a recorder nobody reads.
  *
- * Paired with {@link forgetCachedReport} at every site, and always after
- * `disposeAgentHost` — a live host holds the recorder it was built with, so replacing
- * it while one is running would leave that host writing to a recorder nobody reads.
+ * @param runtime - The workspace whose telemetry to reset
  */
-function forgetSessionTelemetry(): void {
-  sessionTelemetry = createTelemetry()
+function forgetSessionTelemetry(runtime: WorkspaceRuntime): void {
+  runtime.telemetry = createTelemetry()
 }
-
-/**
- * Whether a turn is in flight.
- *
- * Only `agent:compact` reads it. Compacting mid-run would summarize a conversation Pi
- * is still appending to.
- */
-let agentRunActive = false
 
 /** Maximum accepted prompt length, in characters. */
 const MAX_PROMPT_CHARS = 100000
@@ -220,17 +210,31 @@ const workspaceSkills = new SkillsLoader(workspaceSkillsDir, 'workspace')
 /** App manager instance. */
 const appManager = new AppManager()
 
+// Wire the workspace registry to the app manager.
+//
+// Injected rather than imported by `workspaces.ts` so that module stays free of
+// this one, which imports it — and so `AppManager.getApp` stays the single guard
+// that turns an id into a path. `withWorkspace` deliberately owns no path logic of
+// its own; it is a funnel, not a second implementation of the sandbox.
+configureWorkspaces({
+  lookupApp: (id) => appManager.getApp(id),
+  createTelemetry,
+  // Eviction must not take a host out from under a question the user is still
+  // looking at: the prompt has no timeout, and their answer would resolve into a
+  // session that no longer exists.
+  hasPendingApprovals: (appId) => {
+    for (const pending of pendingApprovals.values()) {
+      if (pending.appId === appId) return true
+    }
+    return false
+  }
+})
+
 /** App runner instance for dev servers. */
 const appRunner = new AppRunner()
 
 /** Chat history manager instance. */
 const chatHistoryManager = new ChatHistoryManager(piAgentDir)
-
-/** Currently active app ID for agent context. */
-let activeAppId: string | null = null
-
-/** Currently active session ID for the active app. */
-let activeSessionId: string | null = null
 
 /**
  * How many times the agent has loaded each skill, per chat.
@@ -257,9 +261,12 @@ function forgetSkillLoads(sessionIds: string[]): void {
   }
 }
 
-/** The load counts for the open chat, or an empty map when there is no chat. */
-function currentSkillLoads(): Map<string, number> {
-  return skillLoadsByChat.get(activeSessionId ?? '') ?? new Map()
+/**
+ * The load counts for one chat, or an empty map when there is none.
+ * @param sessionId - The chat to report on
+ */
+function skillLoadsFor(sessionId: string | null): Map<string, number> {
+  return skillLoadsByChat.get(sessionId ?? '') ?? new Map()
 }
 
 /**
@@ -270,15 +277,19 @@ function currentSkillLoads(): Map<string, number> {
  * that has to stay in step with a reset call.
  *
  * @param chunk - A streamed chunk on its way to the renderer
+ * @param sessionId - The chat the turn belongs to, which is not necessarily the
+ *   focused one: a turn can run in a background workspace, and crediting the load
+ *   to whatever chat happens to be on screen would report it against the wrong
+ *   conversation.
  * @returns True when a count changed and the panel should be told
  */
-function recordSkillLoad(chunk: StreamChunk): boolean {
+function recordSkillLoad(chunk: StreamChunk, sessionId: string | null): boolean {
   if (chunk.type !== 'tool_start' || chunk.tool !== 'load_skill') return false
 
   const name = chunk.input?.name
   if (typeof name !== 'string' || name.length === 0) return false
 
-  const chatId = activeSessionId ?? ''
+  const chatId = sessionId ?? ''
   const counts = skillLoadsByChat.get(chatId) ?? new Map<string, number>()
   counts.set(name, (counts.get(name) ?? 0) + 1)
   skillLoadsByChat.set(chatId, counts)
@@ -294,11 +305,17 @@ function recordSkillLoad(chunk: StreamChunk): boolean {
  * a failed or skipped generation leaves the sidebar correct, just less concise.
  *
  * @param mainWindow - The window to notify
+ * @param workspace - The workspace whose turn finished
  */
-async function onTurnComplete(mainWindow: BrowserWindow): Promise<void> {
-  const appId = activeAppId
-  const sessionId = activeSessionId
-  if (!appId) return
+async function onTurnComplete(
+  mainWindow: BrowserWindow,
+  workspace: Workspace
+): Promise<void> {
+  // The workspace whose turn this was, not the focused one. A turn can finish in a
+  // background app, and reading focus here would name a chat in a different app —
+  // titling the wrong conversation and refreshing the wrong session list.
+  const appId = workspace.id
+  const sessionId = workspace.runtime.activeSessionId
 
   // The agent can write a skill into the app's `skills/` directory during a turn, and
   // the panel would otherwise not show it until the user pressed reload. A turn boundary
@@ -307,7 +324,7 @@ async function onTurnComplete(mainWindow: BrowserWindow): Promise<void> {
   // filesystem watcher would also catch a hand edit in Finder, which the reload button
   // covers, at the price of two watchers whose lifetime tracks the active app.
   if (!mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('skills:changed')
+    mainWindow.webContents.send('skills:changed', { appId })
   }
 
   const sessions = await broadcastSessions(mainWindow, appId)
@@ -371,8 +388,12 @@ function sendSessionChanged(
   // the agent works. Awaiting it would make this function async and put a git read
   // between the two sends below, whose order is the whole point of the helper.
   if (appId && sessionId) void captureSessionBaseline(appId, sessionId)
-  mainWindow.webContents.send('chat:session-changed', sessionId)
-  mainWindow.webContents.send('chat:history-loaded', { sessionId, messages })
+  // Both carry the app they are about. A renderer with several workspaces mounted
+  // has several subscribers on this one channel, and only the one whose app this
+  // names may act on it — otherwise a background workspace's session change would
+  // rewrite the transcript the user is looking at.
+  mainWindow.webContents.send('chat:session-changed', { appId, sessionId })
+  mainWindow.webContents.send('chat:history-loaded', { appId, sessionId, messages })
 }
 
 /**
@@ -432,10 +453,29 @@ async function broadcastSessions(
   appId: string | null
 ): Promise<ChatSession[] | null> {
   if (!appId || mainWindow.isDestroyed()) return null
+  // Coalesced per app. Listing reads every transcript in the app end to end, and
+  // several paths call this within a few milliseconds of each other at the end of
+  // a turn — with N workspaces those overlap across apps as well as within one.
+  // Keyed by app, so a busy workspace never delays another's sidebar.
+  return serialized(`sessions:${appId}`, () => readAndSendSessions(mainWindow, appId))
+}
+
+/**
+ * The listing itself.
+ *
+ * @param mainWindow - The window to notify
+ * @param appId - The sub-app whose sessions changed
+ * @returns The sessions that were sent, or null when none could be read
+ */
+async function readAndSendSessions(
+  mainWindow: BrowserWindow,
+  appId: string
+): Promise<ChatSession[] | null> {
+  if (mainWindow.isDestroyed()) return null
   try {
     const sessions = await chatHistoryManager.listSessions(appId)
     if (mainWindow.isDestroyed()) return null
-    mainWindow.webContents.send('sessions:list-updated', sessions)
+    mainWindow.webContents.send('sessions:list-updated', { appId, sessions })
     return sessions
   } catch {
     // A list that could not be read is not worth failing the operation that
@@ -454,6 +494,14 @@ const configPath = join(configDir, 'config.json')
  * is a git repo every agent write commits to — see `layout-store.ts`.
  */
 const layoutPath = join(configDir, 'layouts.json')
+
+/**
+ * Path to the open-app set — which apps have a rail tile, and which has focus.
+ *
+ * Beside the layouts, and for the same reason: it is shell state, not app state,
+ * and an app's own directory is a git repo every agent write commits to.
+ */
+const openAppsPath = join(configDir, 'open-apps.json')
 
 /**
  * Path to the chat session baseline store.
@@ -642,8 +690,8 @@ const MAX_SKILL_CONTENT_CHARS = 100000
  *
  * @returns The app and workspace libraries, resolved against each other
  */
-async function loadSkillLibrary(): Promise<SkillLibrary> {
-  const app = await getActiveApp()
+async function loadSkillLibrary(workspace: Workspace | null): Promise<SkillLibrary> {
+  const app = workspace?.app ?? null
 
   const library = await buildSkillLibrary({
     appSkillsDir: app ? getAppSkillsDir(app.path) : null,
@@ -651,7 +699,7 @@ async function loadSkillLibrary(): Promise<SkillLibrary> {
     disabledSkills: app?.disabledSkills
   })
 
-  const loads = currentSkillLoads()
+  const loads = skillLoadsFor(workspace?.runtime.activeSessionId ?? null)
   for (const skill of [...library.app, ...library.workspace]) {
     skill.loadedThisChat = loads.get(skill.name) ?? 0
   }
@@ -671,14 +719,16 @@ async function loadSkillLibrary(): Promise<SkillLibrary> {
  * @returns A loader bound to that library's directory
  * @throws {Error} If the app library is asked for with no app open
  */
-async function loaderForScope(scope: SkillScope): Promise<SkillsLoader> {
+function loaderForScope(scope: SkillScope, workspace: Workspace | null): SkillsLoader {
   if (scope === 'workspace') return workspaceSkills
 
-  const app = await getActiveApp()
-  if (!app) {
+  if (!workspace) {
     throw new Error("Open an app before changing that app's skills")
   }
-  return new SkillsLoader(getAppSkillsDir(app.path), 'app')
+  // Still built from the *resolved* app root, never from anything the renderer
+  // spelled — `withWorkspace` is what turned an id into this path, and a path
+  // argument here would be a write primitive, since `save` creates what it needs.
+  return new SkillsLoader(getAppSkillsDir(workspace.root), 'app')
 }
 
 /**
@@ -774,16 +824,15 @@ function parseSkillWrite(request: unknown): { scope: SkillScope; draft: SkillDra
 async function commitAppSkill(
   scope: SkillScope,
   name: string,
-  action: 'write' | 'delete'
+  action: 'write' | 'delete',
+  workspace: Workspace | null
 ): Promise<string | undefined> {
   if (scope !== 'app') return undefined
-
-  const app = await getActiveApp()
-  if (!app) return undefined
+  if (!workspace) return undefined
 
   const relativePath = `skills/${name}/SKILL.md`
   const outcome = await autoCommitSkillChange({
-    rootPath: app.path,
+    rootPath: workspace.root,
     relativePath,
     action,
     enabled: getConfig().autoCommit
@@ -809,11 +858,11 @@ async function commitAppSkill(
  * @param text - The user's message
  * @returns The message, with a directive appended when it named a real skill
  */
-async function withSkillDirectives(text: string): Promise<string> {
+async function withSkillDirectives(text: string, workspace: Workspace): Promise<string> {
   const mentions = extractSkillMentions(text)
   if (mentions.length === 0) return text
 
-  const available = activeSkills(await loadSkillLibrary())
+  const available = activeSkills(await loadSkillLibrary(workspace))
   const named = [...new Set(mentions.map((mention) => mention.name))].filter((name) =>
     available.some((skill) => skill.name === name)
   )
@@ -1001,49 +1050,32 @@ function validateMcpSourceConfig(config: unknown): McpSourceConfig {
  * Get the currently active app ID.
  */
 export function getActiveAppId(): string | null {
-  return activeAppId
+  return getFocusedAppId()
 }
 
 /**
  * Get the currently active app.
  */
 export async function getActiveApp(): Promise<SubApp | null> {
-  if (!activeAppId) return null
-  return appManager.getApp(activeAppId)
+  return (await focusedWorkspace())?.app ?? null
 }
 
 /**
- * Resolve a renderer-supplied app path to a real sub-app root.
+ * Resolve an app id that is allowed to be absent.
  *
- * The renderer is untrusted, and `rootPath` is the value every path check is performed
- * *against* — `isWithinRoot` only ever means "inside whatever string the caller called
- * the root". So a handler that takes `appPath` on faith is not confined at all: a
- * compromised renderer could ask for `~/.ssh/id_rsa` with `appPath` set to the home
- * directory and the confinement would agree that the file is inside the root.
+ * For the skills channels, where `null` genuinely means "no app": the workspace
+ * library is editable from Settings with nothing open. Everything else that takes
+ * an id requires one.
  *
- * Every path here has to come from `AppManager`, which is the only authority on where
- * sub-apps actually live.
- *
- * @param appPath - The path the renderer supplied, if any
- * @returns The verified sub-app root
- * @throws {Error} If no app is selected, or the path is not a known sub-app
+ * @param appId - The value the renderer sent
+ * @returns The workspace, or null when no app was named
  */
-async function resolveAppRoot(appPath?: string): Promise<string> {
-  if (appPath === undefined) {
-    const active = await getActiveApp()
-    if (!active) throw new Error('No app selected')
-    return active.path
-  }
-
-  if (typeof appPath !== 'string' || appPath.length === 0 || appPath.length > 4096) {
-    throw new Error('Invalid app path')
-  }
-
-  const known = await appManager.listApps()
-  const match = known.find((app) => app.path === appPath)
-  if (!match) throw new Error('Unknown app path')
-  return match.path
+async function optionalWorkspace(appId: unknown): Promise<Workspace | null> {
+  if (appId === null || appId === undefined) return null
+  return withWorkspace(appId, (workspace) => workspace)
 }
+
+
 
 /**
  * Split a renderer prompt into plain text and attached element contexts.
@@ -1091,8 +1123,14 @@ function splitPrompt(prompt: string | SerializedContentBlock[]): {
  * Denying is the only safe resolution: the user pressed Stop, switched app, or closed
  * the window, and in none of those cases did they approve anything.
  */
-function denyPendingApprovals(): void {
+function denyPendingApprovals(appId?: string): void {
   for (const [id, pending] of pendingApprovals) {
+    // Scoped, because unscoped is now a bug rather than a simplification. Stop in
+    // one app used to deny *every* pending prompt, so with two workspaces live it
+    // would answer a write prompt another app is still waiting on — a denial the
+    // user never made. The prompt is deliberately given no timeout precisely
+    // because a silent denial cannot be told apart from a refusal.
+    if (appId !== undefined && pending.appId !== appId) continue
     pendingApprovals.delete(id)
     pending.resolve(false)
   }
@@ -1101,42 +1139,129 @@ function denyPendingApprovals(): void {
 /**
  * Tear down the live agent session, if any.
  */
-async function disposeAgentHost(): Promise<void> {
-  if (!agentHost) return
-  const host = agentHost
-  agentHost = null
+async function disposeAgentHost(runtime: WorkspaceRuntime | null): Promise<void> {
+  if (!runtime?.host) return
+  const host = runtime.host
+  runtime.host = null
+  runtime.hostStale = false
   try {
     await host.abort()
   } catch {
     // Aborting an idle session is not an error.
   }
   host.dispose()
-  denyPendingApprovals()
+  denyPendingApprovals(runtime.appId)
 }
 
 /**
- * Get the agent session for the active app, creating it on first use.
+ * Tear down every workspace's agent session.
+ *
+ * A settings, skills or sources save changes what *every* session was built with,
+ * not only the focused one — every host reads those once, when it is built. With
+ * one host that distinction did not exist; with a registry it has to be made.
+ *
+ * A workspace mid-turn is **marked, not disposed**. Killing a background turn
+ * because someone saved a setting is a new failure mode and a worse one than a
+ * turn finishing under the configuration it started with: the user sees a run
+ * they did not stop end with no explanation, in an app they were not looking at.
+ * The flag is honoured when that turn ends, in `agent:message`'s `finally`.
+ */
+async function disposeAllAgentHosts(options?: {
+  /**
+   * Dispose a workspace mid-turn as well.
+   *
+   * Only teardown passes this. The deferral above is right for a settings save
+   * and wrong for a closing window: there is no later moment to honour the flag
+   * in, and a spared host would go on generating into a window that has gone.
+   */
+  force?: boolean
+}): Promise<void> {
+  for (const runtime of allRuntimes()) {
+    if (runtime.runActive && !options?.force) {
+      if (runtime.host) runtime.hostStale = true
+      continue
+    }
+    await disposeAgentHost(runtime)
+  }
+}
+
+/**
+ * Drop the least recently used hosts until the live population is under its cap.
+ *
+ * The policy is `hostsToEvict`; this is only the part that has to know how a host
+ * is torn down. Awaited rather than fired off, so the utilityProcess and the Pi
+ * session of the workspace being replaced are gone before the next one is built —
+ * the cap exists to bound memory, and a cap enforced asynchronously bounds nothing
+ * at the moment it matters.
+ *
+ * @param protectAppId - The workspace about to become live, which is never evicted
+ */
+async function evictIdleHosts(protectAppId: string | null): Promise<void> {
+  for (const runtime of hostsToEvict(protectAppId)) {
+    await disposeAgentHost(runtime)
+    // The conversation is not forgotten, only its host: `cachedReport` and
+    // `activeSessionId` stay, so the meter reports `stale` rather than dropping
+    // to its floor, and the next prompt rebuilds the session it names.
+  }
+}
+
+/**
+ * Refuse an operation that would move the ground under a running turn.
+ *
+ * `agent:compact` already refused this way, for the reason that generalizes:
+ * summarizing a conversation Pi is still appending to summarizes a moving
+ * target. A rollback, a branch switch and a dependency install are the same
+ * shape against the working tree instead of the transcript — the agent reads a
+ * file, the tree changes under it, and the edit it writes back lands on content
+ * that no longer exists. Auto-commit then commits that.
+ *
+ * Refusing is the whole mechanism, deliberately, rather than a lock that queues:
+ * these are things a person asked for *now*, and one that silently waits several
+ * minutes for a turn to finish is indistinguishable from one that did nothing.
+ *
+ * @param runtime - The workspace the operation targets
+ * @param what - What is being refused, for the message
+ * @throws {Error} If a turn is in flight in that workspace
+ */
+function refuseWhileRunning(runtime: WorkspaceRuntime, what: string): void {
+  if (runtime.runActive) {
+    throw new Error(`Wait for the current turn to finish before ${what}.`)
+  }
+}
+
+/**
+ * Get a workspace's agent session, creating it on first use.
+ *
+ * Takes the workspace rather than reading the focused one, so a turn runs against
+ * the app that asked for it — which is the whole point of naming an app on
+ * `agent:message`. A background workspace can hold a live host of its own.
  *
  * @param mainWindow - The window that receives streamed chunks and approval prompts
- * @returns A live agent host bound to the active app
- * @throws {Error} If no app is selected or no model is configured
+ * @param workspace - The workspace to build the session for
+ * @returns A live agent host bound to that workspace
+ * @throws {Error} If no model is configured
  */
-async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
-  const app = await getActiveApp()
-  if (!app) {
-    throw new Error('No app selected. Choose or create an app before chatting.')
-  }
+async function ensureAgentHost(
+  mainWindow: BrowserWindow,
+  workspace: Workspace
+): Promise<AgentHost> {
+  const { app, runtime } = workspace
 
   const config = getConfig()
   if (!config.ollamaModel) {
     throw new Error('No model selected. Pick an Ollama model in Settings.')
   }
 
-  if (agentHost && agentHost.appId === app.id) {
-    return agentHost
+  // No `host.appId === app.id` check any more: a runtime's host is its own by
+  // construction, so the mismatch that check guarded against is unrepresentable.
+  if (runtime.host) {
+    touchRuntime(runtime)
+    return runtime.host
   }
 
-  await disposeAgentHost()
+  await disposeAgentHost(runtime)
+  await evictIdleHosts(app.id)
+  touchRuntime(runtime)
 
   // Load the model and rewrite models.json with the window it really got, before
   // Pi's ModelRuntime reads that file.
@@ -1151,7 +1276,7 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
       type: 'status',
       status: status ?? { kind: 'settled' }
     }
-    mainWindow.webContents.send('agent:stream', chunk)
+    mainWindow.webContents.send('agent:stream', { appId: app.id, chunk })
   }
 
   sendStatus({
@@ -1177,11 +1302,11 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
   let sessionFile = await chatHistoryManager.getActiveSessionPath(app.id)
   if (!sessionFile) {
     const created = await chatHistoryManager.createSession(app.id)
-    activeSessionId = created.id
+    runtime.activeSessionId = created.id
     sessionFile = await chatHistoryManager.getActiveSessionPath(app.id)
   }
 
-  agentHost = await createAgentHost({
+  runtime.host = await createAgentHost({
     app,
     agentDir: piAgentDir,
     modelId: config.ollamaModel,
@@ -1193,10 +1318,15 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
     reasoningLevel: config.reasoningLevel,
     sessionFile: sessionFile ?? undefined,
     mcpSources: sourceManager.getConnectedSources().filter((source) => source.connected),
-    telemetry: sessionTelemetry,
+    telemetry: runtime.telemetry,
     callbacks: {
-      getPermissionMode: () => currentPermissionMode,
-      denyPendingApprovals,
+      // This workspace's mode, not the process's: a mode change in another app
+      // must not widen what this app's in-flight turn may do.
+      getPermissionMode: () => runtime.permissionMode,
+      // Bound to this workspace. Pi calls this when its retry budget is exhausted,
+      // and an unbound call would deny another app's pending prompt along with
+      // this one's.
+      denyPendingApprovals: () => denyPendingApprovals(app.id),
       getAutoCommit: () => getConfig().autoCommit,
 
       callMcpTool: (sourceId, toolName, args) =>
@@ -1228,7 +1358,11 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
         }
 
         if (mainWindow.isDestroyed()) return Promise.resolve(false)
-        mainWindow.webContents.send('agent:tool-approval', request)
+        // Tagged with the workspace whose turn is asking. With several mounted,
+        // an untagged prompt would appear in whichever Chat happened to be
+        // listening — and approving a write you cannot see the context for is
+        // exactly what the prompt exists to prevent.
+        mainWindow.webContents.send('agent:tool-approval', { appId: app.id, request })
 
         // Deliberately unbounded. A turn on a local model can take minutes, so
         // stepping away while one runs is normal — and a timeout here does not fail
@@ -1236,16 +1370,16 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
         // tell that apart from a refusal. The prompt is settled by an answer, by
         // aborting the run, or by the session being torn down.
         return new Promise((resolve) => {
-          pendingApprovals.set(id, { resolve })
+          pendingApprovals.set(id, { appId: app.id, resolve })
         })
       },
 
       onStream: (chunk: StreamChunk): void => {
         if (mainWindow.isDestroyed()) return
-        mainWindow.webContents.send('agent:stream', chunk)
+        mainWindow.webContents.send('agent:stream', { appId: app.id, chunk })
 
-        if (recordSkillLoad(chunk)) {
-          mainWindow.webContents.send('skills:changed')
+        if (recordSkillLoad(chunk, runtime.activeSessionId)) {
+          mainWindow.webContents.send('skills:changed', { appId: app.id })
         }
 
         // A finished turn is the only moment the session list is known to have
@@ -1253,13 +1387,13 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
         // untitled chat a name. Deliberately after the turn, never during it: a
         // concurrent generate contends with the model the turn just loaded.
         if (chunk.type === 'complete') {
-          void onTurnComplete(mainWindow)
+          void onTurnComplete(mainWindow, workspace)
         }
       }
     }
   })
 
-  return agentHost
+  return runtime.host
 }
 
 /**
@@ -1268,28 +1402,46 @@ async function ensureAgentHost(mainWindow: BrowserWindow): Promise<AgentHost> {
  */
 export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   // Get current permission mode
-  ipcMain.handle('permissions:get-mode', (): PermissionMode => {
-    return currentPermissionMode
+  ipcMain.handle('permissions:get-mode', async (_, appId: unknown): Promise<PermissionMode> => {
+    // No app named means the Settings page with none open. There is no workspace to
+    // report on, and the prompting default is the honest answer rather than another
+    // app's mode.
+    if (appId === null || appId === undefined) return 'default'
+    return withWorkspace(appId, ({ runtime }) => runtime.permissionMode)
   })
 
   // Set permission mode
-  ipcMain.handle('permissions:set-mode', (_, mode: PermissionMode): PermissionMode => {
-    if (!['plan', 'default', 'acceptEdits', 'bypassPermissions'].includes(mode)) {
-      throw new Error(`Invalid permission mode: ${mode}`)
+  ipcMain.handle(
+    'permissions:set-mode',
+    async (_, mode: unknown, appId: unknown): Promise<PermissionMode> => {
+      if (
+        typeof mode !== 'string' ||
+        !['plan', 'default', 'acceptEdits', 'bypassPermissions'].includes(mode)
+      ) {
+        throw new Error(`Invalid permission mode: ${String(mode)}`)
+      }
+      const next = mode as PermissionMode
+      // With no app named there is nothing to set the mode *on*. Answering rather
+      // than throwing keeps Settings usable with no app open; it simply has no
+      // workspace to apply to yet.
+      if (appId === null || appId === undefined) return next
+      return withWorkspace(appId, ({ runtime }) => {
+        runtime.permissionMode = next
+        return runtime.permissionMode
+      })
     }
-    currentPermissionMode = mode
-    return currentPermissionMode
-  })
+  )
 
   // Start a fresh agent session, discarding the current transcript
-  ipcMain.handle('agent:clear-history', async (): Promise<void> => {
-    await disposeAgentHost()
-    forgetCachedReport()
-    forgetSessionTelemetry()
+  ipcMain.handle('agent:clear-history', async (_, appId: unknown): Promise<void> => {
+    const runtime = await withWorkspace(appId, (workspace) => workspace.runtime)
+    await disposeAgentHost(runtime)
+    forgetCachedReport(runtime)
+    forgetSessionTelemetry(runtime)
   })
 
   // Send message to agent
-  ipcMain.handle('agent:message', async (_, prompt: string | SerializedContentBlock[]): Promise<void> => {
+  ipcMain.handle('agent:message', async (_, prompt: string | SerializedContentBlock[], appId: unknown): Promise<void> => {
     // Validate input. The renderer is untrusted.
     if (typeof prompt === 'string') {
       if (prompt.length === 0) {
@@ -1309,66 +1461,139 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
         if (!block || typeof block !== 'object' || typeof block.type !== 'string') {
           throw new Error('Invalid prompt: block missing type')
         }
+        // An element block's payload is the one part of a prompt that is a nested
+        // structure rather than text, and `elementContextToPrompt` reads it without
+        // guarding — a malformed one throws while the turn is being assembled, and
+        // an unbounded screenshot becomes an unbounded image attachment.
+        if (block.type === 'element') {
+          assertElementContext((block as { elementContext?: unknown }).elementContext)
+        }
       }
     } else {
       throw new Error('Invalid prompt: must be string or content blocks')
     }
 
+    // Resolved before `onStream` is written, not after: a failure in here has to
+    // be delivered to a workspace, and a stream helper closing over a binding
+    // that is still in its temporal dead zone would throw a second error on the
+    // path that reports the first.
+    const workspace = await withWorkspace(appId, (resolved) => resolved)
+
     /**
-     * Stream chunks to the renderer process.
+     * Report progress or failure to the workspace that asked for the turn.
+     *
+     * Tagged with that workspace rather than the focused one — with several
+     * mounted, an untagged chunk surfaces in whichever Chat happens to be
+     * listening, which for a background turn is the wrong one by definition.
      */
     const onStream = (chunk: StreamChunk): void => {
       if (mainWindow.isDestroyed()) return
-      mainWindow.webContents.send('agent:stream', chunk)
+      mainWindow.webContents.send('agent:stream', { appId: workspace.id, chunk })
     }
 
+    // Take a place in the queue before anything expensive, and hold it across the
+    // model load as well as generation: warming is the daemon's single loaded
+    // model too, so two workspaces racing to warm is the same contention with a
+    // longer wait.
+    //
+    // Waiting *here* rather than inside `sendPrompt` is what keeps the queue out
+    // of the measurements. Pi's session never sees it, so the stall notifier does
+    // not apologise for a queue, `retry-budget` cannot cut a turn that never
+    // started, and telemetry does not book the wait as prefill — which would
+    // decay the `prefillRate` behind "~1 min to prefill if the cache misses" for
+    // every workspace, not only the one that waited.
+    const ticket = inferenceQueue.acquire(workspace.id)
+    if (ticket.waitingBehind !== null) {
+      const ahead = await withWorkspace(ticket.waitingBehind, (other) => other.app.name).catch(
+        () => ticket.waitingBehind
+      )
+      onStream({
+        type: 'status',
+        status: {
+          kind: 'queued',
+          detail: `Waiting for ${ahead}’s turn — one local model, one turn at a time.`
+        }
+      })
+    }
+
+    // Flagged on the runtime the host belongs to, so `agent:compact` refuses while
+    // *this* workspace is mid-turn rather than while any of them is.
+    //
+    // Set here rather than around `sendPrompt`, which is where it used to be, and
+    // the difference is a window minutes long on a cold model: queueing behind
+    // another app and loading a 32GB model both happen before the first token,
+    // with Stop showing the whole time. During that window `runActive` was false,
+    // so a rollback was accepted and the turn then started against a working tree
+    // that had moved. It means "a turn is in flight", and it is in flight from
+    // the moment the user pressed Send.
+    const { runtime } = workspace
+    runtime.runActive = true
+
     try {
-      const host = await ensureAgentHost(mainWindow)
+      await ticket.wait()
+      onStream({ type: 'status', status: { kind: 'settled' } })
+
+      const host = await ensureAgentHost(mainWindow, workspace)
       const { text, elements } = splitPrompt(prompt)
 
       if (text.length > MAX_PROMPT_CHARS) {
         throw new Error('Prompt too long')
       }
 
-      agentRunActive = true
-      try {
-        await host.sendPrompt({ text: await withSkillDirectives(text), elements })
-      } finally {
-        agentRunActive = false
-      }
+      await host.sendPrompt({ text: await withSkillDirectives(text, workspace), elements })
     } catch (error) {
-      const err = error as Error
-      onStream({ type: 'error', error: err.message })
+      // Stop pressed while the turn was still queued. Nothing ran and nothing
+      // failed, so the turn ends quietly — reporting an error here would put a
+      // failure in the transcript for something the user did on purpose.
+      if (!(error instanceof InferenceCancelled)) {
+        const err = error as Error
+        onStream({ type: 'error', error: err.message })
+      }
       onStream({ type: 'complete' })
+    } finally {
+      runtime.runActive = false
+      touchRuntime(runtime)
+      ticket.release()
+      // A settings, skills or sources save while this turn ran left the host
+      // built against configuration that no longer exists. Cleared after
+      // `runActive`, or the deferral this honours would re-arm on the way out.
+      if (runtime.hostStale) await disposeAgentHost(runtime)
     }
   })
 
   // Cancel the in-flight agent run
-  ipcMain.handle('agent:abort', async (): Promise<void> => {
+  ipcMain.handle('agent:abort', async (_, appId: unknown): Promise<void> => {
     // Order matters: deny first, so the `tool_call` handler awaiting approval
     // unblocks and Pi's loop can observe the abort. Aborting alone would not reach
     // it — see denyPendingApprovals.
-    denyPendingApprovals()
-    await agentHost?.abort()
+    // Denies only this workspace's prompts. Stop in one app must not silently
+    // answer a write prompt another app is still waiting on — a denial the user
+    // never made, on a prompt deliberately given no timeout for exactly that reason.
+    const runtime = await withWorkspace(appId, (workspace) => workspace.runtime)
+    // A turn that is still queued has no host to abort and no approvals to deny —
+    // it has not touched the daemon at all. Without this, Stop on a queued turn
+    // does nothing visible and the turn starts anyway the moment the app ahead
+    // finishes, which reads as a Stop button that was ignored.
+    inferenceQueue.cancel(runtime.appId)
+    denyPendingApprovals(runtime.appId)
+    await runtime.host?.abort()
   })
 
   // What the context window holds, attributed to blocks the user can act on
-  ipcMain.handle('agent:get-context-report', async (): Promise<ContextReport | null> => {
-    const app = await getActiveApp()
-    if (!app) return null
+  ipcMain.handle('agent:get-context-report', async (_, appId: unknown): Promise<ContextReport | null> => {
+    if (appId === null || appId === undefined) return null
+    const { app, runtime } = await withWorkspace(appId, (workspace) => workspace)
 
     // Deliberately not `ensureAgentHost`. Building a host warms the model, and this
     // handler runs whenever the chat panel mounts — including on the panel switch the
     // user made precisely because they did not want to wait for the agent.
     //
-    // The app id is checked too, not just the host's existence. Every site that changes
-    // which app is active disposes the host first, so today this can only match or be
-    // null — but that invariant is held by convention across ten call sites, and one
-    // (`apps:delete`) already clears `activeAppId` without disposing. A report read off
-    // a host bound to another app would answer with that app's conversation.
-    if (agentHost && agentHost.appId === app.id) {
-      const report = await agentHost.getContextReport()
-      cachedReport = report
+    // The old cross-check on the host's app id is gone, and could not be written
+    // now if it were wanted: the host is read off *this workspace's* runtime, so a
+    // report can no longer be taken from a host bound to a different app.
+    if (runtime.host) {
+      const report = await runtime.host.getContextReport()
+      runtime.cachedReport = report
       return report
     }
 
@@ -1390,9 +1615,11 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     // is stale by exactly the change that disposed the host — a skill toggled off, a
     // source disconnected. So the fixed blocks are taken fresh and only the
     // conversation is carried over, and the state says the number is not current.
-    if (!cachedReport) return floor
+    if (!runtime.cachedReport) return floor
 
-    const carried = cachedReport.blocks.filter((block) => block.group === 'conversation')
+    const carried = runtime.cachedReport.blocks.filter(
+      (block) => block.group === 'conversation'
+    )
     if (carried.length === 0) return floor
 
     const blocks = [...floor.blocks, ...carried]
@@ -1400,10 +1627,10 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     return {
       ...floor,
       state: 'stale',
-      measured: cachedReport.measured,
+      measured: runtime.cachedReport.measured,
       estimated: blocks.reduce((sum, block) => sum + block.tokens, 0),
       blocks,
-      hotspots: cachedReport.hotspots
+      hotspots: runtime.cachedReport.hotspots
     }
   })
 
@@ -1411,21 +1638,22 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   //
   // Deliberately not `ensureAgentHost`, for exactly the reason `agent:get-context-report`
   // is not: building a host warms the model, and this runs whenever the Activity panel
-  // mounts. `sessionTelemetry` is module-scoped and survives `disposeAgentHost`, so
+  // mounts. The recorder lives on the runtime and survives `disposeAgentHost`, so
   // answering without a host is the correct answer rather than a degraded one — the
   // recorder measures the conversation, and the conversation is what is on screen.
   //
   // No arguments, so there is nothing to validate. `snapshot()` copies its records and
   // its totals, so what crosses the bridge is already detached from the live recorder.
-  ipcMain.handle('agent:get-telemetry', async (): Promise<TelemetrySnapshot> => {
-    return sessionTelemetry.snapshot()
+  ipcMain.handle('agent:get-telemetry', async (_, appId: unknown): Promise<TelemetrySnapshot> => {
+    return withWorkspace(appId, ({ runtime }) => runtime.telemetry.snapshot())
   })
 
   // Summarize the conversation now rather than at the threshold
-  ipcMain.handle('agent:compact', async (): Promise<void> => {
-    if (!agentHost) throw new Error('No conversation to compact yet.')
-    if (agentRunActive) throw new Error('Wait for the current turn to finish.')
-    await agentHost.compact()
+  ipcMain.handle('agent:compact', async (_, appId: unknown): Promise<void> => {
+    const runtime = await withWorkspace(appId, (workspace) => workspace.runtime)
+    if (!runtime.host) throw new Error('No conversation to compact yet.')
+    refuseWhileRunning(runtime, 'summarizing')
+    await runtime.host.compact()
   })
 
   // Handle tool approval response from renderer
@@ -1445,55 +1673,61 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
   // Version control IPC handlers.
   //
-  // Every one of these routes its `appPath` through `resolveAppRoot`. They took it on
-  // faith for as long as they existed, which was dormant while nothing in the renderer
-  // passed one — `getDiff` had no caller at all. The code panel and the commit diff are
-  // the first real consumers, so the check is no longer theoretical.
-  ipcMain.handle('version:get-state', async (_, appPath?: string) => {
-    const vm = new VersionManager(await resolveAppRoot(appPath))
-    return vm.getState()
-  })
+  // Every one of these takes an app *id* now, not a path. Two reasons, and the
+  // second is the important one. A path had to be matched against `listApps()` on
+  // every call to prove it was real, which is a `statusMatrix` per app to answer a
+  // question `AppManager.appDir` answers from the id alone. And the id was optional,
+  // falling back to "whichever app is active" — harmless while only one could be
+  // open, and with several mounted it is a rollback aimed at the app you were
+  // looking at a moment ago. `withWorkspace` refuses rather than guesses.
+  ipcMain.handle('version:get-state', async (_, appId: unknown) =>
+    withWorkspace(appId, ({ root }) => new VersionManager(root).getState())
+  )
 
-  ipcMain.handle('version:get-branches', async (_, appPath?: string) => {
-    const vm = new VersionManager(await resolveAppRoot(appPath))
-    return vm.listBranches()
-  })
+  ipcMain.handle('version:get-branches', async (_, appId: unknown) =>
+    withWorkspace(appId, ({ root }) => new VersionManager(root).listBranches())
+  )
 
-  ipcMain.handle('version:get-history', async (_, depth?: number, appPath?: string) => {
-    const vm = new VersionManager(await resolveAppRoot(appPath))
-    return vm.getHistory({ depth })
-  })
+  ipcMain.handle('version:get-history', async (_, depth: unknown, appId: unknown) =>
+    withWorkspace(appId, ({ root }) =>
+      new VersionManager(root).getHistory({
+        depth: typeof depth === 'number' && Number.isInteger(depth) && depth > 0 ? depth : undefined
+      })
+    )
+  )
 
-  ipcMain.handle('version:switch-branch', async (_, name: string, appPath?: string) => {
+  ipcMain.handle('version:switch-branch', async (_, name: unknown, appId: unknown) => {
     if (typeof name !== 'string' || name.length === 0) {
       throw new Error('Invalid branch name')
     }
-    const vm = new VersionManager(await resolveAppRoot(appPath))
-    return vm.switchBranch(name)
+    return withWorkspace(appId, ({ root, runtime }) => {
+      refuseWhileRunning(runtime, 'switching branch')
+      return new VersionManager(root).switchBranch(name)
+    })
   })
 
-  ipcMain.handle('version:create-branch', async (_, name: string, appPath?: string) => {
+  ipcMain.handle('version:create-branch', async (_, name: unknown, appId: unknown) => {
     if (typeof name !== 'string' || name.length === 0) {
       throw new Error('Invalid branch name')
     }
-    const vm = new VersionManager(await resolveAppRoot(appPath))
-    return vm.createBranch({ name })
+    return withWorkspace(appId, ({ root }) => new VersionManager(root).createBranch({ name }))
   })
 
-  ipcMain.handle('version:rollback', async (_, oid: string, appPath?: string) => {
+  ipcMain.handle('version:rollback', async (_, oid: unknown, appId: unknown) => {
     if (typeof oid !== 'string' || oid.length === 0) {
       throw new Error('Invalid commit OID')
     }
-    const vm = new VersionManager(await resolveAppRoot(appPath))
-    return vm.rollback(oid)
+    return withWorkspace(appId, ({ root, runtime }) => {
+      refuseWhileRunning(runtime, 'rolling back')
+      return new VersionManager(root).rollback(oid)
+    })
   })
 
-  ipcMain.handle('version:diff', async (_, from: string, to: string, appPath?: string) => {
+  ipcMain.handle('version:diff', async (_, from: unknown, to: unknown, appId: unknown) => {
     if (typeof from !== 'string' || typeof to !== 'string') {
       throw new Error('Invalid commit OIDs')
     }
-    const vm = new VersionManager(await resolveAppRoot(appPath))
-    return vm.diff(from, to)
+    return withWorkspace(appId, ({ root }) => new VersionManager(root).diff(from, to))
   })
 
   /**
@@ -1519,17 +1753,17 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
    * Confinement comes from `files.ts`, which uses the same `isWithinRoot` the agent's
    * gate uses — so the tree can never show a file the agent could not reach.
    */
-  ipcMain.handle('files:tree', async (_, appPath?: string) => {
-    return listAppFiles(await resolveAppRoot(appPath))
+  ipcMain.handle('files:tree', async (_, appId: unknown) => {
+    return withWorkspace(appId, ({ root }) => listAppFiles(root))
   })
 
-  ipcMain.handle('files:read', async (_, filePath: string, appPath?: string) => {
+  ipcMain.handle('files:read', async (_, filePath: unknown, appId: unknown) => {
     // The renderer is untrusted. Length is bounded here as well as type, so a path built
     // by a runaway loop cannot be handed to the filesystem.
     if (typeof filePath !== 'string' || filePath.length === 0 || filePath.length > 4096) {
       throw new Error('Invalid file path')
     }
-    return readAppFile({ rootPath: await resolveAppRoot(appPath), path: filePath })
+    return withWorkspace(appId, ({ root }) => readAppFile({ rootPath: root, path: filePath }))
   })
 
   /**
@@ -1539,22 +1773,24 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
    * from the registry rather than started separately — so the human and the model are
    * never shown two different accounts of whether the code compiles.
    */
-  ipcMain.handle('files:diagnostics', async (_, filePath: string, appPath?: string) => {
+  ipcMain.handle('files:diagnostics', async (_, filePath: unknown, appId: unknown) => {
     if (typeof filePath !== 'string' || filePath.length === 0 || filePath.length > 4096) {
       throw new Error('Invalid file path')
     }
 
-    const lease = acquireTsService(await resolveAppRoot(appPath))
-    try {
-      await lease.client.request({ kind: 'invalidate', paths: [filePath] })
-      const response = await lease.client.request({ kind: 'diagnostics', path: filePath })
-      // Anything but a diagnostics answer means the service could not say — an app with
-      // no TypeScript in it, a crashed worker. The viewer shows no squiggles, which is
-      // the truthful rendering of "no information".
-      return response.kind === 'diagnostics' ? response.diagnostics : []
-    } finally {
-      lease.release()
-    }
+    return withWorkspace(appId, async ({ root }) => {
+      const lease = acquireTsService(root)
+      try {
+        await lease.client.request({ kind: 'invalidate', paths: [filePath] })
+        const response = await lease.client.request({ kind: 'diagnostics', path: filePath })
+        // Anything but a diagnostics answer means the service could not say — an app with
+        // no TypeScript in it, a crashed worker. The viewer shows no squiggles, which is
+        // the truthful rendering of "no information".
+        return response.kind === 'diagnostics' ? response.diagnostics : []
+      } finally {
+        lease.release()
+      }
+    })
   })
 
   // App management IPC handlers
@@ -1593,9 +1829,18 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       // The counts are a display detail; the app still goes.
     }
 
-    // Clear active if deleting active app
-    if (activeAppId === id) {
-      activeAppId = null
+    // The deleted app's runtime goes with it — its host, its transcript pointer and
+    // its telemetry describe a directory that is about to stop existing. Disposing
+    // before dropping, so a live Pi session is not orphaned holding open files under
+    // a tree the recursive `rm` is about to take.
+    // Including a turn still waiting its place in the queue: it would otherwise
+    // start against a directory that no longer exists the moment the app ahead
+    // of it finished.
+    inferenceQueue.cancel(id)
+    const runtime = existingRuntime(id)
+    if (runtime) {
+      await disposeAgentHost(runtime)
+      dropRuntime(id)
     }
     return appManager.deleteApp(id)
   })
@@ -1610,62 +1855,76 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     return appManager.updateApp(id, updates)
   })
 
+  // Focus an app — which no longer means tearing anything down.
+  //
+  // This used to dispose the agent session and forget the conversation on every
+  // call, because with one host and one report slot, keeping A's state meant B
+  // could not have any. Each app owns its own runtime now, so focusing is just
+  // focusing: the previous app keeps its live session, its context report and its
+  // telemetry, and returning to it is instant instead of a fresh model warm.
+  //
+  // That also fixes a visible bug on its own. `disposeAgentHost` ran here on every
+  // navigation to the Apps page, so the context meter blinked out and back several
+  // times a minute during ordinary use.
+  // Which app the window is showing. Focus and nothing else.
+  //
+  // It used to also bootstrap the workspace — load the chat manifest, pick a session
+  // and push it — which was fine while exactly one workspace could exist. With
+  // several mounted, bootstrapping only the focused one leaves the others with no
+  // session, and re-bootstrapping on every focus change would re-push a transcript
+  // the panel already has. `workspace:open` does that job, once per workspace.
   ipcMain.handle('apps:set-active', async (_, id: string | null) => {
-    // `activeAppId` becomes the root every path check is performed *against*, so this
-    // is the same class of input as `resolveAppRoot`'s `appPath` and gets the same
-    // treatment: not "is it a non-empty string", but "is it an app that exists".
-    // `AppManager` refuses a traversing id on its own now; this is what turns that
-    // refusal into an error the user sees rather than an app that silently will not open.
-    if (id !== null) {
-      if (typeof id !== 'string' || !isValidAppId(id)) {
-        throw new Error('Invalid app ID')
-      }
-      if (!(await appManager.getApp(id))) {
-        throw new Error('Unknown app ID')
-      }
+    if (id === null) {
+      setFocusedAppId(null)
+      return null
     }
-    
-    // Switching app discards the agent session; the next message builds a new one.
-    await disposeAgentHost()
-    // Only when the app actually changes. Re-selecting the open app is an ordinary
-    // navigation — the Apps page is how a user gets back to a chat — and forgetting the
-    // conversation there would drop the context meter to its fixed floor for a trip the
-    // user made to return to the very conversation it describes.
-    if (id !== activeAppId) {
-      forgetCachedReport()
-      forgetSessionTelemetry()
-    }
-    activeAppId = id
-    activeSessionId = null
-    
-    if (id) {
+
+    // Validation is `withWorkspace`'s, which is the single place an id becomes a
+    // root — so focus can only ever be set to an app that has already been proven
+    // to resolve inside the apps root, and `getFocusedAppId` never answers with an
+    // id nothing else would accept.
+    return withWorkspace(id, ({ app }) => {
+      setFocusedAppId(app.id)
+      return app.id
+    })
+  })
+
+  /**
+   * Bring a workspace up: resolve its chat session and push its transcript.
+   *
+   * Called once per mounted workspace rather than on focus, because with several
+   * mounted the two are no longer the same event. Idempotent — it resolves the
+   * session the manifest already names and only creates one when there is none —
+   * so a remount replays the same answer rather than starting a new conversation.
+   */
+  ipcMain.handle('workspace:open', async (_, appId: unknown) => {
+    return withWorkspace(appId, async ({ app, runtime }) => {
       // Load manifest (triggers migration if needed)
-      const manifest = await chatHistoryManager.loadManifest(id)
+      const manifest = await chatHistoryManager.loadManifest(app.id)
 
       // Auto-create the first session if none exist. It is deliberately created
       // with no title, so its name is derived from the first message rather than
       // frozen at 'Chat' forever.
       if (manifest.sessions.length === 0) {
-        const session = await chatHistoryManager.createSession(id)
-        activeSessionId = session.id
-        sendSessionChanged(mainWindow, activeAppId, session.id, [])
+        const session = await chatHistoryManager.createSession(app.id)
+        runtime.activeSessionId = session.id
+        sendSessionChanged(mainWindow, app.id, session.id, [])
       } else {
-        activeSessionId = manifest.activeSessionId
+        runtime.activeSessionId = manifest.activeSessionId
 
-        const history = activeSessionId
-          ? await chatHistoryManager.loadHistory(id, activeSessionId)
+        const history = runtime.activeSessionId
+          ? await chatHistoryManager.loadHistory(app.id, runtime.activeSessionId)
           : []
-        sendSessionChanged(mainWindow, activeAppId, activeSessionId, history)
+        sendSessionChanged(mainWindow, app.id, runtime.activeSessionId, history)
       }
 
-      await broadcastSessions(mainWindow, id)
-    }
-    
-    return activeAppId
+      await broadcastSessions(mainWindow, app.id)
+      return runtime.activeSessionId
+    })
   })
 
   ipcMain.handle('apps:get-active', async () => {
-    return activeAppId
+    return getFocusedAppId()
   })
 
   ipcMain.handle('apps:get-active-details', async () => {
@@ -1686,7 +1945,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     await sourceManager.saveSource(validated)
     // The saved command and args become both a spawned process and an agent tool
     // surface, so drop the session and let the next prompt rebuild it.
-    await disposeAgentHost()
+    await disposeAllAgentHosts()
   })
 
   ipcMain.handle('sources:connect', async (_, id: string) => {
@@ -1700,7 +1959,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     }
     const connected = await sourceManager.connect(config)
     // Pi's tool list is fixed at session creation, so rebuild to pick up the tools.
-    await disposeAgentHost()
+    await disposeAllAgentHosts()
     return connected
   })
 
@@ -1709,7 +1968,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       throw new Error('Invalid source ID')
     }
     await sourceManager.disconnect(id)
-    await disposeAgentHost()
+    await disposeAllAgentHosts()
   })
 
   ipcMain.handle('sources:delete', async (_, id: string) => {
@@ -1717,31 +1976,46 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       throw new Error('Invalid source ID')
     }
     await sourceManager.deleteSource(id)
-    await disposeAgentHost()
+    await disposeAllAgentHosts()
   })
 
   // Skills IPC handlers
-  ipcMain.handle('skills:list', async (): Promise<SkillLibrary> => {
-    return loadSkillLibrary()
+  // The skills channels take an app id, and `null` genuinely means "no app" — the
+  // workspace library is editable from Settings with nothing open. Passing the
+  // workspace down rather than re-deriving it inside each helper is what stops
+  // `loaderForScope` and `commitAppSkill`, both of which turn a scope into a
+  // directory that gets written, from being pointed by a global.
+  ipcMain.handle('skills:list', async (_, appId: unknown): Promise<SkillLibrary> => {
+    return loadSkillLibrary(await optionalWorkspace(appId))
   })
 
-  ipcMain.handle('skills:save', async (_, request: unknown): Promise<SkillLibraryUpdate> => {
-    const { scope, draft } = parseSkillWrite(request)
-    await (await loaderForScope(scope)).save(draft)
-    const warning = await commitAppSkill(scope, draft.name, 'write')
-    await disposeAgentHost()
-    return { library: await loadSkillLibrary(), warning }
-  })
+  ipcMain.handle(
+    'skills:save',
+    async (_, request: unknown, appId: unknown): Promise<SkillLibraryUpdate> => {
+      const workspace = await optionalWorkspace(appId)
+      const { scope, draft } = parseSkillWrite(request)
+      await loaderForScope(scope, workspace).save(draft)
+      const warning = await commitAppSkill(scope, draft.name, 'write', workspace)
+      await disposeAllAgentHosts()
+      return { library: await loadSkillLibrary(workspace), warning }
+    }
+  )
 
-  ipcMain.handle('skills:delete', async (_, request: unknown): Promise<SkillLibraryUpdate> => {
-    const { scope, name } = parseSkillRef(request)
-    await (await loaderForScope(scope)).delete(name)
-    const warning = await commitAppSkill(scope, name, 'delete')
-    await disposeAgentHost()
-    return { library: await loadSkillLibrary(), warning }
-  })
+  ipcMain.handle(
+    'skills:delete',
+    async (_, request: unknown, appId: unknown): Promise<SkillLibraryUpdate> => {
+      const workspace = await optionalWorkspace(appId)
+      const { scope, name } = parseSkillRef(request)
+      await loaderForScope(scope, workspace).delete(name)
+      const warning = await commitAppSkill(scope, name, 'delete', workspace)
+      await disposeAllAgentHosts()
+      return { library: await loadSkillLibrary(workspace), warning }
+    }
+  )
 
-  ipcMain.handle('skills:set-enabled', async (_, request: unknown): Promise<SkillLibrary> => {
+  ipcMain.handle(
+    'skills:set-enabled',
+    async (_, request: unknown, appId: unknown): Promise<SkillLibrary> => {
     if (typeof request !== 'object' || request === null) {
       throw new Error('Invalid request')
     }
@@ -1750,19 +2024,23 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       throw new Error('Invalid skill name or state')
     }
 
-    const app = await getActiveApp()
-    if (!app) {
-      throw new Error('Open an app before turning a skill on or off')
-    }
+    // Not optional here: on/off is `SubApp.disabledSkills`, so this one genuinely
+    // needs an app to belong to.
+    const workspace = await withWorkspace(appId, (resolved) => resolved)
+    const { app } = workspace
 
     const disabled = new Set(app.disabledSkills ?? [])
     if (enabled) disabled.delete(name)
     else disabled.add(name)
 
     await appManager.updateApp(app.id, { disabledSkills: [...disabled].sort() })
-    await disposeAgentHost()
-    return loadSkillLibrary()
-  })
+    await disposeAllAgentHosts()
+    // Re-resolved, not reused: `updateApp` rewrote `disabledSkills`, and the record
+    // captured above still carries the old set — building the library from it would
+    // answer with the state before the toggle.
+    return withWorkspace(app.id, (refreshed) => loadSkillLibrary(refreshed))
+    }
+  )
 
   // Workspace layout IPC handlers
   ipcMain.handle('layout:get', async (_, appId: unknown, version: unknown) => {
@@ -1797,6 +2075,49 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       })
     }
   )
+
+  // Open-app set IPC handlers
+  //
+  // `readdir`, not `appManager.listApps()`, for the same reason `layout:save`
+  // gives: listing layers a `statusMatrix` onto every app, and pruning only
+  // needs the names.
+  async function liveAppIds(): Promise<string[]> {
+    const entries = await fs.readdir(appManager.getAppsDir(), { withFileTypes: true })
+    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name)
+  }
+
+  ipcMain.handle('workspaces:get-open', async (): Promise<OpenAppsState> => {
+    return readOpenApps({ storePath: openAppsPath, liveAppIds: await liveAppIds() })
+  })
+
+  ipcMain.handle('workspaces:set-open', async (_, state: unknown) => {
+    if (typeof state !== 'object' || state === null) {
+      throw new Error('Invalid open apps state')
+    }
+    const { openAppIds, focusedAppId } = state as Partial<OpenAppsState>
+    if (!Array.isArray(openAppIds) || openAppIds.length > 64) {
+      throw new Error('Invalid open apps state')
+    }
+    // Every id is checked here as well as filtered against the live set below:
+    // `isValidAppId` is what keeps a value that is about to be written, read
+    // back on the next launch, and turned into a path from ever being one that
+    // escapes the apps root.
+    for (const id of openAppIds) {
+      if (typeof id !== 'string' || !isValidAppId(id)) {
+        throw new Error('Invalid app ID')
+      }
+    }
+    if (focusedAppId !== null && focusedAppId !== undefined) {
+      if (typeof focusedAppId !== 'string' || !isValidAppId(focusedAppId)) {
+        throw new Error('Invalid app ID')
+      }
+    }
+    return writeOpenApps({
+      storePath: openAppsPath,
+      state: { openAppIds, focusedAppId: focusedAppId ?? null },
+      liveAppIds: await liveAppIds()
+    })
+  })
 
   // Config IPC handlers
   ipcMain.handle('config:get', async () => {
@@ -1873,7 +2194,11 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     // from a control that does not work. Deliberately *not* paired with
     // `forgetCachedReport` or `forgetSessionTelemetry`: the conversation this
     // disposes is still the one on screen, and its numbers still describe it.
-    await disposeAgentHost()
+    //
+    // Every workspace, not just the focused one: each host reads the config once,
+    // when it is built, so a background app would otherwise keep running under the
+    // settings that were in force when it was last prompted.
+    await disposeAllAgentHosts()
   })
 
   /**
@@ -1912,85 +2237,95 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   })
 
   // Chat history IPC handlers (session-aware)
-  ipcMain.handle('chat:load-history', async (): Promise<ChatHistoryPayload> => {
-    if (!activeAppId || !activeSessionId) return { sessionId: null, messages: [] }
+  ipcMain.handle('chat:load-history', async (_, appId: unknown): Promise<ChatHistoryPayload> => {
+    const runtime = await withWorkspace(appId, (workspace) => workspace.runtime)
+    if (!runtime.activeSessionId) return { sessionId: null, messages: [] }
     return {
-      sessionId: activeSessionId,
-      messages: await chatHistoryManager.loadHistory(activeAppId, activeSessionId)
+      sessionId: runtime.activeSessionId,
+      messages: await chatHistoryManager.loadHistory(runtime.appId, runtime.activeSessionId)
     }
   })
 
-  ipcMain.handle('chat:clear-history', async () => {
-    if (!activeAppId || !activeSessionId) {
+  ipcMain.handle('chat:clear-history', async (_, appId: unknown) => {
+    const { app, runtime } = await withWorkspace(appId, (workspace) => workspace)
+    if (!runtime.activeSessionId) {
       throw new Error('No active session')
     }
-    await chatHistoryManager.clearHistory(activeAppId, activeSessionId)
-    await disposeAgentHost()
-    forgetCachedReport()
-    forgetSessionTelemetry()
+    await chatHistoryManager.clearHistory(app.id, runtime.activeSessionId)
+    await disposeAgentHost(runtime)
+    forgetCachedReport(runtime)
+    forgetSessionTelemetry(runtime)
   })
 
   // Chat session IPC handlers
-  ipcMain.handle('sessions:list', async () => {
-    if (!activeAppId) return []
-    return chatHistoryManager.listSessions(activeAppId)
+  ipcMain.handle('sessions:list', async (_, appId: unknown) => {
+    return withWorkspace(appId, ({ app }) => chatHistoryManager.listSessions(app.id))
   })
 
-  ipcMain.handle('sessions:create', async (_, params?: CreateChatSessionParams) => {
-    if (!activeAppId) throw new Error('No active app')
+  ipcMain.handle('sessions:create', async (_, params: CreateChatSessionParams | undefined, appId: unknown) => {
+    const { app, runtime } = await withWorkspace(appId, (workspace) => workspace)
 
-    const session = await chatHistoryManager.createSession(activeAppId, params)
+    if (params !== undefined && params !== null) {
+      if (typeof params !== 'object' || Array.isArray(params)) {
+        throw new Error('Invalid session params')
+      }
+      if (params.title !== undefined) assertSessionTitle(params.title)
+    }
+
+    const session = await chatHistoryManager.createSession(app.id, params ?? undefined)
 
     // Switch to the new session
-    activeSessionId = session.id
-    await disposeAgentHost()
-    forgetCachedReport()
-    forgetSessionTelemetry()
+    runtime.activeSessionId = session.id
+    await disposeAgentHost(runtime)
+    forgetCachedReport(runtime)
+    forgetSessionTelemetry(runtime)
 
     // Notify renderer
-    sendSessionChanged(mainWindow, activeAppId, session.id, [])
-    await broadcastSessions(mainWindow, activeAppId)
+    sendSessionChanged(mainWindow, app.id, session.id, [])
+    await broadcastSessions(mainWindow, app.id)
 
     return session
   })
 
-  ipcMain.handle('sessions:delete', async (_, sessionId: string) => {
-    if (!activeAppId) throw new Error('No active app')
+  ipcMain.handle('sessions:delete', async (_, sessionId: string, appId: unknown) => {
+    const { app, runtime } = await withWorkspace(appId, (workspace) => workspace)
     assertSessionId(sessionId)
 
-    await chatHistoryManager.deleteSession(activeAppId, sessionId)
+    await chatHistoryManager.deleteSession(app.id, sessionId)
     forgetSkillLoads([sessionId])
 
     // If we deleted the active session, load the new active
-    if (activeSessionId === sessionId) {
-      const newActiveId = await chatHistoryManager.getActiveSessionId(activeAppId)
-      activeSessionId = newActiveId
-      await disposeAgentHost()
-      forgetCachedReport()
-      forgetSessionTelemetry()
+    if (runtime.activeSessionId === sessionId) {
+      const newActiveId = await chatHistoryManager.getActiveSessionId(app.id)
+      runtime.activeSessionId = newActiveId
+      await disposeAgentHost(runtime)
+      forgetCachedReport(runtime)
+      forgetSessionTelemetry(runtime)
 
       const history = newActiveId
-        ? await chatHistoryManager.loadHistory(activeAppId, newActiveId)
+        ? await chatHistoryManager.loadHistory(app.id, newActiveId)
         : []
-      sendSessionChanged(mainWindow, activeAppId, newActiveId, history)
+      sendSessionChanged(mainWindow, app.id, newActiveId, history)
     }
 
-    await broadcastSessions(mainWindow, activeAppId)
+    await broadcastSessions(mainWindow, app.id)
   })
 
-  ipcMain.handle('sessions:rename', async (_, sessionId: string, title: string) => {
-    if (!activeAppId) throw new Error('No active app')
+  ipcMain.handle('sessions:rename', async (_, sessionId: string, title: string, appId: unknown) => {
+    const { app } = await withWorkspace(appId, (workspace) => workspace)
     assertSessionId(sessionId)
-    if (typeof title !== 'string' || title.length === 0) {
-      throw new Error('Invalid title')
-    }
-    const renamed = await chatHistoryManager.renameSession(activeAppId, sessionId, title)
-    await broadcastSessions(mainWindow, activeAppId)
+    // Bounded for length as well as type, like the session id beside it. The title
+    // is appended verbatim into Pi's transcript, so an unbounded one is written to
+    // disk and then read back by every later `listSessions`. `ChatHistoryManager`
+    // checks it again at the write itself, which is what covers `sessions:create`.
+    assertSessionTitle(title)
+    const renamed = await chatHistoryManager.renameSession(app.id, sessionId, title)
+    await broadcastSessions(mainWindow, app.id)
     return renamed
   })
 
-  ipcMain.handle('sessions:set-active', async (_, sessionId: string) => {
-    if (!activeAppId) throw new Error('No active app')
+  ipcMain.handle('sessions:set-active', async (_, sessionId: string, appId: unknown) => {
+    const { app, runtime } = await withWorkspace(appId, (workspace) => workspace)
     assertSessionId(sessionId)
 
     // `assertSessionId` bounds the shape; it says nothing about whose session this is.
@@ -2005,40 +2340,42 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     // Ignored rather than thrown, because the losing race is not the user's mistake and
     // nothing is wrong that a fresh list does not fix. Re-broadcasting is the repair:
     // the stale list that produced the click is what gets replaced.
-    if (!(await chatHistoryManager.getSessionPath(activeAppId, sessionId))) {
+    if (!(await chatHistoryManager.getSessionPath(app.id, sessionId))) {
       console.warn(
-        `Ignoring a request to activate session ${sessionId}, which does not belong to app ${activeAppId}`
+        `Ignoring a request to activate session ${sessionId}, which does not belong to app ${app.id}`
       )
-      await broadcastSessions(mainWindow, activeAppId)
+      await broadcastSessions(mainWindow, app.id)
       sendSessionChanged(
         mainWindow,
-        activeAppId,
-        activeSessionId,
-        activeSessionId ? await chatHistoryManager.loadHistory(activeAppId, activeSessionId) : []
+        app.id,
+        runtime.activeSessionId,
+        runtime.activeSessionId
+          ? await chatHistoryManager.loadHistory(app.id, runtime.activeSessionId)
+          : []
       )
       return
     }
 
-    const changed = sessionId !== activeSessionId
-    await chatHistoryManager.setActiveSession(activeAppId, sessionId)
-    activeSessionId = sessionId
-    await disposeAgentHost()
+    const changed = sessionId !== runtime.activeSessionId
+    await chatHistoryManager.setActiveSession(app.id, sessionId)
+    runtime.activeSessionId = sessionId
+    await disposeAgentHost(runtime)
     // Only when the session actually changes, for the reason `apps:set-active` gives:
     // clicking the chat you are already in is an ordinary navigation, and forgetting
     // there would reset the Activity panel and drop the context meter to its fixed
     // floor for a trip the user made to return to the very conversation they describe.
     if (changed) {
-      forgetCachedReport()
-      forgetSessionTelemetry()
+      forgetCachedReport(runtime)
+      forgetSessionTelemetry(runtime)
     }
 
     // Load history for the new session
-    const history = await chatHistoryManager.loadHistory(activeAppId, sessionId)
-    sendSessionChanged(mainWindow, activeAppId, sessionId, history)
+    const history = await chatHistoryManager.loadHistory(app.id, sessionId)
+    sendSessionChanged(mainWindow, app.id, sessionId, history)
   })
 
-  ipcMain.handle('sessions:get-active', async () => {
-    return activeSessionId
+  ipcMain.handle('sessions:get-active', async (_, appId: unknown) => {
+    return withWorkspace(appId, ({ runtime }) => runtime.activeSessionId)
   })
 
   // App runner IPC handlers
@@ -2120,10 +2457,17 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       throw new Error('Invalid app ID')
     }
 
-    const app = await appManager.getApp(id)
-    if (!app) {
-      throw new Error(`App "${id}" not found`)
-    }
+    // Through the funnel like every other app-addressed channel, rather than
+    // calling `getApp` directly. The guard is the same one either way — `getApp`
+    // routes through `appDir` — but a boundary is only auditable if there is one
+    // place to audit, and an exception here is an exception the next reader has
+    // to re-derive the safety of.
+    const { app, runtime } = await withWorkspace(id, (workspace) => workspace)
+
+    // `bun install` rewrites `node_modules` and can rewrite `package.json`, both
+    // of which a mid-turn agent may be reading — and it runs the project's own
+    // install scripts, which is why `install_deps` is never auto-approved either.
+    refuseWhileRunning(runtime, 'installing dependencies')
 
     // `installDependencies` spawns with a filtered environment, so the user's
     // API keys never reach the install process.
@@ -2183,9 +2527,16 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
    * Add element context to the current chat.
    */
   ipcMain.handle('chat:add-element-context', async (event, context: ElementContext) => {
+    // The renderer is untrusted even though main produced this a moment ago through
+    // `chat:capture-element` — nothing carries it between the two calls but the
+    // renderer itself.
+    assertElementContext(context)
+    // Tagged with the focused app: the element was picked in that workspace's
+    // Preview, so it belongs in that workspace's composer and no other.
+    const appId = getFocusedAppId()
     // Notify all renderer windows to inject element context
     BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('chat:element-context-added', context)
+      win.webContents.send('chat:element-context-added', { appId, context })
     })
   })
 }
@@ -2226,6 +2577,7 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('apps:delete')
   ipcMain.removeHandler('apps:update')
   ipcMain.removeHandler('apps:set-active')
+  ipcMain.removeHandler('workspace:open')
   ipcMain.removeHandler('apps:get-active')
   ipcMain.removeHandler('apps:get-active-details')
 
@@ -2260,6 +2612,8 @@ export function cleanupIpcHandlers(): void {
   // Workspace layout handlers
   ipcMain.removeHandler('layout:get')
   ipcMain.removeHandler('layout:save')
+  ipcMain.removeHandler('workspaces:get-open')
+  ipcMain.removeHandler('workspaces:set-open')
 
   // Config handlers
   ipcMain.removeHandler('config:get')
@@ -2282,12 +2636,19 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('inspector:capture-element')
   ipcMain.removeHandler('chat:add-element-context')
 
-  // Tear down the agent session
-  void disposeAgentHost()
+  // Tear down every agent session.
+  //
+  // Queued turns first: `disposeAllAgentHosts` now *spares* a workspace mid-turn
+  // rather than disposing it, so on teardown a queued turn would be handed the
+  // daemon by the very turn that is ending, into a window that has gone.
+  for (const runtime of allRuntimes()) {
+    inferenceQueue.cancel(runtime.appId)
+  }
+  void disposeAllAgentHosts({ force: true })
 
-  // Reset active app and session
-  activeAppId = null
-  activeSessionId = null
+  // Drop every workspace: focus, session pointers, reports and telemetry all go
+  // with the window they described.
+  dropAllRuntimes()
 
   // Disconnect all sources
   sourceManager.disconnectAll().catch(() => {})

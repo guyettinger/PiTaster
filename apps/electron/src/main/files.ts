@@ -15,7 +15,7 @@
  * length in the IPC handler before it reaches these functions. `rootPath` matters more:
  * it is the value the confinement is performed *against*, so a caller who could choose it
  * would not be confined at all — asking for `.ssh/id_rsa` with the home directory as the
- * root passes every check here. `resolveAppRoot` in `ipc.ts` is what makes that
+ * root passes every check here. `withWorkspace` in `main/workspaces.ts` is what makes that
  * impossible; it accepts only paths `AppManager` recognises as sub-app roots.
  *
  * **Symlinks are not resolved**, and neither `stat` nor `readFile` refuses to follow one.

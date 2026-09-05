@@ -7,9 +7,21 @@ import type { ChatSession } from '@pitaster/core'
 const UNTITLED_SESSION = 'New Chat'
 
 /**
+ * The longest title the rename box accepts.
+ *
+ * Mirrors `MAX_SESSION_TITLE_CHARS` in `@pitaster/shared`, which is where the bound
+ * is actually enforced — main re-checks it, and so does `ChatHistoryManager` at the
+ * write. This copy exists so an honest rename is stopped at the keyboard rather than
+ * rejected by IPC with nothing on screen to explain it.
+ */
+const MAX_TITLE_CHARS = 200
+
+/**
  * Props for the ChatSessionList component.
  */
 interface ChatSessionListProps {
+  /** The app whose sessions these are. */
+  appId: string
   /** Currently active session ID. */
   activeSessionId: string | null
   /** Callback when a session is selected. */
@@ -40,6 +52,7 @@ interface SessionGroup {
  * random.
  */
 export function ChatSessionList({
+  appId,
   activeSessionId,
   onSessionSelect,
   onSessionCreate
@@ -53,13 +66,10 @@ export function ChatSessionList({
 
   // Load sessions on mount and listen for updates
   useEffect(() => {
-    window.electronAPI.listChatSessions().then(setSessions).catch(() => {})
+    window.electronAPI.listChatSessions(appId).then(setSessions).catch(() => {})
 
-    window.electronAPI.onSessionsListUpdated(setSessions)
-    return () => {
-      window.electronAPI.offSessionsListUpdated()
-    }
-  }, [])
+    return window.electronAPI.onSessionsListUpdated(appId, setSessions)
+  }, [appId])
 
   const handleDelete = useCallback(
     async (sessionId: string) => {
@@ -68,9 +78,9 @@ export function ChatSessionList({
         return
       }
       setConfirmingDeleteId(null)
-      await window.electronAPI.deleteChatSession(sessionId)
+      await window.electronAPI.deleteChatSession(sessionId, appId)
     },
-    [confirmingDeleteId]
+    [appId, confirmingDeleteId]
   )
 
   const handleRenameStart = useCallback((session: ChatSession) => {
@@ -86,10 +96,10 @@ export function ChatSessionList({
       const title = editTitle.trim()
       setEditingId(null)
       if (title) {
-        await window.electronAPI.renameChatSession(sessionId, title)
+        await window.electronAPI.renameChatSession(sessionId, title, appId)
       }
     },
-    [editTitle]
+    [appId, editTitle]
   )
 
   // Sorted by recency, then split into the day headings that make that order
@@ -155,6 +165,7 @@ export function ChatSessionList({
                             if (e.key === 'Escape') setEditingId(null)
                           }}
                           autoFocus
+                          maxLength={MAX_TITLE_CHARS}
                           placeholder={UNTITLED_SESSION}
                           aria-label={`Rename ${session.title}`}
                           className="min-w-0 flex-1 rounded bg-line px-1 py-0.5 text-[13px] text-bone"

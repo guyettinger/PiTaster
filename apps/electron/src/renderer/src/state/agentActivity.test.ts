@@ -1,20 +1,24 @@
 /**
  * Tests for the activity store.
  *
- * Two properties matter enough to pin. `publishActivity` must not notify when nothing
+ * Three properties matter enough to pin. `publishActivity` must not notify when nothing
  * changed — `useSyncExternalStore` re-renders every subscriber on a notification, and
- * the stream reports the same status repeatedly. And `getSnapshot` must return a stable
- * identity between changes, because a fresh object every call is an infinite render
- * loop rather than a slow one.
+ * the stream reports the same status repeatedly. The per-app snapshot must return a
+ * stable identity between changes, because a fresh object every call is an infinite
+ * render loop rather than a slow one. And one app's turn must never move another's
+ * reading, which is what the keying exists for now that several workspaces are mounted
+ * at once and each writes here.
  */
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 import {
   beginTurn,
   endTurn,
+  forgetActivity,
   publishActivity,
   recordWrite,
   resetActivity,
+  resetAllForTest,
   subscribeForTest,
   readForTest
 } from './agentActivity'
@@ -31,60 +35,63 @@ const TURN: TurnCost = {
   elapsedMs: 43_000
 }
 
+/** The app under test. Every call names one now. */
+const APP = 'weather'
+
 beforeEach(() => {
-  resetActivity()
+  resetAllForTest()
 })
 
 describe('the activity store', () => {
   test('a publish that changes nothing notifies nobody', () => {
-    publishActivity({ writingPath: 'src/App.tsx' })
+    publishActivity(APP, { writingPath: 'src/App.tsx' })
 
     let calls = 0
     const unsubscribe = subscribeForTest(() => {
       calls += 1
     })
 
-    publishActivity({ writingPath: 'src/App.tsx' })
+    publishActivity(APP, { writingPath: 'src/App.tsx' })
     expect(calls).toBe(0)
 
-    publishActivity({ writingPath: 'src/main.ts' })
+    publishActivity(APP, { writingPath: 'src/main.ts' })
     expect(calls).toBe(1)
 
     unsubscribe()
   })
 
   test('the snapshot identity is stable between changes', () => {
-    const first = readForTest()
-    publishActivity({ writingPath: null })
-    expect(readForTest()).toBe(first)
+    const first = readForTest(APP)
+    publishActivity(APP, { writingPath: null })
+    expect(readForTest(APP)).toBe(first)
 
-    publishActivity({ writingPath: 'a.ts' })
-    expect(readForTest()).not.toBe(first)
+    publishActivity(APP, { writingPath: 'a.ts' })
+    expect(readForTest(APP)).not.toBe(first)
   })
 
   test('a turn starts clean, so two turns are never mixed', () => {
-    endTurn({ turn: TURN, cache: 'reused' })
-    recordWrite('src/App.tsx')
+    endTurn(APP, { turn: TURN, cache: 'reused' })
+    recordWrite(APP, 'src/App.tsx')
 
-    beginTurn()
+    beginTurn(APP)
 
-    const state = readForTest()
+    const state = readForTest(APP)
     expect(state.isStreaming).toBe(true)
     expect(state.lastTurn).toBeNull()
     expect(state.pendingPaths).toEqual([])
   })
 
   test('ending a turn bumps the revision every refetch is keyed on', () => {
-    const before = readForTest().turnRevision
-    endTurn({ turn: TURN, cache: 'reused' })
-    expect(readForTest().turnRevision).toBe(before + 1)
+    const before = readForTest(APP).turnRevision
+    endTurn(APP, { turn: TURN, cache: 'reused' })
+    expect(readForTest(APP).turnRevision).toBe(before + 1)
   })
 
   test('a turn that reported nothing still ends, with no cost to show', () => {
-    beginTurn()
-    endTurn(null)
+    beginTurn(APP)
+    endTurn(APP, null)
 
-    const state = readForTest()
+    const state = readForTest(APP)
     expect(state.isStreaming).toBe(false)
     expect(state.lastTurn).toBeNull()
     // The revision still moves: git has something to say even about an aborted turn,
@@ -93,10 +100,10 @@ describe('the activity store', () => {
   })
 
   test('a measured turn frees the composer and keeps its cost', () => {
-    beginTurn()
-    endTurn({ turn: TURN, cache: 'reused' })
+    beginTurn(APP)
+    endTurn(APP, { turn: TURN, cache: 'reused' })
 
-    const state = readForTest()
+    const state = readForTest(APP)
     // The whole symptom the turn-completion work exists to fix: `isStreaming` is what
     // disables the input and holds the red Stop button up, and it is cleared here and
     // nowhere else on the happy path.
@@ -106,15 +113,15 @@ describe('the activity store', () => {
   })
 
   test('ending a turn twice changes nothing but the revision', () => {
-    beginTurn()
-    endTurn({ turn: TURN, cache: 'reused' })
-    const once = readForTest()
+    beginTurn(APP)
+    endTurn(APP, { turn: TURN, cache: 'reused' })
+    const once = readForTest(APP)
 
     // Main claims the turn's completion so only one `complete` chunk goes out — see
     // `agent/turn-completion.ts`. If that ever slips, the second end must still be
     // harmless here rather than replacing a measured turn with a blank one.
-    endTurn({ turn: TURN, cache: 'reused' })
-    const twice = readForTest()
+    endTurn(APP, { turn: TURN, cache: 'reused' })
+    const twice = readForTest(APP)
 
     expect(twice.isStreaming).toBe(false)
     expect(twice.lastTurn).toEqual(once.lastTurn!)
@@ -122,22 +129,53 @@ describe('the activity store', () => {
   })
 
   test('a file written twice in one turn is one entry', () => {
-    recordWrite('src/App.tsx')
-    recordWrite('src/App.tsx')
-    recordWrite('src/main.ts')
+    recordWrite(APP, 'src/App.tsx')
+    recordWrite(APP, 'src/App.tsx')
+    recordWrite(APP, 'src/main.ts')
 
-    expect(readForTest().pendingPaths).toEqual(['src/App.tsx', 'src/main.ts'])
+    expect(readForTest(APP).pendingPaths).toEqual(['src/App.tsx', 'src/main.ts'])
   })
 
   test('a reset clears the previous conversation entirely', () => {
-    endTurn({ turn: TURN, cache: 'reused' })
-    recordWrite('src/App.tsx')
+    endTurn(APP, { turn: TURN, cache: 'reused' })
+    recordWrite(APP, 'src/App.tsx')
 
-    resetActivity()
+    resetActivity(APP)
 
-    const state = readForTest()
+    const state = readForTest(APP)
     expect(state.lastTurn).toBeNull()
     expect(state.pendingPaths).toEqual([])
     expect(state.turnRevision).toBe(0)
+  })
+
+  test('one app’s turn never moves another’s reading', () => {
+    beginTurn(APP)
+    recordWrite(APP, 'src/App.tsx')
+    endTurn(APP, { turn: TURN, cache: 'reused' })
+
+    // The whole point of keying. Before this, a background app finishing a turn
+    // bumped the focused app's `turnRevision` — refetching its context report and
+    // its changed-files strip against a conversation that had not moved — and
+    // attributed the cost line and the written files to the wrong transcript.
+    const other = readForTest('notes')
+    expect(other.turnRevision).toBe(0)
+    expect(other.lastTurn).toBeNull()
+    expect(other.pendingPaths).toEqual([])
+    expect(other.isStreaming).toBe(false)
+  })
+
+  test('an app nobody has published for reads idle, with a stable identity', () => {
+    // `useSyncExternalStore` compares by identity, so a fresh idle object per call
+    // would make every unvisited workspace re-render forever.
+    expect(readForTest('never-seen')).toBe(readForTest('also-never-seen'))
+  })
+
+  test('forgetting an app removes it rather than idling it', () => {
+    beginTurn(APP)
+    forgetActivity(APP)
+    // `resetActivity` keeps the app present; a closed tile must not leave its id in
+    // the store for the life of the session, because the busy list is derived from
+    // exactly those keys.
+    expect(readForTest(APP).isStreaming).toBe(false)
   })
 })

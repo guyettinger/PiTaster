@@ -40,9 +40,13 @@ export interface UseSkillsResult {
  * here, because a save can change more than the skill saved: an app skill that takes a
  * workspace skill's name shadows it, and both rows have to move at once.
  *
+ * @param appId - The app whose library this is, or null for the workspace library
+ *   alone. It selects which `skills:changed` pushes this subscriber acts on; a
+ *   workspace-scoped change reaches every subscriber, since a workspace skill is
+ *   offered to every app.
  * @returns The libraries, their load state, and the mutations
  */
-export function useSkills(): UseSkillsResult {
+export function useSkills(appId: string | null): UseSkillsResult {
   const [library, setLibrary] = useState<SkillLibrary>(EMPTY_LIBRARY)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -52,7 +56,7 @@ export function useSkills(): UseSkillsResult {
     try {
       setError(null)
       setWarning(null)
-      setLibrary(await window.electronAPI.getSkills())
+      setLibrary(await window.electronAPI.getSkills(appId))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Skills could not be read')
     } finally {
@@ -64,11 +68,10 @@ export function useSkills(): UseSkillsResult {
     void reload()
 
     // The agent can write a skill mid-turn, and loading one changes its count.
-    window.electronAPI.onSkillsChanged(() => {
+    return window.electronAPI.onSkillsChanged(appId, () => {
       void reload()
     })
-    return () => window.electronAPI.offSkillsChanged()
-  }, [reload])
+  }, [appId, reload])
 
   /**
    * Run a mutation and adopt the libraries it returns.
@@ -84,27 +87,33 @@ export function useSkills(): UseSkillsResult {
       setError(err instanceof Error ? err.message : 'That change could not be saved')
       throw err
     }
-  }, [])
+  }, [appId])
 
   const save = useCallback(
     async (scope: SkillScope, draft: SkillDraft) => {
-      await apply(() => window.electronAPI.saveSkill({ scope, draft }))
+      await apply(() => window.electronAPI.saveSkill({ scope, draft }, appId))
     },
-    [apply]
+    [apply, appId]
   )
 
   const remove = useCallback(
     async (scope: SkillScope, name: string) => {
-      await apply(() => window.electronAPI.deleteSkill({ scope, name }))
+      await apply(() => window.electronAPI.deleteSkill({ scope, name }, appId))
     },
-    [apply]
+    [apply, appId]
   )
 
   const setEnabled = useCallback(
     async (name: string, enabled: boolean) => {
-      await apply(async () => ({ library: await window.electronAPI.setSkillEnabled({ name, enabled }) }))
+      // On/off is `SubApp.disabledSkills`, so there is nothing to toggle without an
+      // app. The workspace library page never offers the control, and this is the
+      // guard that keeps that true rather than assumed.
+      if (appId === null) return
+      await apply(async () => ({
+        library: await window.electronAPI.setSkillEnabled({ name, enabled }, appId)
+      }))
     },
-    [apply]
+    [apply, appId]
   )
 
   return { library, isLoading, error, warning, reload, save, remove, setEnabled }

@@ -35,8 +35,6 @@ interface WorkspaceProps {
   onBranchSwitch: (branchName: string) => void
   /** Create a branch. */
   onBranchCreate: (name: string) => void
-  /** Leave the workspace for the Skills destination. */
-  onOpenSkills: () => void
   /** Release focus on this app and return to the library. */
   onCloseApp: () => void
 }
@@ -71,7 +69,6 @@ export function Workspace({
   onRollback,
   onBranchSwitch,
   onBranchCreate,
-  onOpenSkills,
   onCloseApp
 }: WorkspaceProps) {
   const { api, onReady } = useWorkspaceLayout(app.id)
@@ -93,6 +90,11 @@ export function Workspace({
     },
     [api]
   )
+
+  // Skills used to be a nav-rail destination, so this left the workspace. It is a
+  // panel in this dock now, and "manage skills" means the same thing it always
+  // meant — show me the skills — without tearing the workspace down to do it.
+  const onOpenSkills = useCallback(() => openPanel('skills'), [openPanel])
 
   // A rollback or a branch switch moves HEAD, which invalidates the composer's
   // changed-files strip — it is a diff against a fixed commit. Wrapping the two

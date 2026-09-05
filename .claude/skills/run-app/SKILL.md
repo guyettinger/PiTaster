@@ -69,7 +69,8 @@ Pi Taster-specific:
 | Command | What it does |
 |---|---|
 | `open-app [name]` | Open a sub-app from the Apps list (first one if omitted) |
-| `nav <Apps\|Workspace\|Skills\|Help\|Settings>` | Switch main destination |
+| `focus <name>` | Focus an open app's workspace from its nav-rail tile |
+| `nav <Apps\|Help\|Settings>` | Switch main destination |
 | `tab <name>` | Activate a dock tab (Chat, Files, Preview, a filename…) |
 | `panel <name>` | Open or close a dock panel via the Panels menu |
 | `reset-layout` | Rebuild the default layout |
@@ -107,6 +108,11 @@ every mode except `Auto — all` — that is the permission gate working, not a 
 - **Keep the window within the screen.** `screencapture -R` clips at the display
   edge, silently. On a 1080p display `availHeight` is ~947, so a window taller
   than ~910 at y=40 loses its bottom rows. Check with `eval screen.availHeight`.
+- **The rail lists open apps, not destinations.** Apps, Help and Settings are
+  the only `nav` targets; a sub-app is reached by its tile, which is a monogram
+  with the name in `title` and an `sr-only` span — so `focus <name>`, not
+  `click-text`. `focus zzz` prints the titles it did find, which is the quickest
+  way to learn what an app is actually called.
 - **App cards need `open-app`, not `click-text`.** The card is a `<button>` whose
   text is spread across nested divs; `click-text` matches an inner div and the
   click does nothing. `open-app` finds the button by its `cursor-pointer
@@ -117,7 +123,10 @@ every mode except `Auto — all` — that is the permission gate working, not a 
   and the arrangement is saved per app in `~/.pitaster/layouts.json`. Delete that
   file to get a clean default layout back, or run `reset-layout`.
 - **Dock tabs need `mousedown`, not `click`.** `element.click()` resolves and
-  changes nothing, which looks identical to a tab that isn't there. Use `tab`.
+  changes nothing, which looks identical to a tab that isn't there. Use `tab`,
+  which matches the label exactly before falling back to a prefix — `Chat` and
+  `Chats` are both real tabs, and a prefix match silently activated the wrong
+  one while reporting OK, which reads as a Chat panel that renders nothing.
 - **Docking cannot be driven reliably.** dockview's drop targets need a real
   HTML5 drag — dragstart/dragover/drop carrying a `DataTransfer` — and a
   synthesised sequence lands only sometimes, because with `renderer: 'always'`
@@ -126,6 +135,12 @@ every mode except `Auto — all` — that is the permission gate working, not a 
   layout changes that way. To get a specific arrangement, either do it by hand,
   or seed `~/.pitaster/layouts.json` before launching and check the result with
   `panels`.
+- **A background workspace's text needs `textContent`, not `innerText`.** Every
+  open app is mounted; the ones not focused are hidden with `clip-path` and
+  `inert`. `innerText` approximates *rendered* text, so it under-reports a
+  clipped subtree and stops growing — which looks exactly like a background turn
+  that has stalled. `textContent` is layout-independent and reports the truth.
+  Find the hidden ones with `main > div[style*="clip-path"]`.
 - **Panel content is not inside `.dv-groupview`.** Every panel is rendered with
   dockview's `always` renderer — its element lives in a positioned
   `.dv-render-overlay` so docking never re-parents it — so query panel content

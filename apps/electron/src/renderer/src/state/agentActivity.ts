@@ -1,21 +1,25 @@
 /**
- * What the agent is doing right now, for everything that is not the transcript.
+ * What each app's agent is doing right now, for everything that is not the transcript.
  *
- * A module store rather than a context, for two reasons that are both structural.
- *
+ * A module store rather than a context, for a reason that is structural.
  * `WorkspaceContext`'s value is memoized precisely so that a change does not re-render
  * every panel — the transcript included, which is the most expensive tree in the app.
  * A revision bumped on every turn boundary would undo exactly what that memoization
  * buys. `useSyncExternalStore` re-renders only the components that subscribed.
  *
- * And the stream itself can only have one subscriber: `offAgentStream` is
- * `removeAllListeners('agent:stream')`, so a panel that listened directly would tear
- * down the transcript's subscription the moment it unmounted.
+ * **Keyed by app id, and that is the whole of Session 28's change here.** Several
+ * workspaces are mounted at once now, each with its own Chat writing to this store, so
+ * a single reading would have app B's turn move app A's gauges — a turn count, a cost
+ * line and a list of written files all attributed to the wrong conversation. The old
+ * second reason for a module store (that `agent:stream` could have only one subscriber,
+ * because unsubscribing was `removeAllListeners`) is gone: the bridge returns a real
+ * unsubscribe now, and every subscription names its app.
  *
- * `Chat` is the sole writer, which means that with the Chat panel closed the live
- * status goes quiet. That is deliberate and acceptable: nothing can start a turn with
- * no composer, and the *measured* half — the telemetry the Activity panel draws — comes
- * from main over IPC and stays correct regardless of what is mounted here.
+ * `Chat` is still the sole writer for its app, which means that with a Chat panel
+ * closed that app's live status goes quiet. That is deliberate and acceptable: nothing
+ * can start a turn with no composer, and the *measured* half — the telemetry the
+ * Activity panel draws — comes from main over IPC and stays correct regardless of what
+ * is mounted here.
  */
 
 import { useSyncExternalStore } from 'react'
@@ -32,7 +36,7 @@ export interface FinishedTurn {
 }
 
 /**
- * Everything the gauges and the instrument panels read.
+ * Everything the gauges and the instrument panels read, for one app.
  */
 export interface AgentActivity {
   /** What the agent is doing while it is not producing tokens, or null when idle. */
@@ -65,8 +69,18 @@ const IDLE: AgentActivity = {
   turnRevision: 0
 }
 
-let snapshot: AgentActivity = IDLE
+/** One reading per app that has had any. */
+let readings: Record<string, AgentActivity> = {}
+
+/** The apps with a turn in flight, as a stable array. See {@link useBusyAppIds}. */
+let busy: readonly string[] = []
+
 const listeners = new Set<() => void>()
+
+/** Tell every subscriber something changed. */
+function notify(): void {
+  for (const listener of listeners) listener()
+}
 
 /**
  * Subscribe to changes. The store's half of {@link useAgentActivity}.
@@ -81,36 +95,55 @@ function subscribe(listener: () => void): () => void {
 }
 
 /**
- * The current reading.
+ * One app's current reading.
  *
- * Returns the same object identity until something actually changes, which is what
- * `useSyncExternalStore` requires — a fresh object every call is an infinite render
- * loop, not a slow one.
+ * Returns the same object identity until that app's reading actually changes, which is
+ * what `useSyncExternalStore` requires — a fresh object every call is an infinite
+ * render loop, not a slow one. An app nobody has published for reads as {@link IDLE},
+ * which is the same shared object every time for the same reason.
  *
- * @returns What the agent is doing
+ * @param appId - The app to read
+ * @returns What that app's agent is doing
  */
-function getSnapshot(): AgentActivity {
-  return snapshot
+function readActivity(appId: string): AgentActivity {
+  return readings[appId] ?? IDLE
 }
 
 /**
- * Replace part of the reading and notify.
+ * Recompute the busy list, keeping its identity when the membership has not changed.
+ *
+ * The rail re-renders every tile when this array changes, so a fresh array on every
+ * status chunk would repaint the rail dozens of times a turn.
+ */
+function refreshBusy(): void {
+  const next = Object.keys(readings).filter((appId) => readings[appId].isStreaming)
+  if (next.length === busy.length && next.every((appId, index) => busy[index] === appId)) {
+    return
+  }
+  busy = next
+}
+
+/**
+ * Replace part of one app's reading and notify.
  *
  * A no-op when nothing in the patch differs from what is already stored, so a stream
  * that reports the same status twice does not re-render the panels watching it.
  *
+ * @param appId - The app the reading belongs to
  * @param patch - The fields that changed
  */
-export function publishActivity(patch: Partial<AgentActivity>): void {
-  const next = { ...snapshot, ...patch }
+export function publishActivity(appId: string, patch: Partial<AgentActivity>): void {
+  const current = readActivity(appId)
+  const next = { ...current, ...patch }
 
   const changed = (Object.keys(patch) as (keyof AgentActivity)[]).some(
-    (key) => next[key] !== snapshot[key]
+    (key) => next[key] !== current[key]
   )
   if (!changed) return
 
-  snapshot = next
-  for (const listener of listeners) listener()
+  readings = { ...readings, [appId]: next }
+  refreshBusy()
+  notify()
 }
 
 /**
@@ -118,9 +151,11 @@ export function publishActivity(patch: Partial<AgentActivity>): void {
  *
  * Clears what the previous turn left behind — its cost line, the files it wrote — so
  * the gauges describe the turn in progress rather than mixing two of them.
+ *
+ * @param appId - The app whose turn is starting
  */
-export function beginTurn(): void {
-  publishActivity({
+export function beginTurn(appId: string): void {
+  publishActivity(appId, {
     isStreaming: true,
     status: null,
     lastTurn: null,
@@ -136,15 +171,16 @@ export function beginTurn(): void {
  * daemon that reported no usage. In that case the gauge shows no summary rather than a
  * summary of zero, which is the same refusal the old strip made.
  *
+ * @param appId - The app whose turn finished
  * @param finished - What the turn cost, when it was measured
  */
-export function endTurn(finished: FinishedTurn | null): void {
-  publishActivity({
+export function endTurn(appId: string, finished: FinishedTurn | null): void {
+  publishActivity(appId, {
     isStreaming: false,
     status: null,
     writingPath: null,
     lastTurn: finished,
-    turnRevision: snapshot.turnRevision + 1
+    turnRevision: readActivity(appId).turnRevision + 1
   })
 }
 
@@ -154,44 +190,100 @@ export function endTurn(finished: FinishedTurn | null): void {
  * Additive and de-duplicated: a file written five times in one turn is one entry, the
  * same way the git read that replaces this list would report it.
  *
+ * @param appId - The app whose agent wrote it
  * @param path - Path of the file, relative to the app root
  */
-export function recordWrite(path: string): void {
-  if (snapshot.pendingPaths.includes(path)) return
-  publishActivity({ pendingPaths: [...snapshot.pendingPaths, path] })
+export function recordWrite(appId: string, path: string): void {
+  const current = readActivity(appId)
+  if (current.pendingPaths.includes(path)) return
+  publishActivity(appId, { pendingPaths: [...current.pendingPaths, path] })
 }
 
 /**
- * Reset to idle, because the conversation changed.
+ * Reset one app to idle, because its conversation changed.
  *
  * A session switch or a cleared history leaves the previous conversation's turn cost
  * and file list describing a transcript that is no longer on screen.
+ *
+ * @param appId - The app to reset
  */
-export function resetActivity(): void {
-  snapshot = IDLE
-  for (const listener of listeners) listener()
+export function resetActivity(appId: string): void {
+  if (!readings[appId]) return
+  readings = { ...readings, [appId]: IDLE }
+  refreshBusy()
+  notify()
+}
+
+/**
+ * Drop an app's reading entirely, because its workspace is gone.
+ *
+ * Distinct from {@link resetActivity}, which keeps the app present and idle. This is
+ * for a closed tile: leaving the entry behind would keep the app in `Object.keys` for
+ * the life of the session, and a deleted app would stay there forever.
+ *
+ * @param appId - The app to forget
+ */
+export function forgetActivity(appId: string): void {
+  if (!readings[appId]) return
+  const next = { ...readings }
+  delete next[appId]
+  readings = next
+  refreshBusy()
+  notify()
 }
 
 /**
  * The store's subscribe function, for tests.
  *
- * Exported because the store is a module singleton with no React in it, and the two
- * properties worth testing — that an unchanged publish notifies nobody, and that the
- * snapshot identity is stable between changes — are properties of exactly these two
- * functions. Testing them through a renderer would test React instead.
+ * Exported because the store is a module singleton with no React in it, and the
+ * properties worth testing — that an unchanged publish notifies nobody, that one app's
+ * turn does not move another's reading, and that the snapshot identity is stable
+ * between changes — are properties of exactly these functions. Testing them through a
+ * renderer would test React instead.
  */
 export const subscribeForTest = subscribe
 
 /**
- * The store's snapshot function, for tests. See {@link subscribeForTest}.
+ * One app's reading, for tests. See {@link subscribeForTest}.
  */
-export const readForTest = getSnapshot
+export const readForTest = readActivity
 
 /**
- * Read what the agent is doing.
- *
- * @returns The current reading, re-rendering the caller when it changes
+ * Empty the whole store, for tests. Never called by the app.
  */
-export function useAgentActivity(): AgentActivity {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+export function resetAllForTest(): void {
+  readings = {}
+  busy = []
+  notify()
+}
+
+/**
+ * Read what one app's agent is doing.
+ *
+ * @param appId - The app to watch
+ * @returns Its current reading, re-rendering the caller when it changes
+ */
+export function useAgentActivity(appId: string): AgentActivity {
+  return useSyncExternalStore(
+    subscribe,
+    () => readActivity(appId),
+    () => readActivity(appId)
+  )
+}
+
+/**
+ * The apps with a turn in flight.
+ *
+ * What the nav rail's per-tile dots read. It is derived from the same store the gauges
+ * use rather than from a second source, so a tile cannot claim an app is working while
+ * that app's own composer says it is idle.
+ *
+ * @returns The busy app ids, stable while the membership does not change
+ */
+export function useBusyAppIds(): readonly string[] {
+  return useSyncExternalStore(
+    subscribe,
+    () => busy,
+    () => busy
+  )
 }

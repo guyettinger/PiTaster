@@ -2,7 +2,7 @@
  * Type definitions for the Electron API exposed via preload script.
  */
 
-import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, CacheVerdict, DaemonHealth, ElementContext, SerializedContentBlock, Skill, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, ProviderRequestRecord, RequestOutcome, TelemetrySnapshot, TelemetryTotals, TurnCost } from '@pitaster/core'
+import type { SubApp, CreateAppParams, AppTemplate, PersistedMessage, ChatHistoryPayload, ChatSession, CreateChatSessionParams, CacheVerdict, DaemonHealth, ElementContext, SerializedContentBlock, Skill, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope, ProviderRequestRecord, RequestOutcome, TelemetrySnapshot, TelemetryTotals, TurnCost, OpenAppsState } from '@pitaster/core'
 
 /**
  * A sampling value as the user configured it.
@@ -65,7 +65,7 @@ interface FilePatch {
 /** What the agent is doing when it is not producing tokens. */
 interface AgentStatus {
   /** What the agent is doing. */
-  kind: 'compacting' | 'retrying' | 'waiting' | 'settled'
+  kind: 'compacting' | 'retrying' | 'waiting' | 'queued' | 'settled'
   /** One sentence for the user, when there is something worth saying. */
   detail?: string
   /** Retry attempt in progress, 1-indexed. */
@@ -361,50 +361,49 @@ interface ElementInfo {
 /** Electron API interface exposed to the renderer. */
 interface ElectronAPI {
   /** Send a message to the agent (string or content blocks). */
-  sendMessage: (message: string | SerializedContentBlock[]) => Promise<void>
+  sendMessage: (message: string | SerializedContentBlock[], appId: string) => Promise<void>
   /** Listen for streamed agent responses. */
-  onAgentStream: (callback: (chunk: StreamChunk) => void) => void
-  /** Remove agent stream listener. */
-  offAgentStream: () => void
+  onAgentStream: (appId: string, callback: (chunk: StreamChunk) => void) => () => void
   /** Get the current permission mode. */
-  getPermissionMode: () => Promise<PermissionMode>
+  getPermissionMode: (appId: string | null) => Promise<PermissionMode>
   /** Set the permission mode. */
-  setPermissionMode: (mode: PermissionMode) => Promise<PermissionMode>
+  setPermissionMode: (mode: PermissionMode, appId: string | null) => Promise<PermissionMode>
   /** Listen for tool approval requests. */
-  onToolApproval: (callback: (request: ToolApprovalRequest) => void) => void
-  /** Remove tool approval listener. */
-  offToolApproval: () => void
+  onToolApproval: (
+    appId: string,
+    callback: (request: ToolApprovalRequest) => void
+  ) => () => void
   /** Respond to a tool approval request. */
   respondToolApproval: (response: ToolApprovalResponse) => void
   /** Clear the conversation history. */
-  clearHistory: () => Promise<void>
+  clearHistory: (appId: string) => Promise<void>
 
   /** Cancel the in-flight agent run. */
-  abortAgent: () => Promise<void>
+  abortAgent: (appId: string) => Promise<void>
 
   /** Read what the context window holds, broken down into attributable blocks. */
-  getContextReport: () => Promise<ContextReport | null>
+  getContextReport: (appId: string) => Promise<ContextReport | null>
   /** Read what the session's provider requests actually cost. */
-  getTelemetry: () => Promise<TelemetrySnapshot>
+  getTelemetry: (appId: string) => Promise<TelemetrySnapshot>
 
   /** Summarize the conversation now rather than waiting for the threshold. */
-  compactContext: () => Promise<void>
+  compactContext: (appId: string) => Promise<void>
   
   // Version control methods
   /** Get current version control state. */
-  getVersionState: (appPath?: string) => Promise<VersionState>
+  getVersionState: (appId: string) => Promise<VersionState>
   /** Get all branches. */
-  getBranches: (appPath?: string) => Promise<Branch[]>
+  getBranches: (appId: string) => Promise<Branch[]>
   /** Get commit history. */
-  getHistory: (depth?: number, appPath?: string) => Promise<Commit[]>
+  getHistory: (depth: number | undefined, appId: string) => Promise<Commit[]>
   /** Switch to a branch. */
-  switchBranch: (name: string, appPath?: string) => Promise<void>
+  switchBranch: (name: string, appId: string) => Promise<void>
   /** Create a new branch. */
-  createBranch: (name: string, appPath?: string) => Promise<Branch>
+  createBranch: (name: string, appId: string) => Promise<Branch>
   /** Rollback to a specific commit. */
-  rollback: (oid: string, appPath?: string) => Promise<void>
+  rollback: (oid: string, appId: string) => Promise<void>
   /** Get diff between two commits. */
-  getDiff: (from: string, to: string, appPath?: string) => Promise<FileDiff[]>
+  getDiff: (from: string, to: string, appId: string) => Promise<FileDiff[]>
 
   /**
    * The commit a chat session started from, for the changed-files strip.
@@ -415,11 +414,11 @@ interface ElectronAPI {
   getSessionBaseline: (appId: string, sessionId: string) => Promise<string | null>
 
   /** List the sub-app's source files as a tree. */
-  getFileTree: (appPath?: string) => Promise<FileNode[]>
+  getFileTree: (appId: string) => Promise<FileNode[]>
   /** Read one file from inside the sub-app. */
-  readFile: (filePath: string, appPath?: string) => Promise<FileContents>
+  readFile: (filePath: string, appId: string) => Promise<FileContents>
   /** Compiler errors for one file, from the agent's own language service. */
-  getFileDiagnostics: (filePath: string, appPath?: string) => Promise<FileDiagnostic[]>
+  getFileDiagnostics: (filePath: string, appId: string) => Promise<FileDiagnostic[]>
 
   // Sources methods
   /** Get all connected sources with their state. */
@@ -437,23 +436,36 @@ interface ElectronAPI {
 
   // Skills methods
   /** Get both skill libraries for the open app. */
-  getSkills: () => Promise<SkillLibrary>
+  getSkills: (appId: string | null) => Promise<SkillLibrary>
   /** Create or overwrite a skill. */
-  saveSkill: (request: { scope: SkillScope; draft: SkillDraft }) => Promise<SkillLibraryUpdate>
+  saveSkill: (
+    request: { scope: SkillScope; draft: SkillDraft },
+    appId: string | null
+  ) => Promise<SkillLibraryUpdate>
   /** Delete a skill and its directory. */
-  deleteSkill: (request: { scope: SkillScope; name: string }) => Promise<SkillLibraryUpdate>
+  deleteSkill: (
+    request: { scope: SkillScope; name: string },
+    appId: string | null
+  ) => Promise<SkillLibraryUpdate>
   /** Turn a skill on or off for the open app. */
-  setSkillEnabled: (request: { name: string; enabled: boolean }) => Promise<SkillLibrary>
+  setSkillEnabled: (
+    request: { name: string; enabled: boolean },
+    appId: string
+  ) => Promise<SkillLibrary>
   /** Listen for the skill libraries changing on disk. */
-  onSkillsChanged: (callback: () => void) => void
-  /** Remove the skills-changed listener. */
-  offSkillsChanged: () => void
+  onSkillsChanged: (appId: string | null, callback: () => void) => () => void
 
   // Workspace layout methods
   /** Read a sub-app's saved dock layout, or null when there is nothing usable. */
   getWorkspaceLayout: (appId: string, version: number) => Promise<unknown | null>
   /** Save a sub-app's dock layout. */
   saveWorkspaceLayout: (appId: string, version: number, layout: unknown) => Promise<void>
+
+  // Open-app set methods
+  /** Read which apps have a rail tile, already pruned of apps that no longer exist. */
+  getOpenApps: () => Promise<OpenAppsState>
+  /** Persist which apps have a rail tile, and which one has focus. */
+  setOpenApps: (state: OpenAppsState) => Promise<void>
 
   // Config methods
   /** Get the application configuration. */
@@ -471,35 +483,41 @@ interface ElectronAPI {
 
   // Chat history methods
   /** Load chat history for the active app, tagged with the session it belongs to. */
-  loadChatHistory: () => Promise<ChatHistoryPayload>
+  loadChatHistory: (appId: string) => Promise<ChatHistoryPayload>
   /** Clear chat history for the active app. */
-  clearChatHistory: () => Promise<void>
+  clearChatHistory: (appId: string) => Promise<void>
   /** Listen for chat history loaded events. */
-  onChatHistoryLoaded: (callback: (payload: ChatHistoryPayload) => void) => void
-  /** Remove chat history loaded listener. */
-  offChatHistoryLoaded: () => void
+  onChatHistoryLoaded: (
+    appId: string,
+    callback: (payload: ChatHistoryPayload) => void
+  ) => () => void
 
   // Chat session methods
   /** List all chat sessions for the active app. */
-  listChatSessions: () => Promise<ChatSession[]>
+  listChatSessions: (appId: string) => Promise<ChatSession[]>
   /** Create a new chat session. */
-  createChatSession: (params?: CreateChatSessionParams) => Promise<ChatSession>
+  createChatSession: (
+    params: CreateChatSessionParams | undefined,
+    appId: string
+  ) => Promise<ChatSession>
   /** Delete a chat session. */
-  deleteChatSession: (sessionId: string) => Promise<void>
+  deleteChatSession: (sessionId: string, appId: string) => Promise<void>
   /** Rename a chat session. */
-  renameChatSession: (sessionId: string, title: string) => Promise<ChatSession>
+  renameChatSession: (sessionId: string, title: string, appId: string) => Promise<ChatSession>
   /** Set the active chat session. */
-  setActiveChatSession: (sessionId: string) => Promise<void>
+  setActiveChatSession: (sessionId: string, appId: string) => Promise<void>
   /** Get the active chat session ID. */
-  getActiveChatSession: () => Promise<string | null>
+  getActiveChatSession: (appId: string) => Promise<string | null>
   /** Listen for session change events. */
-  onChatSessionChanged: (callback: (sessionId: string | null) => void) => void
-  /** Remove session change listener. */
-  offChatSessionChanged: () => void
+  onChatSessionChanged: (
+    appId: string,
+    callback: (sessionId: string | null) => void
+  ) => () => void
   /** Listen for sessions list updates. */
-  onSessionsListUpdated: (callback: (sessions: ChatSession[]) => void) => void
-  /** Remove sessions list update listener. */
-  offSessionsListUpdated: () => void
+  onSessionsListUpdated: (
+    appId: string,
+    callback: (sessions: ChatSession[]) => void
+  ) => () => void
 
   // Apps methods
   /** List all sub-apps. */
@@ -514,6 +532,7 @@ interface ElectronAPI {
   updateApp: (id: string, updates: { name?: string; description?: string }) => Promise<SubApp>
   /** Set the active app for agent context. */
   setActiveApp: (id: string | null) => Promise<string | null>
+  openWorkspace: (appId: string) => Promise<string | null>
   /** Get the active app ID. */
   getActiveApp: () => Promise<string | null>
   /** Get the active app details. */
@@ -537,13 +556,9 @@ interface ElectronAPI {
   /** Install dependencies for an app. */
   installDeps: (id: string) => Promise<void>
   /** Listen for app log events. */
-  onAppLog: (callback: (entry: AppLogEntry) => void) => void
-  /** Remove app log listener. */
-  offAppLog: () => void
+  onAppLog: (callback: (entry: AppLogEntry) => void) => () => void
   /** Listen for app status changes. */
-  onAppStatusChange: (callback: (change: AppStatusChange) => void) => void
-  /** Remove app status change listener. */
-  offAppStatusChange: () => void
+  onAppStatusChange: (callback: (change: AppStatusChange) => void) => () => void
 
   // Inspector methods
   /** Get the inspector overlay script. */
@@ -553,7 +568,10 @@ interface ElectronAPI {
   /** Add element context to the current chat. */
   addElementContext: (context: ElementContext) => Promise<void>
   /** Listen for element context added events. */
-  onElementContextAdded: (callback: (context: ElementContext) => void) => () => void
+  onElementContextAdded: (
+    appId: string,
+    callback: (context: ElementContext) => void
+  ) => () => void
 }
 
 declare global {

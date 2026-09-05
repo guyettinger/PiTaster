@@ -21,7 +21,7 @@ const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
  */
 interface VersionControlProps {
   /** Path to the app directory for git operations. */
-  appPath: string
+  appId: string
   /** Callback when rollback is triggered. */
   onRollback: (commitId: string) => void
   /** Callback when branch is switched. */
@@ -37,7 +37,7 @@ interface VersionControlProps {
  * component contributes only its content.
  */
 export function VersionControl({
-  appPath,
+  appId,
   onRollback,
   onBranchSwitch,
   onBranchCreate
@@ -60,15 +60,15 @@ export function VersionControl({
   const [error, setError] = useState<string | null>(null)
 
   const loadVersionData = useCallback(async () => {
-    if (!appPath) return
+    if (!appId) return
     
     try {
       setIsLoading(true)
       setError(null)
       const [versionState, branchList, commitHistory] = await Promise.all([
-        window.electronAPI.getVersionState(appPath),
-        window.electronAPI.getBranches(appPath),
-        window.electronAPI.getHistory(20, appPath)
+        window.electronAPI.getVersionState(appId),
+        window.electronAPI.getBranches(appId),
+        window.electronAPI.getHistory(20, appId)
       ])
       setState(versionState)
       setBranches(branchList)
@@ -79,7 +79,7 @@ export function VersionControl({
     } finally {
       setIsLoading(false)
     }
-  }, [appPath])
+  }, [appId])
 
   useEffect(() => {
     loadVersionData()
@@ -88,7 +88,7 @@ export function VersionControl({
   const handleBranchSwitch = useCallback(
     async (branchName: string) => {
       try {
-        await window.electronAPI.switchBranch(branchName, appPath)
+        await window.electronAPI.switchBranch(branchName, appId)
         onBranchSwitch(branchName)
         await loadVersionData()
       } catch (err) {
@@ -96,14 +96,14 @@ export function VersionControl({
         setError(errorMessage)
       }
     },
-    [appPath, onBranchSwitch, loadVersionData]
+    [appId, onBranchSwitch, loadVersionData]
   )
 
   const handleCreateBranch = useCallback(async () => {
     if (!newBranchName.trim()) return
 
     try {
-      await window.electronAPI.createBranch(newBranchName, appPath)
+      await window.electronAPI.createBranch(newBranchName, appId)
       onBranchCreate(newBranchName)
       setNewBranchName('')
       setIsCreatingBranch(false)
@@ -112,7 +112,7 @@ export function VersionControl({
       const errorMessage = err instanceof Error ? err.message : 'Failed to create branch'
       setError(errorMessage)
     }
-  }, [newBranchName, appPath, onBranchCreate, loadVersionData])
+  }, [newBranchName, appId, onBranchCreate, loadVersionData])
 
   /**
    * Open or close a commit's diff.
@@ -135,19 +135,19 @@ export function VersionControl({
       setCommitPatches(null)
       try {
         const parent = commit.parents[0] ?? EMPTY_TREE
-        const diffs = await window.electronAPI.getDiff(parent, commit.oid, appPath)
+        const diffs = await window.electronAPI.getDiff(parent, commit.oid, appId)
         setCommitPatches(buildPatchFromDiff(diffs))
       } catch {
         setCommitPatches([])
       }
     },
-    [openCommit, appPath]
+    [openCommit, appId]
   )
 
   const handleRollback = useCallback(
     async (commitOid: string) => {
       try {
-        await window.electronAPI.rollback(commitOid, appPath)
+        await window.electronAPI.rollback(commitOid, appId)
         onRollback(commitOid)
         await loadVersionData()
       } catch (err) {
@@ -155,7 +155,7 @@ export function VersionControl({
         setError(errorMessage)
       }
     },
-    [appPath, onRollback, loadVersionData]
+    [appId, onRollback, loadVersionData]
   )
 
   return (

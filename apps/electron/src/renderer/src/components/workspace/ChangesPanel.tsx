@@ -26,12 +26,11 @@ import { useWorkspace } from './WorkspaceContext'
  */
 export function ChangesPanel() {
   const { app, activeSessionId, openFile, changesRevision } = useWorkspace()
-  const { turnRevision, pendingPaths, writingPath } = useAgentActivity()
+  const { turnRevision, pendingPaths, writingPath } = useAgentActivity(app.id)
   const [expanded, setExpanded] = useState<string | null>(null)
 
   const changes = useSessionChanges({
     appId: app.id,
-    appPath: app.path,
     sessionId: activeSessionId,
     revision: turnRevision + changesRevision
   })

@@ -179,11 +179,15 @@ person finds out — and until Session 23 it was hidden more often than it was s
 
 **It was not one bug, it was five.** `agent:get-context-usage` answered off `agentHost`,
 which is created lazily on the first prompt, so a session had no number until a turn
-finished with the chat panel open. `disposeAgentHost` then runs on an app switch, a
+finished with the chat panel open. `disposeAgentHost` then ran on an app switch, a
 session switch, and *every* skills, sources or config save — so the meter blinked out
 several times a minute during ordinary use. The renderer cleared it again on a session
 change, rendered it behind a truthiness guard, and Pi reports `tokens: null` right after
 a compaction, which is the moment the number matters most.
+
+Session 28 removed the first of those causes outright rather than compensating for it: a
+workspace keeps its host when another is focused, so switching apps disposes nothing.
+The `stale` state below is now reached only by a settings save or an eviction.
 
 **The fix is that the fixed half of a request needs no session to measure.** The system
 prompt, the tool schemas, Pi's restored tool guidance, the skill manifest and the app's
@@ -589,12 +593,114 @@ retry count would give up the cheap retries that are the point of the policy, so
 `agent/retry-budget.ts` bounds the wall clock instead: fast failures never come
 near it, a hung request exhausts it on the first retry.
 
+## Several apps at once, and one turn at a time
+
+`activeAppId` was a single module global in `ipc.ts` that around sixty handlers read, and
+it *was* the confinement root. One app at a time was never a policy — it was a consequence
+of where the state lived. `main/workspaces.ts` gives it a place: a `Map<appId,
+WorkspaceRuntime>` holding what is per conversation (`host`, `activeSessionId`,
+`permissionMode`, `cachedReport`, `telemetry`, `runActive`, `hostStale`, `lastUsedAt`), and
+`withWorkspace(appId, run)` as the **only** function in main that turns a
+renderer-supplied id into a root. Nothing outside that module may call
+`appManager.getApp` with a renderer value; a channel that grows an id grows it there.
+
+`permissionMode` moving onto the runtime is security-relevant rather than tidy. It is read
+at every `tool_call` through `getPermissionMode()`, so one process-wide value meant a mode
+chosen in one app widened what another app's in-flight turn was allowed to do.
+
+**What is concurrent is everything except generation.** N live transcripts, N pending
+approvals, N TypeScript services, tools genuinely parallel — and one turn producing tokens
+at a time, because there is one Ollama daemon and one loaded model. Both ways of letting
+two turns overlap fail silently:
+
+- **Queued inside the daemon.** A second request waits there with no headers sent, which is
+  indistinguishable from prefill. `stall-notifier` apologises for a queue, `retry-budget`
+  can cut a turn that never started, and telemetry books the wait as prefill — corrupting
+  the `prefillRate` behind *"~1 min to prefill if the cache misses"* for every workspace,
+  not just the one that waited.
+- **Split by `OLLAMA_NUM_PARALLEL`.** The daemon divides the loaded context across slots.
+  `/api/ps` reports the aggregate, so `getLoadedContextLength` over-reports the per-request
+  window and `deriveContextBudget` sizes compaction against a window the model does not
+  have — the head truncation *"The context window is not what Ollama advertises"* exists to
+  prevent, arriving from a new direction. The KV prefix cache is per slot too, so more
+  workspaces than slots makes every turn a cold prefill and undoes the sealed-prefix design
+  outright.
+
+So `main/inference-queue.ts` serializes turns *in front of* the daemon, where the wait
+is visible: a `queued` `AgentStatusKind` whose detail names the app being waited on, and a
+turn that can be stopped before it has touched anything. **Waiting outside `sendPrompt` is
+what keeps the queue out of the measurements** — Pi's session never sees it.
+
+`runActive` covers the **whole** turn, not just `sendPrompt`. Queueing behind another app
+and loading a 32GB model both happen before the first token with Stop showing, and while
+that flag was false a rollback was accepted and the turn then started against a working
+tree that had moved. `refuseWhileRunning` guards `agent:compact`, `version:rollback`,
+`version:switch-branch` and `apps:install-deps`. Refusing rather than locking is
+deliberate: a lock that queues for several minutes is indistinguishable from one that did
+nothing, and these are things a person asked for *now*.
+
+**The cap is on hosts, not runtimes.** A runtime is a few fields and every app-addressed
+channel creates one, so counting those would evict a live conversation because a file was
+read from the Apps page. A host is a Pi session, its transcript and a whole
+`ts.LanguageService` program in its own `utilityProcess`. Four may be live, evicted least
+recently used, and `hostsToEvict` never offers up a workspace that is mid-turn, holding an
+approval prompt, or on screen — each of those is a distinct visible failure.
+
+**A settings, skills or sources save marks a busy host `hostStale` instead of disposing
+it.** Every host reads that configuration once, when it is built, so a save does invalidate
+all of them — but killing a background turn because someone saved a setting is a worse
+failure than a turn finishing under the configuration it started with: the user sees a run
+they did not stop end with no explanation, in an app they were not looking at. The flag is
+honoured when the turn ends. Teardown passes `{ force: true }`, because there is no later
+moment.
+
+**`denyPendingApprovals` is scoped by app.** Unscoped is now a bug rather than a
+simplification: Stop in one app would answer a write prompt another app is still waiting
+on — a denial the user never made, on a prompt deliberately given no timeout for exactly
+that reason.
+
+**Two stores had to be serialized.** `session-baselines.ts` and `layout-store.ts` are both
+read-modify-write over a whole file, which was safe by accident while nothing else was
+writing. `main/serialize.ts` puts one promise chain per file in front of them. The costs
+are not symmetric, which is why it is a module rather than a tolerated race: a lost layout
+is a lost drag, but `ensureSessionBaseline` is first-write-wins, so a dropped entry leaves
+that session's changed-files strip with no commit to measure from *for the rest of the
+session's life* — no error, nothing to retry. `broadcastSessions` goes through it too,
+keyed per app, because listing reads every transcript end to end.
+`prepareModelForSession` is single-flight for a related reason: two workspaces rewriting
+`models.json` while a third `ModelRuntime.create` reads it.
+
+**`apps:set-active` is focus and nothing else.** Bringing a workspace up — resolving its
+chat session, pushing its transcript — is `workspace:open`, called once per mounted
+workspace, because with several mounted focus and mount stopped being the same event.
+
+Two consequences worth knowing, neither of them fixed:
+
+- An **unanswered approval prompt in one app blocks every other app's turn**, because the
+  ticket is held across tool execution as well as generation. The `queued` status names the
+  app being waited on, so it is discoverable rather than mysterious, but it is real.
+- The **renderer's activity store is keyed by app id** (`state/agentActivity.ts`) and must
+  stay that way. As a single reading, a background app finishing a turn bumped the *focused*
+  app's `turnRevision` — refetching its context report and changed-files strip against a
+  conversation that had not moved — and filed the cost line and written files under the
+  wrong transcript. The rail's per-tile busy dots read `useBusyAppIds` off that same store,
+  so a tile cannot claim an app is working while its own composer says it is idle.
+
 ## The workspace is a dock, and two things hold it up
 
 The shell used to be three hard-coded regions: one main slot showing one of six views, a
 `w-72` History rail nobody could resize, and a drawer where Terminal and Preview took turns.
 None of it survived a restart. It is now a **dockview** dock — panels dragged into splits and
 tabs, remembered per sub-app — and `App.tsx` holds no panel state at all.
+
+The nav rail beside it lists **open apps, not destinations**: Apps at the top, a hairline, one
+tile per open app, then Help and Settings. That is why it is `w-16`. It was `w-20` because of a
+word — the eyebrow read "Workspace" at 71px and a 64px rail clipped it — and the app *is* the
+destination now, so the word left the rail. A tile is a monogram derived from the app's name,
+never the template glyph, because every app made from one template carries the same glyph and a
+rail of three React apps was three identical tiles distinguishable only by position. The name is
+a tooltip rather than a caption: captioning it would put an arbitrary-length string back under
+the tile with no upper bound, since app names are the user's to choose.
 
 **`renderer: 'always'` is not a preference, it is the reason this library was chosen.** Every
 panel is added with it, and dockview then keeps that panel's element attached to its own
@@ -611,14 +717,29 @@ depend on that and would break silently without it:
 - `CodeViewer` disposes its Monaco editor *and* model on unmount, deliberately. Staying mounted
   is what keeps the undo stack, folds and scroll position.
 
-**The dock is never unmounted while an app is focused.** The nav rail's other destinations —
-Apps, Skills, Help, Settings — render as an opaque overlay *over* the workspace rather than in
-place of it. Swapping it out instead would destroy the webview and drop whatever the transcript
-had in flight, which is the bug the dock exists to fix: `Chat.tsx` tears down its `agent:stream`
-subscription on unmount, and `ipc.ts` still carries a workaround that counts skill loads in main
-because navigating to Skills used to stop the renderer receiving chunks mid-turn. That
-workaround is now belt-and-braces rather than load-bearing. The dock wrapper carries `isolate`
-so dockview's internal z-indexes stay under the overlay.
+**A dock is never unmounted while its app is open.** The nav rail's destinations — Apps, Help,
+Settings — render as an opaque overlay *over* the workspaces rather than in place of them.
+Swapping one out would destroy the webview and drop whatever the transcript had in flight, which
+is the bug the dock exists to fix: `Chat.tsx` tears down its `agent:stream` subscription on
+unmount, and `ipc.ts` still carries a workaround that counts skill loads in main because
+navigating to Skills used to stop the renderer receiving chunks mid-turn. That workaround is now
+belt-and-braces rather than load-bearing. The dock wrapper carries `isolate` so dockview's
+internal z-indexes stay under the overlay.
+
+Since Session 28 that applies to **every open app at once**, not only the focused one —
+`App.tsx` renders one `MountedWorkspace` per rail tile and hides the rest. Hiding them is
+`clip-path: inset(100%)` plus `inert`, and neither obvious alternative works. `display: none`
+removes the box, and Chat's auto-scroll reads `scrollHeight`, Monaco needs real dimensions, and
+dockview measures its container to lay out the grid. `visibility: hidden` is inherited *and* a
+descendant may override it back — which dockview does, explicitly, on the overlay of every
+active panel — so it hides the chrome and leaves the panels painted over whatever is focused.
+It is the one mechanism that looks right and is not. `clip-path` clips the subtree, cannot be
+overridden from inside it, and leaves layout alone.
+
+`MountedWorkspace` exists for callback identity rather than tidiness. `WorkspaceContext`'s value
+must stay memoized or every panel re-renders, transcript included, and that needs every callback
+in it to be stable — which callbacks bound to one app cannot be when they are built in a
+component that knows about four.
 
 **The dock's box must `clip`, and `overflow-hidden` is not good enough.** A panel dockview has
 not positioned yet keeps `.dv-render-overlay`'s default 100%/100% at the end of the flow, so an
@@ -652,12 +773,16 @@ of dead apps whenever anything is written. A layout that is missing, corrupt, or
 a different `LAYOUT_VERSION` falls back to the default — nobody can hand-repair that file, and a
 dock that fails to build leaves the app with no UI at all.
 
-**Every panel but Code is a singleton, and that is a constraint rather than a taste.** Each
-`off*` in the preload bridge is `removeAllListeners(channel)`, so two panels subscribed to one
-channel would tear down each other's stream on unmount. Code duplicates safely because it
-subscribes to nothing — it fetches. Making any other panel duplicable means fixing the bridge
-first. `catalog.ts` records which is which, and is kept free of React so the tests, which have no
-DOM, can import it without pulling Monaco in.
+**Every panel but Code is a singleton, and that is now a product decision rather than a
+constraint.** It used to be a constraint: each `off*` in the preload bridge was
+`removeAllListeners(channel)`, so two panels subscribed to one channel tore down each other's
+stream on unmount, and only Code could be duplicated because it subscribes to nothing — it
+fetches. Session 28 had to fix that anyway, because several workspaces are mounted at once and
+each has its own Chat on `agent:stream`: every subscriber now returns an unsubscribe that
+removes *its* listener, and filters on the app id the push is tagged with. Making a second panel
+duplicable is a question of whether two of it is useful, not of whether the bridge survives it.
+`catalog.ts` records which is which, and is kept free of React so the tests, which have no DOM,
+can import it without pulling Monaco in.
 
 One rough edge worth knowing: closing a panel makes dockview redistribute the freed space evenly
 across the remaining columns, so a 260px sidebar can jump. That is `gridview.removeView`
@@ -676,8 +801,20 @@ There are three populations, and they used to fail in complementary ways.
 **A skill's description and its body are paid for differently, and that is the whole
 design.** The description rides in the manifest in *every* request and is the only text
 the model matches a task against; the body costs nothing until the model asks for it.
-The Skills page is drawn in those two registers, with a token count on each, because
+Both surfaces below are drawn in those two registers, with a token count on each, because
 nothing in the UI used to say so and skills were being written like documentation.
+
+**There are two surfaces, and the split follows where the state lives.** Whether a skill
+is on is `SubApp.disabledSkills` — *per app* — so as a single global page every toggle was
+disabled until an app happened to be open, and the "This app" section was an empty prompt.
+It was a page that mostly could not do its job until you had gone somewhere else first.
+`AppSkillsPanel` is a **dock panel**: inside the app, there is always an app, and it holds
+both sections — this app's skills with full CRUD, and the workspace ones with a per-app
+toggle and a link out. `WorkspaceSkillsSettings` lives in **Settings → Skills** and authors
+the library, with deliberately **no toggles at all**: a toggle there would have to ask "for
+which app?" and answer with a picker duplicating the nav rail. The panel's header states
+what *this app* pays, which is what makes turning one off feel like a decision rather than
+a preference.
 
 **Bodies arrive through `load_skill`, not `read`.** Pi renders its own manifest with each
 skill's absolute `<location>` and the instruction to open it with `read`. Every workspace
@@ -811,12 +948,13 @@ bypasses the permission mode.
 **The root itself is validated, not just the paths measured against it.** Every check
 above asks whether a path is inside `SubApp.path` — so that value is the one input the
 whole boundary rests on, and it is built by joining an app id onto `~/.pitaster/apps`. The
-id arrives from the renderer through `apps:set-active`, `apps:get`, `apps:delete` and
-`apps:update`, and `join` resolves `../../../tmp` without complaint. `isValidAppId` and
+id arrives from the renderer on nearly every channel there is — around forty of them since
+Session 28 — and `join` resolves `../../../tmp` without complaint. `isValidAppId` and
 `AppManager.appDir` (`packages/shared/src/apps/manager.ts`) are therefore part of the
 sandbox: an id must be one path segment, and the resolved path must be a direct child of
-the apps root. This is the same reasoning as `resolveAppRoot` in `ipc.ts`, pushed down to
-where the join actually happens so every caller is covered rather than one handler.
+the apps root. This is the same reasoning as `withWorkspace` in `main/workspaces.ts`, pushed
+down to where the join actually happens so every caller is covered rather than one handler.
+(It replaced a `resolveAppRoot` in `ipc.ts` that older comments may still name.)
 
 There are **two** such joins, and the second is the one that writes. `getAppPath` in
 `packages/shared/src/chat/session-paths.ts` builds the same path independently, and
@@ -943,7 +1081,7 @@ Chat history is Pi's own tree-structured JSONL transcript, stored under
 | Location | What it is |
 |----------|------------|
 | `.claude/rules/` | Path-scoped conventions. Load when matching files are opened. |
-| `.claude/skills/` | On-demand workflows (`/session-plan`, `/session-notes`) and reference material. |
+| `.claude/skills/` | On-demand workflows (`/session-plan`, `/session-notes`, `run-app`) and reference material. |
 | `.claude/agents/` | Read-only review subagents for Electron security and the agent tool surface. |
 | `docs/plans/` | One document per implementation session, plus notes. See `docs/plans/README.md`. |
 | `docs/skills/` | **Pi Taster's own runtime skills** — app content, not Claude Code skills. See below. |
@@ -955,3 +1093,17 @@ edit them when the task is about configuring Claude Code — that lives in `.cla
 ## Config location
 
 User data is stored at `~/.pitaster/` — sub-apps, skills, sources, chat history.
+
+Four files there are **shell state, not app state**, and each is outside an app's
+directory for the same reason: an app's directory is a git repo that every agent write
+auto-commits to, so anything kept there would be rolled back by a rollback of the *code*.
+
+| File | What it holds |
+|---|---|
+| `config.json` | Settings: daemon, model, sampling, permissions, theme |
+| `layouts.json` | Each app's dock arrangement, keyed by app id |
+| `open-apps.json` | Which apps have a rail tile, and which is focused |
+| `session-baselines.json` | The commit each chat session started from |
+
+The last is the sharpest case: the changed-files strip measures against it, so storing it
+in the app would destroy the exact reference a rollback should be measured against.

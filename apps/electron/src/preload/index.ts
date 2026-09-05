@@ -3,6 +3,14 @@ import { contextBridge, ipcRenderer } from 'electron'
 /** Permission mode type for tool execution. */
 type PermissionMode = 'plan' | 'default' | 'acceptEdits' | 'bypassPermissions'
 
+/** The shell's open-app set — which sub-apps have a rail tile, and which is focused. */
+interface OpenAppsState {
+  /** Ids of the apps with a tile in the rail, in rail order. */
+  openAppIds: string[]
+  /** The id of the app whose workspace is focused, or null for none. */
+  focusedAppId: string | null
+}
+
 /** A single streamed update from the agent to the renderer. */
 interface StreamChunk {
   /** Type of chunk. */
@@ -568,53 +576,66 @@ const electronAPI = {
    * Send a message to the agent.
    * @param message - The message content (string or content blocks)
    */
-  sendMessage: (message: string | SerializedContentBlock[]): Promise<void> => {
-    return ipcRenderer.invoke('agent:message', message)
+  sendMessage: (message: string | SerializedContentBlock[], appId: string): Promise<void> => {
+    return ipcRenderer.invoke('agent:message', message, appId)
   },
 
   /**
    * Listen for streamed agent responses.
+   *
+   * Returns its own unsubscribe rather than pairing with an `off` that called
+   * `removeAllListeners`. That pairing is why every dock panel but Code had to be
+   * a singleton: two panels on one channel tore down each other's stream when
+   * either unmounted. Removing the exact handler makes the channel shareable.
+   *
    * @param callback - Function called with each streamed chunk
+   * @returns Unsubscribe
    */
-  onAgentStream: (callback: (chunk: StreamChunk) => void): void => {
-    ipcRenderer.on('agent:stream', (_event, chunk) => callback(chunk))
-  },
-
-  /**
-   * Remove agent stream listener.
-   */
-  offAgentStream: (): void => {
-    ipcRenderer.removeAllListeners('agent:stream')
+  onAgentStream: (
+    appId: string,
+    callback: (chunk: StreamChunk) => void
+  ): (() => void) => {
+    const handler = (_event: unknown, payload: { appId: string | null; chunk: StreamChunk }): void => {
+      if (payload.appId !== appId) return
+      callback(payload.chunk)
+    }
+    ipcRenderer.on('agent:stream', handler)
+    return () => ipcRenderer.removeListener('agent:stream', handler)
   },
 
   /**
    * Get the current permission mode.
    */
-  getPermissionMode: (): Promise<PermissionMode> => {
-    return ipcRenderer.invoke('permissions:get-mode')
+  getPermissionMode: (appId: string | null): Promise<PermissionMode> => {
+    return ipcRenderer.invoke('permissions:get-mode', appId)
   },
 
   /**
    * Set the permission mode.
    * @param mode - The permission mode to set
    */
-  setPermissionMode: (mode: PermissionMode): Promise<PermissionMode> => {
-    return ipcRenderer.invoke('permissions:set-mode', mode)
+  setPermissionMode: (mode: PermissionMode, appId: string | null): Promise<PermissionMode> => {
+    return ipcRenderer.invoke('permissions:set-mode', mode, appId)
   },
 
   /**
    * Listen for tool approval requests.
    * @param callback - Function called when approval is needed
+   * @returns Unsubscribe
    */
-  onToolApproval: (callback: (request: ToolApprovalRequest) => void): void => {
-    ipcRenderer.on('agent:tool-approval', (_event, request) => callback(request))
-  },
-
-  /**
-   * Remove tool approval listener.
-   */
-  offToolApproval: (): void => {
-    ipcRenderer.removeAllListeners('agent:tool-approval')
+  onToolApproval: (
+    appId: string,
+    callback: (request: ToolApprovalRequest) => void
+  ): (() => void) => {
+    const handler = (
+      _event: unknown,
+      payload: { appId: string | null; request: ToolApprovalRequest }
+    ): void => {
+      if (payload.appId !== appId) return
+      callback(payload.request)
+    }
+    ipcRenderer.on('agent:tool-approval', handler)
+    return () => ipcRenderer.removeListener('agent:tool-approval', handler)
   },
 
   /**
@@ -628,15 +649,15 @@ const electronAPI = {
   /**
    * Clear the conversation history.
    */
-  clearHistory: (): Promise<void> => {
-    return ipcRenderer.invoke('agent:clear-history')
+  clearHistory: (appId: string): Promise<void> => {
+    return ipcRenderer.invoke('agent:clear-history', appId)
   },
 
   /**
    * Cancel the in-flight agent run.
    */
-  abortAgent: (): Promise<void> => {
-    return ipcRenderer.invoke('agent:abort')
+  abortAgent: (appId: string): Promise<void> => {
+    return ipcRenderer.invoke('agent:abort', appId)
   },
 
   /**
@@ -646,8 +667,8 @@ const electronAPI = {
    * function of the app and its configuration — so the meter has something honest to
    * show before the first prompt of a session and after every teardown.
    */
-  getContextReport: (): Promise<ContextReport | null> => {
-    return ipcRenderer.invoke('agent:get-context-report')
+  getContextReport: (appId: string): Promise<ContextReport | null> => {
+    return ipcRenderer.invoke('agent:get-context-report', appId)
   },
 
   /**
@@ -657,79 +678,79 @@ const electronAPI = {
    * reason: the recorder measures the conversation and outlives the agent host, so a
    * panel can show real numbers the moment it mounts without warming a model.
    */
-  getTelemetry: (): Promise<TelemetrySnapshot> => {
-    return ipcRenderer.invoke('agent:get-telemetry')
+  getTelemetry: (appId: string): Promise<TelemetrySnapshot> => {
+    return ipcRenderer.invoke('agent:get-telemetry', appId)
   },
 
   /**
    * Summarize the conversation now rather than waiting for the threshold.
    */
-  compactContext: (): Promise<void> => {
-    return ipcRenderer.invoke('agent:compact')
+  compactContext: (appId: string): Promise<void> => {
+    return ipcRenderer.invoke('agent:compact', appId)
   },
 
   // Version control methods
 
   /**
    * Get current version control state.
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  getVersionState: (appPath?: string): Promise<VersionState> => {
-    return ipcRenderer.invoke('version:get-state', appPath)
+  getVersionState: (appId: string): Promise<VersionState> => {
+    return ipcRenderer.invoke('version:get-state', appId)
   },
 
   /**
    * Get all branches.
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  getBranches: (appPath?: string): Promise<Branch[]> => {
-    return ipcRenderer.invoke('version:get-branches', appPath)
+  getBranches: (appId: string): Promise<Branch[]> => {
+    return ipcRenderer.invoke('version:get-branches', appId)
   },
 
   /**
    * Get commit history.
    * @param depth - Maximum number of commits to return
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  getHistory: (depth?: number, appPath?: string): Promise<Commit[]> => {
-    return ipcRenderer.invoke('version:get-history', depth, appPath)
+  getHistory: (depth: number | undefined, appId: string): Promise<Commit[]> => {
+    return ipcRenderer.invoke('version:get-history', depth, appId)
   },
 
   /**
    * Switch to a branch.
    * @param name - Branch name to switch to
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  switchBranch: (name: string, appPath?: string): Promise<void> => {
-    return ipcRenderer.invoke('version:switch-branch', name, appPath)
+  switchBranch: (name: string, appId: string): Promise<void> => {
+    return ipcRenderer.invoke('version:switch-branch', name, appId)
   },
 
   /**
    * Create a new branch.
    * @param name - Name for the new branch
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  createBranch: (name: string, appPath?: string): Promise<Branch> => {
-    return ipcRenderer.invoke('version:create-branch', name, appPath)
+  createBranch: (name: string, appId: string): Promise<Branch> => {
+    return ipcRenderer.invoke('version:create-branch', name, appId)
   },
 
   /**
    * Rollback to a specific commit.
    * @param oid - Commit SHA to rollback to
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  rollback: (oid: string, appPath?: string): Promise<void> => {
-    return ipcRenderer.invoke('version:rollback', oid, appPath)
+  rollback: (oid: string, appId: string): Promise<void> => {
+    return ipcRenderer.invoke('version:rollback', oid, appId)
   },
 
   /**
    * Get diff between two commits.
    * @param from - Source commit SHA
    * @param to - Target commit SHA
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  getDiff: (from: string, to: string, appPath?: string): Promise<FileDiff[]> => {
-    return ipcRenderer.invoke('version:diff', from, to, appPath)
+  getDiff: (from: string, to: string, appId: string): Promise<FileDiff[]> => {
+    return ipcRenderer.invoke('version:diff', from, to, appId)
   },
 
   /**
@@ -754,29 +775,29 @@ const electronAPI = {
    * Confined in the main process by the same `isWithinRoot` the agent's permission gate
    * uses, so this can never show a file the agent could not reach.
    *
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  getFileTree: (appPath?: string): Promise<FileNode[]> => {
-    return ipcRenderer.invoke('files:tree', appPath)
+  getFileTree: (appId: string): Promise<FileNode[]> => {
+    return ipcRenderer.invoke('files:tree', appId)
   },
 
   /**
    * Read one file from inside the sub-app.
    * @param filePath - Path relative to the app root
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  readFile: (filePath: string, appPath?: string): Promise<FileContents> => {
-    return ipcRenderer.invoke('files:read', filePath, appPath)
+  readFile: (filePath: string, appId: string): Promise<FileContents> => {
+    return ipcRenderer.invoke('files:read', filePath, appId)
   },
 
   /**
    * Compiler errors for one file, from the same language service that checks the
    * agent's writes.
    * @param filePath - Path relative to the app root
-   * @param appPath - Optional app path (defaults to active app)
+   * @param appId - The app to act on
    */
-  getFileDiagnostics: (filePath: string, appPath?: string): Promise<FileDiagnostic[]> => {
-    return ipcRenderer.invoke('files:diagnostics', filePath, appPath)
+  getFileDiagnostics: (filePath: string, appId: string): Promise<FileDiagnostic[]> => {
+    return ipcRenderer.invoke('files:diagnostics', filePath, appId)
   },
 
   // Sources methods
@@ -832,8 +853,8 @@ const electronAPI = {
   /**
    * Get both skill libraries for the open app.
    */
-  getSkills: (): Promise<SkillLibrary> => {
-    return ipcRenderer.invoke('skills:list')
+  getSkills: (appId: string | null): Promise<SkillLibrary> => {
+    return ipcRenderer.invoke('skills:list', appId)
   },
 
   /**
@@ -841,8 +862,11 @@ const electronAPI = {
    * @param request - Which library to write to, and the skill's editable fields
    * @returns Both libraries, reloaded, and any warning about the change
    */
-  saveSkill: (request: { scope: SkillScope; draft: SkillDraft }): Promise<SkillLibraryUpdate> => {
-    return ipcRenderer.invoke('skills:save', request)
+  saveSkill: (
+    request: { scope: SkillScope; draft: SkillDraft },
+    appId: string | null
+  ): Promise<SkillLibraryUpdate> => {
+    return ipcRenderer.invoke('skills:save', request, appId)
   },
 
   /**
@@ -850,8 +874,11 @@ const electronAPI = {
    * @param request - Which library it is in, and its name
    * @returns Both libraries, reloaded, and any warning about the change
    */
-  deleteSkill: (request: { scope: SkillScope; name: string }): Promise<SkillLibraryUpdate> => {
-    return ipcRenderer.invoke('skills:delete', request)
+  deleteSkill: (
+    request: { scope: SkillScope; name: string },
+    appId: string | null
+  ): Promise<SkillLibraryUpdate> => {
+    return ipcRenderer.invoke('skills:delete', request, appId)
   },
 
   /**
@@ -859,23 +886,27 @@ const electronAPI = {
    * @param request - The skill's name and whether the app should offer it
    * @returns Both libraries, reloaded
    */
-  setSkillEnabled: (request: { name: string; enabled: boolean }): Promise<SkillLibrary> => {
-    return ipcRenderer.invoke('skills:set-enabled', request)
+  setSkillEnabled: (
+    request: { name: string; enabled: boolean },
+    appId: string
+  ): Promise<SkillLibrary> => {
+    return ipcRenderer.invoke('skills:set-enabled', request, appId)
   },
 
   /**
    * Listen for the skill libraries changing on disk.
    * @param callback - Function called when a skill may have been added or changed
+   * @returns Unsubscribe
    */
-  onSkillsChanged: (callback: () => void): void => {
-    ipcRenderer.on('skills:changed', () => callback())
-  },
-
-  /**
-   * Remove the skills-changed listener.
-   */
-  offSkillsChanged: (): void => {
-    ipcRenderer.removeAllListeners('skills:changed')
+  onSkillsChanged: (appId: string | null, callback: () => void): (() => void) => {
+    const handler = (_event: unknown, payload?: { appId: string | null }): void => {
+      // A null `appId` on either side means "the workspace library", which every
+      // subscriber cares about: a workspace skill is offered to every app.
+      if (appId !== null && payload?.appId != null && payload.appId !== appId) return
+      callback()
+    }
+    ipcRenderer.on('skills:changed', handler)
+    return () => ipcRenderer.removeListener('skills:changed', handler)
   },
 
   // Workspace layout methods
@@ -902,6 +933,24 @@ const electronAPI = {
     layout: unknown
   ): Promise<void> => {
     return ipcRenderer.invoke('layout:save', appId, version, layout)
+  },
+
+  // Open-app set methods
+
+  /**
+   * Read which apps have a rail tile, and which one has focus.
+   * @returns The set, already pruned of apps that no longer exist
+   */
+  getOpenApps: (): Promise<OpenAppsState> => {
+    return ipcRenderer.invoke('workspaces:get-open')
+  },
+
+  /**
+   * Persist which apps have a rail tile, and which one has focus.
+   * @param state - The set to remember
+   */
+  setOpenApps: (state: OpenAppsState): Promise<void> => {
+    return ipcRenderer.invoke('workspaces:set-open', state)
   },
 
   // Config methods
@@ -947,30 +996,35 @@ const electronAPI = {
   /**
    * Load chat history for the active app, tagged with the session it belongs to.
    */
-  loadChatHistory: (): Promise<ChatHistoryPayload> => {
-    return ipcRenderer.invoke('chat:load-history')
+  loadChatHistory: (appId: string): Promise<ChatHistoryPayload> => {
+    return ipcRenderer.invoke('chat:load-history', appId)
   },
 
   /**
    * Clear chat history for the active app.
    */
-  clearChatHistory: (): Promise<void> => {
-    return ipcRenderer.invoke('chat:clear-history')
+  clearChatHistory: (appId: string): Promise<void> => {
+    return ipcRenderer.invoke('chat:clear-history', appId)
   },
 
   /**
    * Listen for chat history loaded events.
    * @param callback - Function called with the transcript and the session it is for
+   * @returns Unsubscribe
    */
-  onChatHistoryLoaded: (callback: (payload: ChatHistoryPayload) => void): void => {
-    ipcRenderer.on('chat:history-loaded', (_event, payload) => callback(payload))
-  },
-
-  /**
-   * Remove chat history loaded listener.
-   */
-  offChatHistoryLoaded: (): void => {
-    ipcRenderer.removeAllListeners('chat:history-loaded')
+  onChatHistoryLoaded: (
+    appId: string,
+    callback: (payload: ChatHistoryPayload) => void
+  ): (() => void) => {
+    const handler = (
+      _event: unknown,
+      payload: ChatHistoryPayload & { appId: string | null }
+    ): void => {
+      if (payload.appId !== appId) return
+      callback(payload)
+    }
+    ipcRenderer.on('chat:history-loaded', handler)
+    return () => ipcRenderer.removeListener('chat:history-loaded', handler)
   },
 
   // Chat session methods
@@ -978,24 +1032,24 @@ const electronAPI = {
   /**
    * List all chat sessions for the active app.
    */
-  listChatSessions: (): Promise<ChatSession[]> => {
-    return ipcRenderer.invoke('sessions:list')
+  listChatSessions: (appId: string): Promise<ChatSession[]> => {
+    return ipcRenderer.invoke('sessions:list', appId)
   },
 
   /**
    * Create a new chat session.
    * @param params - Optional creation parameters
    */
-  createChatSession: (params?: CreateChatSessionParams): Promise<ChatSession> => {
-    return ipcRenderer.invoke('sessions:create', params)
+  createChatSession: (params: CreateChatSessionParams | undefined, appId: string): Promise<ChatSession> => {
+    return ipcRenderer.invoke('sessions:create', params, appId)
   },
 
   /**
    * Delete a chat session.
    * @param sessionId - The session ID to delete
    */
-  deleteChatSession: (sessionId: string): Promise<void> => {
-    return ipcRenderer.invoke('sessions:delete', sessionId)
+  deleteChatSession: (sessionId: string, appId: string): Promise<void> => {
+    return ipcRenderer.invoke('sessions:delete', sessionId, appId)
   },
 
   /**
@@ -1003,53 +1057,63 @@ const electronAPI = {
    * @param sessionId - The session ID to rename
    * @param title - The new title
    */
-  renameChatSession: (sessionId: string, title: string): Promise<ChatSession> => {
-    return ipcRenderer.invoke('sessions:rename', sessionId, title)
+  renameChatSession: (sessionId: string, title: string, appId: string): Promise<ChatSession> => {
+    return ipcRenderer.invoke('sessions:rename', sessionId, title, appId)
   },
 
   /**
    * Set the active chat session.
    * @param sessionId - The session ID to activate
    */
-  setActiveChatSession: (sessionId: string): Promise<void> => {
-    return ipcRenderer.invoke('sessions:set-active', sessionId)
+  setActiveChatSession: (sessionId: string, appId: string): Promise<void> => {
+    return ipcRenderer.invoke('sessions:set-active', sessionId, appId)
   },
 
   /**
    * Get the active chat session ID.
    */
-  getActiveChatSession: (): Promise<string | null> => {
-    return ipcRenderer.invoke('sessions:get-active')
+  getActiveChatSession: (appId: string): Promise<string | null> => {
+    return ipcRenderer.invoke('sessions:get-active', appId)
   },
 
   /**
    * Listen for session change events.
    * @param callback - Function called when the active session changes
+   * @returns Unsubscribe
    */
-  onChatSessionChanged: (callback: (sessionId: string | null) => void): void => {
-    ipcRenderer.on('chat:session-changed', (_event, sessionId) => callback(sessionId))
-  },
-
-  /**
-   * Remove session change listener.
-   */
-  offChatSessionChanged: (): void => {
-    ipcRenderer.removeAllListeners('chat:session-changed')
+  onChatSessionChanged: (
+    appId: string,
+    callback: (sessionId: string | null) => void
+  ): (() => void) => {
+    const handler = (
+      _event: unknown,
+      payload: { appId: string | null; sessionId: string | null }
+    ): void => {
+      if (payload.appId !== appId) return
+      callback(payload.sessionId)
+    }
+    ipcRenderer.on('chat:session-changed', handler)
+    return () => ipcRenderer.removeListener('chat:session-changed', handler)
   },
 
   /**
    * Listen for sessions list updates.
    * @param callback - Function called when the sessions list changes
+   * @returns Unsubscribe
    */
-  onSessionsListUpdated: (callback: (sessions: ChatSession[]) => void): void => {
-    ipcRenderer.on('sessions:list-updated', (_event, sessions) => callback(sessions))
-  },
-
-  /**
-   * Remove sessions list update listener.
-   */
-  offSessionsListUpdated: (): void => {
-    ipcRenderer.removeAllListeners('sessions:list-updated')
+  onSessionsListUpdated: (
+    appId: string,
+    callback: (sessions: ChatSession[]) => void
+  ): (() => void) => {
+    const handler = (
+      _event: unknown,
+      payload: { appId: string | null; sessions: ChatSession[] }
+    ): void => {
+      if (payload.appId !== appId) return
+      callback(payload.sessions)
+    }
+    ipcRenderer.on('sessions:list-updated', handler)
+    return () => ipcRenderer.removeListener('sessions:list-updated', handler)
   },
 
   // App management methods
@@ -1095,11 +1159,30 @@ const electronAPI = {
   },
 
   /**
-   * Set the active app for agent context.
-   * @param id - The app ID to set as active, or null to clear
+   * Record which app the window is showing.
+   *
+   * Focus only. It no longer decides what any channel acts on — every one of them
+   * names its app — and it no longer brings a workspace up either; see
+   * {@link openWorkspace}, which each mounted workspace calls for itself.
+   *
+   * @param id - The app ID now focused, or null to clear
    */
   setActiveApp: (id: string | null): Promise<string | null> => {
     return ipcRenderer.invoke('apps:set-active', id)
+  },
+
+  /**
+   * Bring a workspace up: resolve its chat session and push its transcript.
+   *
+   * Called once per mounted workspace, not on focus — several are mounted at once,
+   * so the two are different events. Idempotent, so a remount replays the session
+   * the manifest already names rather than starting a new conversation.
+   *
+   * @param appId - The workspace to open
+   * @returns Its active chat session, or null when it has none
+   */
+  openWorkspace: (appId: string): Promise<string | null> => {
+    return ipcRenderer.invoke('workspace:open', appId)
   },
 
   /**
@@ -1187,31 +1270,23 @@ const electronAPI = {
   /**
    * Listen for app log events.
    * @param callback - Function called with each log entry
+   * @returns Unsubscribe
    */
-  onAppLog: (callback: (entry: AppLogEntry) => void): void => {
-    ipcRenderer.on('apps:log', (_event, entry) => callback(entry))
-  },
-
-  /**
-   * Remove app log listener.
-   */
-  offAppLog: (): void => {
-    ipcRenderer.removeAllListeners('apps:log')
+  onAppLog: (callback: (entry: AppLogEntry) => void): (() => void) => {
+    const handler = (_event: unknown, entry: AppLogEntry): void => callback(entry)
+    ipcRenderer.on('apps:log', handler)
+    return () => ipcRenderer.removeListener('apps:log', handler)
   },
 
   /**
    * Listen for app status changes.
    * @param callback - Function called with status changes
+   * @returns Unsubscribe
    */
-  onAppStatusChange: (callback: (change: AppStatusChange) => void): void => {
-    ipcRenderer.on('apps:status-change', (_event, change) => callback(change))
-  },
-
-  /**
-   * Remove app status change listener.
-   */
-  offAppStatusChange: (): void => {
-    ipcRenderer.removeAllListeners('apps:status-change')
+  onAppStatusChange: (callback: (change: AppStatusChange) => void): (() => void) => {
+    const handler = (_event: unknown, change: AppStatusChange): void => callback(change)
+    ipcRenderer.on('apps:status-change', handler)
+    return () => ipcRenderer.removeListener('apps:status-change', handler)
   },
 
   // Inspector methods
@@ -1240,8 +1315,17 @@ const electronAPI = {
   /**
    * Listen for element context added events.
    */
-  onElementContextAdded: (callback: (context: ElementContext) => void): (() => void) => {
-    const handler = (_event: unknown, context: ElementContext): void => callback(context)
+  onElementContextAdded: (
+    appId: string,
+    callback: (context: ElementContext) => void
+  ): (() => void) => {
+    const handler = (
+      _event: unknown,
+      payload: { appId: string | null; context: ElementContext }
+    ): void => {
+      if (payload.appId !== appId) return
+      callback(payload.context)
+    }
     ipcRenderer.on('chat:element-context-added', handler)
     return () => ipcRenderer.removeListener('chat:element-context-added', handler)
   }

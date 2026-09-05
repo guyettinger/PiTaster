@@ -67,10 +67,8 @@ function isAppContent(path: string): boolean {
  * Options for {@link useSessionChanges}.
  */
 export interface UseSessionChangesOptions {
-  /** The app the session belongs to. */
+  /** The app the session belongs to, and the app the version calls act on. */
   appId: string
-  /** The app root, for the version IPC calls. */
-  appPath: string
   /** The session to measure, or null when there is none. */
   sessionId: string | null
   /** Bump to force a refetch — a finished turn, a rollback, a branch switch. */
@@ -98,7 +96,7 @@ export interface UseSessionChangesOptions {
  * @returns The session's changed files
  */
 export function useSessionChanges(options: UseSessionChangesOptions): SessionChanges {
-  const { appId, appPath, sessionId, revision } = options
+  const { appId, sessionId, revision } = options
   const [changes, setChanges] = useState<SessionChanges>(NOTHING)
 
   // Guards a stale response. A slow read for a session the user has already left
@@ -132,14 +130,14 @@ export function useSessionChanges(options: UseSessionChangesOptions): SessionCha
       try {
         const [baseline, state] = await Promise.all([
           window.electronAPI.getSessionBaseline(appId, sessionId),
-          window.electronAPI.getVersionState(appPath)
+          window.electronAPI.getVersionState(appId)
         ])
 
         // No baseline, or nothing committed since it: the committed half is empty,
         // but uncommitted work is still worth showing and is known independently.
         const diffs =
           baseline && state.head && baseline !== state.head
-            ? await window.electronAPI.getDiff(baseline, state.head, appPath)
+            ? await window.electronAPI.getDiff(baseline, state.head, appId)
             : []
         const changed = diffs.filter((diff) => isAppContent(diff.path))
 
@@ -161,7 +159,7 @@ export function useSessionChanges(options: UseSessionChangesOptions): SessionCha
     return () => {
       cancelled = true
     }
-  }, [appId, appPath, sessionId, revision])
+  }, [appId, sessionId, revision])
 
   return changes
 }

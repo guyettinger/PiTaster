@@ -34,6 +34,40 @@ const UNTITLED_SESSION = 'New Chat'
 const TITLE_MAX_CHARS = 60
 
 /**
+ * The longest title accepted for a chat session.
+ *
+ * The cap belongs here rather than only on the handler that happens to receive a
+ * title, for the same reason `MAX_ID_LENGTH` lives in `session-baselines.ts`: this
+ * is where every route converges. A title arrives from `sessions:rename`, from
+ * `sessions:create`'s params, and from the model through `summarizeSessionTitle` —
+ * and only the last of those bounds its own output (`TITLE_MAX_CHARS` there is 60).
+ * A bound checked at one channel is a bound the other channels do not have, and the
+ * value is appended verbatim into Pi's transcript on disk, so an unbounded one is
+ * not a bad argument to one call but a permanent entry in a file the sidebar reads
+ * end to end on every turn.
+ *
+ * Two hundred is far past any title anyone types and three times what the generated
+ * ones are allowed.
+ */
+export const MAX_SESSION_TITLE_CHARS = 200
+
+/**
+ * Reject a session title the caller should never have supplied.
+ *
+ * @param title - The value to check
+ * @throws {Error} If it is not a non-empty string of usable length
+ */
+export function assertSessionTitle(title: unknown): asserts title is string {
+  if (
+    typeof title !== 'string' ||
+    title.trim().length === 0 ||
+    title.length > MAX_SESSION_TITLE_CHARS
+  ) {
+    throw new Error('Invalid session title')
+  }
+}
+
+/**
  * What Pi's `buildSessionInfo` puts in `firstMessage` when a session has none.
  *
  * It is a display string, not an absence, so it has to be recognised — otherwise
@@ -288,6 +322,9 @@ export class ChatHistoryManager {
     // session with "New Chat" sets Pi's `SessionInfo.name`, which makes the
     // `deriveTitle` fallback in listSessions() unreachable — so every chat in the
     // sidebar kept that placeholder for the rest of its life.
+    // Checked before the trim rather than after, so a non-string is refused rather
+    // than throwing a TypeError out of `.trim()` on an untrusted argument.
+    if (params?.title !== undefined) assertSessionTitle(params.title)
     const explicitTitle = params?.title?.trim()
     if (explicitTitle) {
       SessionManager.open(file, sessionDir).appendSessionInfo(explicitTitle)
@@ -336,6 +373,8 @@ export class ChatHistoryManager {
     sessionId: string,
     title: string
   ): Promise<ChatSession> {
+    assertSessionTitle(title)
+
     const path = await this.getSessionPath(appId, sessionId)
     if (!path) throw new Error(`Session not found: ${sessionId}`)
 

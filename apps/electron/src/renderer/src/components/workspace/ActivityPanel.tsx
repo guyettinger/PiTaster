@@ -5,6 +5,7 @@
 import { SplitBar } from '../charts/SplitBar'
 import { VERDICT_TONES, VerdictRibbon } from '../charts/VerdictRibbon'
 import { formatDuration, formatRate, formatTokens } from '../../lib/measures'
+import { useWorkspace } from './WorkspaceContext'
 import { useTelemetry } from '../../hooks/useTelemetry'
 import type { ProviderRequestRecord, TelemetrySnapshot } from '../../types/electron'
 
@@ -20,7 +21,8 @@ import type { ProviderRequestRecord, TelemetrySnapshot } from '../../types/elect
  * that does not is paying a full re-prefill it has no reason to.
  */
 export function ActivityPanel() {
-  const { snapshot: telemetry, error } = useTelemetry()
+  const { app } = useWorkspace()
+  const { snapshot: telemetry, error } = useTelemetry(app.id)
 
   // A read that failed and a session that has run nothing are different situations
   // with different responses, and they used to render the same sentence. A record is

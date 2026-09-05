@@ -84,7 +84,7 @@ export function RunningAppsProvider({ children }: { children: ReactNode }) {
     })
 
     // Listen for log events
-    window.electronAPI.onAppLog((entry) => {
+    const unsubscribeLog = window.electronAPI.onAppLog((entry) => {
       setLogs(prev => {
         const newLogs = new Map(prev)
         const appLogs = newLogs.get(entry.appId) ?? []
@@ -95,7 +95,7 @@ export function RunningAppsProvider({ children }: { children: ReactNode }) {
     })
 
     // Listen for status changes
-    window.electronAPI.onAppStatusChange((change) => {
+    const unsubscribeStatus = window.electronAPI.onAppStatusChange((change) => {
       setAppStatuses(prev => {
         const newStatuses = new Map(prev)
         newStatuses.set(change.appId, change.status)
@@ -123,8 +123,8 @@ export function RunningAppsProvider({ children }: { children: ReactNode }) {
     })
 
     return () => {
-      window.electronAPI.offAppLog()
-      window.electronAPI.offAppStatusChange()
+      unsubscribeLog()
+      unsubscribeStatus()
     }
   }, [])
 

@@ -233,20 +233,21 @@ export function Chat({
 
   // What the agent is doing, in the one place the instrument panels can read it too.
   //
-  // This used to be five `useState` calls here. The panels cannot subscribe to
-  // `agent:stream` themselves — `offAgentStream` is `removeAllListeners`, so a second
-  // subscriber tears this one down on unmount — and they must not read it off
+  // This used to be five `useState` calls here. The panels could not subscribe to
+  // `agent:stream` themselves — the bridge's `off` was `removeAllListeners`, so a
+  // second subscriber tore this one down on unmount; the bridge removes the exact
+  // handler now, but the reason to keep one consumer stands — they must not read it off
   // `WorkspaceContext`, whose value is memoized precisely so a per-turn change does not
   // re-render every panel including this transcript. So the stream is still consumed
   // here, exactly once, and published into a store the panels subscribe to.
   //
   // `turnRevision` is the whole point of that: it is bumped when a turn completes, and
   // it is what both this composer and the Changes panel key their git read on.
-  const activity = useAgentActivity()
+  const activity = useAgentActivity(app.id)
   const { isStreaming, turnRevision } = activity
 
   const daemonHealth = useDaemonHealth()
-  const { snapshot: telemetry } = useTelemetry()
+  const { snapshot: telemetry } = useTelemetry(app.id)
 
   // The model's name, for the daemon gauge's resting label. Read once: changing it
   // goes through Settings, which disposes the agent host and remounts this panel.
@@ -267,7 +268,6 @@ export function Chat({
 
   const sessionChanges = useSessionChanges({
     appId: app.id,
-    appPath: app.path,
     sessionId: activeSessionId,
     revision: turnRevision + changesRevision
   })
@@ -276,7 +276,7 @@ export function Chat({
     compact: compactContext,
     isCompacting,
     error: compactError
-  } = useContextReport(activeSessionId, turnRevision)
+  } = useContextReport(app.id, activeSessionId, turnRevision)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   
@@ -290,7 +290,7 @@ export function Chat({
 
   // Mention completion. The skills come from the same libraries the manifest is built
   // from, so a name the menu offers is a name `load_skill` can resolve.
-  const { library: skillLibrary } = useSkills()
+  const { library: skillLibrary } = useSkills(app.id)
   const mentionableSkills = useMemo(
     () =>
       [...skillLibrary.app, ...skillLibrary.workspace].filter(
@@ -333,13 +333,13 @@ export function Chat({
     // The optimistic half of the gauges belongs to the conversation that produced it,
     // and so does the last turn's cost. The committed half is re-read from git for the
     // new session by `useSessionChanges`.
-    resetActivity()
+    resetActivity(app.id)
 
     if (!activeSessionId) return
     let cancelled = false
 
     window.electronAPI
-      .loadChatHistory()
+      .loadChatHistory(app.id)
       .then((payload) => {
         // A transcript for a session we have since switched away from is not ours.
         if (cancelled || payload.sessionId !== activeSessionId) return
@@ -352,7 +352,7 @@ export function Chat({
     return () => {
       cancelled = true
     }
-  }, [activeSessionId])
+  }, [app.id, activeSessionId])
 
 
   // Listen for transcripts pushed from main — on app switch, session switch, and
@@ -367,17 +367,18 @@ export function Chat({
       setMessages(toUIMessages(payload.messages))
     }
 
-    window.electronAPI.onChatHistoryLoaded(handleHistoryLoaded)
+    return window.electronAPI.onChatHistoryLoaded(app.id, handleHistoryLoaded)
+  }, [app.id])
 
-    return () => {
-      window.electronAPI.offChatHistoryLoaded()
-    }
-  }, [])
-
-  // Setup IPC listeners
+  // Setup IPC listeners.
+  //
+  // Every subscription names this workspace's app. The pushes carry the app they
+  // are about, so a transcript only ever renders its own turn — with several
+  // workspaces mounted, an untagged subscription would splice another app's
+  // stream into this conversation, and show its approval prompts here.
   useEffect(() => {
     // Listen for agent stream
-    window.electronAPI.onAgentStream((chunk: StreamChunk) => {
+    const unsubscribeStream = window.electronAPI.onAgentStream(app.id, (chunk: StreamChunk) => {
       if (chunk.type === 'text' && chunk.text) {
         // Add text to current or create new text block
         setMessages(prev => {
@@ -428,7 +429,7 @@ export function Chat({
 
         const target = chunk.input?.path
         if (WRITING_TOOLS.has(chunk.tool) && typeof target === 'string') {
-          publishActivity({ writingPath: target })
+          publishActivity(app.id, { writingPath: target })
         }
 
         setMessages(prev => {
@@ -482,10 +483,10 @@ export function Chat({
         // `details` for `write`, `edit` and `replace_lines`, and `refactor` builds its
         // own for every file it rewrote. Nothing else has to know which tool wrote what.
         if (chunk.patches && chunk.patches.length > 0) {
-          for (const patch of chunk.patches) recordWrite(patch.path)
+          for (const patch of chunk.patches) recordWrite(app.id, patch.path)
         }
 
-        publishActivity({ writingPath: null })
+        publishActivity(app.id, { writingPath: null })
         currentToolRef.current = null
       } else if (chunk.type === 'complete') {
         currentToolRef.current = null
@@ -497,12 +498,12 @@ export function Chat({
         // against git, which is the only version that survives the same file being
         // written twice. And it tells the Activity panel there is something new to
         // read.
-        endTurn(chunk.turn ? { turn: chunk.turn, cache: chunk.cache ?? 'unknown' } : null)
+        endTurn(app.id, chunk.turn ? { turn: chunk.turn, cache: chunk.cache ?? 'unknown' } : null)
         // The agent persists its own transcript; nothing to save here.
       } else if (chunk.type === 'status') {
         // Compaction, retries and long prefills are most of the wall-clock time on a
         // local model. Without this they render as a hang.
-        publishActivity({
+        publishActivity(app.id, {
           status: chunk.status?.kind === 'settled' ? null : (chunk.status ?? null)
         })
       } else if (chunk.type === 'error') {
@@ -510,18 +511,22 @@ export function Chat({
         // run it described has failed, which reads as a run still in progress. A
         // failed turn has no cost to report, so nothing is shown rather than a
         // summary of zero.
-        endTurn(null)
+        endTurn(app.id, null)
         setMessages((prev) => withFailure(prev, chunk.error))
       }
     })
 
     // Listen for tool approval requests
-    window.electronAPI.onToolApproval((request: ToolApprovalRequest) => {
-      setPendingApproval(request)
-    })
+    const unsubscribeApproval = window.electronAPI.onToolApproval(
+      app.id,
+      (request: ToolApprovalRequest) => {
+        setPendingApproval(request)
+      }
+    )
 
     // Listen for element context events
     const unsubscribeElementContext = window.electronAPI.onElementContextAdded(
+      app.id,
       (context: ElementContext) => {
         // Add a new user message with element context
         const message: Message = {
@@ -546,11 +551,14 @@ export function Chat({
 
     // Cleanup listeners
     return () => {
-      window.electronAPI.offAgentStream()
-      window.electronAPI.offToolApproval()
+      unsubscribeStream()
+      unsubscribeApproval()
       unsubscribeElementContext()
     }
-  }, [])
+    // `app.id` is stable for the life of this component — the workspace is keyed
+    // by it — but the subscriptions filter on it now, so it is a real dependency
+    // and listing it is what keeps that true if the keying ever changes.
+  }, [app.id])
 
   const sendMessage = useCallback(async () => {
     if (!input.trim() || isStreaming || !activeSessionId) return
@@ -570,7 +578,7 @@ export function Chat({
 
     setMessages(prev => [...prev, userMessage, assistantMessage])
     setInput('')
-    beginTurn()
+    beginTurn(app.id)
 
     // Convert message blocks to serialized format for agent
     const serializedBlocks = convertToSerializedBlocks(userMessage.blocks || [])
@@ -582,26 +590,26 @@ export function Chat({
     // leave the composer disabled behind a turn that never started. This is also the
     // only handler for the rejection: `sendMessage` is passed straight to `onClick`.
     try {
-      await window.electronAPI.sendMessage(serializedBlocks)
+      await window.electronAPI.sendMessage(serializedBlocks, app.id)
     } catch (caught) {
-      endTurn(null)
+      endTurn(app.id, null)
       setMessages((prev) => withFailure(prev, readableError(caught)))
     }
-  }, [input, isStreaming, setInput, activeSessionId])
+  }, [app.id, input, isStreaming, setInput, activeSessionId])
 
   /**
    * Cancel the in-flight agent run.
    */
   const stopStreaming = useCallback(async () => {
     try {
-      await window.electronAPI.abortAgent()
+      await window.electronAPI.abortAgent(app.id)
     } catch (err) {
       console.error('Failed to abort agent:', err)
     } finally {
       // Aborting denies any approval still waiting in the main process, so the card
       // asking for it is answered and must not stay on screen.
       setPendingApproval(null)
-      endTurn(null)
+      endTurn(app.id, null)
     }
   }, [])
 
@@ -631,15 +639,15 @@ export function Chat({
   }, [pendingApproval])
 
   const clearHistory = useCallback(async () => {
-    await window.electronAPI.clearHistory()
+    await window.electronAPI.clearHistory(app.id)
     // Also clear persisted chat history
     try {
-      await window.electronAPI.clearChatHistory()
+      await window.electronAPI.clearChatHistory(app.id)
     } catch {
       // Ignore errors (e.g., no active app)
     }
     setMessages([])
-  }, [])
+  }, [app.id])
 
   const mode = describePermissionMode(permissionMode)
 
