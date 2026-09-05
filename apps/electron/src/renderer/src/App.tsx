@@ -61,9 +61,18 @@ export function App() {
     let cancelled = false
     setActiveSessionId(null) // Refilled by the chat:session-changed push below.
     setSyncedAppId(null)
-    void window.electronAPI.setActiveApp(focusedAppId).then(() => {
-      if (!cancelled) setSyncedAppId(focusedAppId)
-    })
+    void window.electronAPI
+      .setActiveApp(focusedAppId)
+      // The permission mode belongs to the workspace, not to the process — it is
+      // read at every tool call, so one shared value meant a mode set for one app
+      // widened what another app's turn could do. Re-read it here, or the composer
+      // would keep showing the mode of the app you just left.
+      .then(() => window.electronAPI.getPermissionMode())
+      .then((mode) => {
+        if (cancelled) return
+        setPermissionMode(mode)
+        setSyncedAppId(focusedAppId)
+      })
     return () => {
       cancelled = true
     }
