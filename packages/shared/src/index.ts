@@ -40,7 +40,7 @@ export type { SupersededSeed } from './skills/superseded-seeds.js'
 // Apps
 export { AppManager, isValidAppId } from './apps/manager.js'
 export { AppRunner } from './apps/runner.js'
-export { getTemplate, getTemplates } from './apps/templates.js'
+export { DEFAULT_GITIGNORE, getTemplate, getTemplates } from './apps/templates.js'
 export { installDependencies } from './apps/install.js'
 export type {
   InstallDependenciesParams,
