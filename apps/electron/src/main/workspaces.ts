@@ -53,6 +53,25 @@ export interface WorkspaceRuntime {
   telemetry: Telemetry
   /** Whether a turn is in flight. */
   runActive: boolean
+  /**
+   * Whether the host was built against configuration that has since changed.
+   *
+   * A settings, skills or sources save invalidates every host — each reads those
+   * once, when it is built. Disposing a *busy* one to apply that would kill a
+   * background turn because someone saved a setting, which is a worse failure
+   * than a turn finishing under the old configuration. So the flag defers it:
+   * the host is dropped at the end of the turn instead.
+   */
+  hostStale: boolean
+  /**
+   * When this workspace's host was last put to work, as `Date.now()`.
+   *
+   * The only input to eviction. A host is the expensive thing a workspace owns —
+   * a Pi session, a transcript, and a whole `ts.LanguageService` program in its
+   * own `utilityProcess` — so the cap is on hosts, and least-recently-used is
+   * what decides which one goes.
+   */
+  lastUsedAt: number
 }
 
 /**
@@ -75,8 +94,12 @@ type AppLookup = (id: string) => Promise<SubApp | null>
 /** How a fresh telemetry recorder is made. */
 type TelemetryFactory = () => Telemetry
 
+/** Whether a workspace has an approval prompt on screen. */
+type BusyCheck = (appId: string) => boolean
+
 let lookupApp: AppLookup | null = null
 let makeTelemetry: TelemetryFactory | null = null
+let hasPendingApprovals: BusyCheck = () => false
 
 /** Live runtimes, keyed by app id. */
 const runtimes = new Map<string, WorkspaceRuntime>()
@@ -104,9 +127,18 @@ export function configureWorkspaces(options: {
   lookupApp: AppLookup
   /** Make a fresh telemetry recorder for a new runtime. */
   createTelemetry: TelemetryFactory
+  /**
+   * Whether a workspace is waiting on an approval prompt.
+   *
+   * Injected because the prompts live in `ipc.ts`, and because eviction must not
+   * take a host out from under a question the user is still looking at — the
+   * answer would resolve into a session that no longer exists.
+   */
+  hasPendingApprovals?: BusyCheck
 }): void {
   lookupApp = options.lookupApp
   makeTelemetry = options.createTelemetry
+  hasPendingApprovals = options.hasPendingApprovals ?? (() => false)
 }
 
 /**
@@ -142,7 +174,9 @@ function runtimeFor(appId: string): WorkspaceRuntime {
     permissionMode: INITIAL_PERMISSION_MODE,
     cachedReport: null,
     telemetry: makeTelemetry(),
-    runActive: false
+    runActive: false,
+    hostStale: false,
+    lastUsedAt: Date.now()
   }
   runtimes.set(appId, created)
   return created
@@ -261,6 +295,66 @@ export function allRuntimes(): WorkspaceRuntime[] {
  */
 export function existingRuntime(appId: string): WorkspaceRuntime | undefined {
   return runtimes.get(appId)
+}
+
+/**
+ * The most workspaces that may hold a live agent host at once.
+ *
+ * Not the most workspaces: a runtime with no host is a few fields, and every
+ * app-addressed channel creates one — reading a file from the Apps page must not
+ * evict the session of the app you were just talking to. What is capped is the
+ * expensive thing. Each live host holds a Pi session, its transcript, and a whole
+ * `ts.LanguageService` program in its own `utilityProcess`, warmed on creation.
+ *
+ * Four, matching the rail's open-app cap, so a user who fills the rail never sees
+ * eviction at all — it exists for the workspaces that are no longer on it.
+ */
+export const MAX_LIVE_HOSTS = 4
+
+/**
+ * Which hosts must be dropped to get back under the cap.
+ *
+ * Returns the runtimes to dispose, oldest first, and disposes nothing itself —
+ * tearing a host down belongs to `ipc.ts`, which knows how. Three kinds of
+ * workspace are never offered up, and each would be a distinct visible failure:
+ * one mid-turn (the turn dies because someone opened a fourth app), one holding
+ * an approval prompt (the answer resolves into a session that has gone), and the
+ * one on screen (the meter drops to its floor while the user watches).
+ *
+ * @param protectAppId - The workspace being made live, which is never evicted
+ * @returns Runtimes whose hosts should be disposed, least recently used first
+ */
+export function hostsToEvict(protectAppId: string | null): WorkspaceRuntime[] {
+  const evictable = [...runtimes.values()]
+    .filter((runtime) => runtime.host !== null)
+    .filter(
+      (runtime) =>
+        runtime.appId !== protectAppId &&
+        runtime.appId !== focusedAppId &&
+        !runtime.runActive &&
+        !hasPendingApprovals(runtime.appId)
+    )
+    .sort((a, b) => a.lastUsedAt - b.lastUsedAt)
+
+  const live = [...runtimes.values()].filter((runtime) => runtime.host !== null).length
+  // The workspace being made live is counted whether or not it has a host yet,
+  // so the check is against the population *after* this one joins.
+  const projected = protectAppId && !runtimes.get(protectAppId)?.host ? live + 1 : live
+  const excess = projected - MAX_LIVE_HOSTS
+  return excess > 0 ? evictable.slice(0, excess) : []
+}
+
+/**
+ * Note that a workspace's host was just used.
+ *
+ * The only thing that moves a workspace up the eviction order, and it is called
+ * where a host is *worked*, not where one is asked about — a context report read
+ * on a panel mount says nothing about whether the conversation is still alive.
+ *
+ * @param runtime - The runtime whose host is being used
+ */
+export function touchRuntime(runtime: WorkspaceRuntime): void {
+  runtime.lastUsedAt = Date.now()
 }
 
 /**

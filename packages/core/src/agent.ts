@@ -46,6 +46,16 @@ export type AgentStatusKind =
   | 'retrying'
   /** Waiting on the model with nothing yet on the wire — usually prefill. */
   | 'waiting'
+  /**
+   * Waiting for another workspace's turn to finish.
+   *
+   * Not one of Pi's — Pi Taster's own, and the reason it is worth a kind of its
+   * own is that it looks exactly like `waiting` and means something the user can
+   * act on. There is one Ollama daemon and one loaded model, so turns generate
+   * one at a time however many workspaces are open; a queue rendered as prefill
+   * is a queue nobody can tell from a slow model.
+   */
+  | 'queued'
   /** Working normally again; clear any status the UI is showing. */
   | 'settled'
 

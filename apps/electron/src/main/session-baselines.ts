@@ -20,6 +20,7 @@
 
 import { promises as fs } from 'fs'
 import { join } from 'path'
+import { serialized } from './serialize'
 
 /**
  * The commit one chat session started from.
@@ -192,6 +193,27 @@ export async function ensureSessionBaseline(
 ): Promise<string> {
   const { storePath, appId, sessionId, head, liveAppIds } = options
   assertUsableIds(appId, sessionId)
+  // Validated before queueing, so a bad id is refused now rather than after
+  // waiting behind writes it was never going to join.
+  return serialized(storePath, () => writeBaseline(options))
+}
+
+/**
+ * The read-modify-write itself, run one at a time per store file.
+ *
+ * Separated from {@link ensureSessionBaseline} only so the serialization is
+ * visible at the entry point. Everything between the read and the write below is
+ * why it is needed: `sendSessionChanged` calls this fire-and-forget on every
+ * session change, and with several workspaces live two of those overlap. Both
+ * would read the same pre-state and the second write would drop the first
+ * session's entry — permanently, because this is first-write-wins and nothing
+ * ever asks again.
+ *
+ * @param options - Where to write, which session, and the oid to record
+ * @returns The session's baseline oid — the stored one when there was one
+ */
+async function writeBaseline(options: EnsureSessionBaselineOptions): Promise<string> {
+  const { storePath, appId, sessionId, head, liveAppIds } = options
 
   const store = await readStore(storePath)
   const existing = store[appId]?.[sessionId]?.head

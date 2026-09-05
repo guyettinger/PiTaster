@@ -18,6 +18,11 @@ const STATUS_TONES: Record<AgentStatus['kind'], { tone: string; fallback: string
   compacting: { tone: 'bg-keylime', fallback: 'Summarizing…' },
   retrying: { tone: 'bg-rust', fallback: 'Retrying…' },
   waiting: { tone: 'bg-ash', fallback: 'Waiting on the model…' },
+  // Distinct from `waiting`, which is the model thinking. This one is *another
+  // app* thinking, and the detail names it — the difference between a slow turn
+  // and a turn that has not begun is the difference between waiting and going to
+  // look at what is holding it up.
+  queued: { tone: 'bg-ash', fallback: 'Waiting for another app’s turn…' },
   settled: { tone: 'bg-patina', fallback: 'Working…' }
 }
 

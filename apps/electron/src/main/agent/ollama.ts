@@ -613,6 +613,41 @@ export async function syncOllamaModels(
 export async function prepareModelForSession(
   params: SyncOllamaModelsParams & { selectedModel: string }
 ): Promise<ContextBudget> {
+  // Single-flight, keyed by everything the answer depends on. Two workspaces
+  // building hosts at once would both warm the same model and both rewrite
+  // `models.json` — while a third `ModelRuntime.create` reads it. A half-written
+  // catalog is not a file Pi reports an error about; it is a model that is
+  // missing or has the wrong window, which surfaces later as a session that
+  // never compacts.
+  const key = [params.baseUrl, params.selectedModel, params.contextWindowOverride ?? ''].join(
+    '\u0000'
+  )
+  const running = inFlightPreparations.get(key)
+  if (running) return running
+
+  const preparation = runPreparation(params)
+  inFlightPreparations.set(key, preparation)
+  try {
+    return await preparation
+  } finally {
+    // Dropped whether it resolved or threw: a failed warm must not be cached as
+    // the answer for the rest of the process's life.
+    inFlightPreparations.delete(key)
+  }
+}
+
+/** Preparations already running, keyed by daemon, model and override. */
+const inFlightPreparations = new Map<string, Promise<ContextBudget>>()
+
+/**
+ * The warm-probe-rewrite itself, run at most once per key at a time.
+ *
+ * @param params - Agent directory, daemon URL, selected model, and any user override
+ * @returns The budget Pi Taster configured for the selected model
+ */
+async function runPreparation(
+  params: SyncOllamaModelsParams & { selectedModel: string }
+): Promise<ContextBudget> {
   await warmModel({ baseUrl: params.baseUrl, modelId: params.selectedModel })
 
   const daemonWindow = await getLoadedContextLength({

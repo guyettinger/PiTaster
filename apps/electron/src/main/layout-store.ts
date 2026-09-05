@@ -14,6 +14,7 @@
 
 import { promises as fs } from 'fs'
 import { join } from 'path'
+import { serialized } from './serialize'
 
 /**
  * A saved workspace layout for one sub-app.
@@ -125,24 +126,35 @@ export async function writeWorkspaceLayout(
     throw new Error('Invalid layout')
   }
 
-  const serialized = JSON.stringify(layout)
-  if (serialized === undefined) {
+  const encoded = JSON.stringify(layout)
+  if (encoded === undefined) {
     throw new Error('Invalid layout')
   }
-  if (Buffer.byteLength(serialized, 'utf-8') > MAX_LAYOUT_BYTES) {
+  if (Buffer.byteLength(encoded, 'utf-8') > MAX_LAYOUT_BYTES) {
     throw new Error('Layout too large')
   }
 
-  const store = await readStore(storePath)
-  const live = new Set(liveAppIds)
-  const next: LayoutStore = {}
-  for (const [id, entry] of Object.entries(store)) {
-    if (live.has(id)) {
-      next[id] = entry
+  // Validated before queueing, so a bad layout is refused now rather than after
+  // waiting behind writes it was never going to join.
+  //
+  // Serialized from here down because everything below is a read-modify-write of
+  // one file. Layouts are saved on every drag, and with several workspaces
+  // mounted two apps' saves overlap: both would read the same pre-state and the
+  // second would write the first app's layout back out of existence. Milder than
+  // the baseline store's version of this — a lost drag, not a permanently empty
+  // changed-files strip — but the same bug, and one line to close.
+  return serialized(storePath, async () => {
+    const store = await readStore(storePath)
+    const live = new Set(liveAppIds)
+    const next: LayoutStore = {}
+    for (const [id, entry] of Object.entries(store)) {
+      if (live.has(id)) {
+        next[id] = entry
+      }
     }
-  }
-  next[appId] = { version, layout: JSON.parse(serialized) as unknown }
+    next[appId] = { version, layout: JSON.parse(encoded) as unknown }
 
-  await fs.mkdir(join(storePath, '..'), { recursive: true })
-  await fs.writeFile(storePath, JSON.stringify(next, null, 2))
+    await fs.mkdir(join(storePath, '..'), { recursive: true })
+    await fs.writeFile(storePath, JSON.stringify(next, null, 2))
+  })
 }

@@ -65,7 +65,7 @@ interface FilePatch {
 /** What the agent is doing when it is not producing tokens. */
 interface AgentStatus {
   /** What the agent is doing. */
-  kind: 'compacting' | 'retrying' | 'waiting' | 'settled'
+  kind: 'compacting' | 'retrying' | 'waiting' | 'queued' | 'settled'
   /** One sentence for the user, when there is something worth saying. */
   detail?: string
   /** Retry attempt in progress, 1-indexed. */

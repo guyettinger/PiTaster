@@ -30,6 +30,8 @@ import { buildContextReport } from './agent/context-report'
 import { createTelemetry, type Telemetry } from './agent/telemetry'
 import { readWorkspaceLayout, writeWorkspaceLayout } from './layout-store'
 import { readOpenApps, writeOpenApps } from './open-apps-store'
+import { serialized } from './serialize'
+import { InferenceCancelled, inferenceQueue } from './inference-queue'
 import {
   allRuntimes,
   configureWorkspaces,
@@ -39,7 +41,9 @@ import {
   focusedRuntime,
   focusedWorkspace,
   getFocusedAppId,
+  hostsToEvict,
   setFocusedAppId,
+  touchRuntime,
   withWorkspace,
   type Workspace,
   type WorkspaceRuntime
@@ -213,7 +217,16 @@ const appManager = new AppManager()
 // its own; it is a funnel, not a second implementation of the sandbox.
 configureWorkspaces({
   lookupApp: (id) => appManager.getApp(id),
-  createTelemetry
+  createTelemetry,
+  // Eviction must not take a host out from under a question the user is still
+  // looking at: the prompt has no timeout, and their answer would resolve into a
+  // session that no longer exists.
+  hasPendingApprovals: (appId) => {
+    for (const pending of pendingApprovals.values()) {
+      if (pending.appId === appId) return true
+    }
+    return false
+  }
 })
 
 /** App runner instance for dev servers. */
@@ -439,6 +452,25 @@ async function broadcastSessions(
   appId: string | null
 ): Promise<ChatSession[] | null> {
   if (!appId || mainWindow.isDestroyed()) return null
+  // Coalesced per app. Listing reads every transcript in the app end to end, and
+  // several paths call this within a few milliseconds of each other at the end of
+  // a turn — with N workspaces those overlap across apps as well as within one.
+  // Keyed by app, so a busy workspace never delays another's sidebar.
+  return serialized(`sessions:${appId}`, () => readAndSendSessions(mainWindow, appId))
+}
+
+/**
+ * The listing itself.
+ *
+ * @param mainWindow - The window to notify
+ * @param appId - The sub-app whose sessions changed
+ * @returns The sessions that were sent, or null when none could be read
+ */
+async function readAndSendSessions(
+  mainWindow: BrowserWindow,
+  appId: string
+): Promise<ChatSession[] | null> {
+  if (mainWindow.isDestroyed()) return null
   try {
     const sessions = await chatHistoryManager.listSessions(appId)
     if (mainWindow.isDestroyed()) return null
@@ -1110,6 +1142,7 @@ async function disposeAgentHost(runtime: WorkspaceRuntime | null): Promise<void>
   if (!runtime?.host) return
   const host = runtime.host
   runtime.host = null
+  runtime.hostStale = false
   try {
     await host.abort()
   } catch {
@@ -1125,10 +1158,73 @@ async function disposeAgentHost(runtime: WorkspaceRuntime | null): Promise<void>
  * A settings, skills or sources save changes what *every* session was built with,
  * not only the focused one — every host reads those once, when it is built. With
  * one host that distinction did not exist; with a registry it has to be made.
+ *
+ * A workspace mid-turn is **marked, not disposed**. Killing a background turn
+ * because someone saved a setting is a new failure mode and a worse one than a
+ * turn finishing under the configuration it started with: the user sees a run
+ * they did not stop end with no explanation, in an app they were not looking at.
+ * The flag is honoured when that turn ends, in `agent:message`'s `finally`.
  */
-async function disposeAllAgentHosts(): Promise<void> {
+async function disposeAllAgentHosts(options?: {
+  /**
+   * Dispose a workspace mid-turn as well.
+   *
+   * Only teardown passes this. The deferral above is right for a settings save
+   * and wrong for a closing window: there is no later moment to honour the flag
+   * in, and a spared host would go on generating into a window that has gone.
+   */
+  force?: boolean
+}): Promise<void> {
   for (const runtime of allRuntimes()) {
+    if (runtime.runActive && !options?.force) {
+      if (runtime.host) runtime.hostStale = true
+      continue
+    }
     await disposeAgentHost(runtime)
+  }
+}
+
+/**
+ * Drop the least recently used hosts until the live population is under its cap.
+ *
+ * The policy is `hostsToEvict`; this is only the part that has to know how a host
+ * is torn down. Awaited rather than fired off, so the utilityProcess and the Pi
+ * session of the workspace being replaced are gone before the next one is built —
+ * the cap exists to bound memory, and a cap enforced asynchronously bounds nothing
+ * at the moment it matters.
+ *
+ * @param protectAppId - The workspace about to become live, which is never evicted
+ */
+async function evictIdleHosts(protectAppId: string | null): Promise<void> {
+  for (const runtime of hostsToEvict(protectAppId)) {
+    await disposeAgentHost(runtime)
+    // The conversation is not forgotten, only its host: `cachedReport` and
+    // `activeSessionId` stay, so the meter reports `stale` rather than dropping
+    // to its floor, and the next prompt rebuilds the session it names.
+  }
+}
+
+/**
+ * Refuse an operation that would move the ground under a running turn.
+ *
+ * `agent:compact` already refused this way, for the reason that generalizes:
+ * summarizing a conversation Pi is still appending to summarizes a moving
+ * target. A rollback, a branch switch and a dependency install are the same
+ * shape against the working tree instead of the transcript — the agent reads a
+ * file, the tree changes under it, and the edit it writes back lands on content
+ * that no longer exists. Auto-commit then commits that.
+ *
+ * Refusing is the whole mechanism, deliberately, rather than a lock that queues:
+ * these are things a person asked for *now*, and one that silently waits several
+ * minutes for a turn to finish is indistinguishable from one that did nothing.
+ *
+ * @param runtime - The workspace the operation targets
+ * @param what - What is being refused, for the message
+ * @throws {Error} If a turn is in flight in that workspace
+ */
+function refuseWhileRunning(runtime: WorkspaceRuntime, what: string): void {
+  if (runtime.runActive) {
+    throw new Error(`Wait for the current turn to finish before ${what}.`)
   }
 }
 
@@ -1158,10 +1254,13 @@ async function ensureAgentHost(
   // No `host.appId === app.id` check any more: a runtime's host is its own by
   // construction, so the mismatch that check guarded against is unrepresentable.
   if (runtime.host) {
+    touchRuntime(runtime)
     return runtime.host
   }
 
   await disposeAgentHost(runtime)
+  await evictIdleHosts(app.id)
+  touchRuntime(runtime)
 
   // Load the model and rewrite models.json with the window it really got, before
   // Pi's ModelRuntime reads that file.
@@ -1366,20 +1465,66 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       throw new Error('Invalid prompt: must be string or content blocks')
     }
 
+    // Resolved before `onStream` is written, not after: a failure in here has to
+    // be delivered to a workspace, and a stream helper closing over a binding
+    // that is still in its temporal dead zone would throw a second error on the
+    // path that reports the first.
+    const workspace = await withWorkspace(appId, (resolved) => resolved)
+
     /**
-     * Report a failure to the workspace that asked for the turn.
+     * Report progress or failure to the workspace that asked for the turn.
      *
-     * Tagged with the focused app, which is the one whose prompt this is — a
-     * failure delivered untagged would surface in whichever Chat was listening.
+     * Tagged with that workspace rather than the focused one — with several
+     * mounted, an untagged chunk surfaces in whichever Chat happens to be
+     * listening, which for a background turn is the wrong one by definition.
      */
     const onStream = (chunk: StreamChunk): void => {
       if (mainWindow.isDestroyed()) return
       mainWindow.webContents.send('agent:stream', { appId: workspace.id, chunk })
     }
 
-    const workspace = await withWorkspace(appId, (resolved) => resolved)
+    // Take a place in the queue before anything expensive, and hold it across the
+    // model load as well as generation: warming is the daemon's single loaded
+    // model too, so two workspaces racing to warm is the same contention with a
+    // longer wait.
+    //
+    // Waiting *here* rather than inside `sendPrompt` is what keeps the queue out
+    // of the measurements. Pi's session never sees it, so the stall notifier does
+    // not apologise for a queue, `retry-budget` cannot cut a turn that never
+    // started, and telemetry does not book the wait as prefill — which would
+    // decay the `prefillRate` behind "~1 min to prefill if the cache misses" for
+    // every workspace, not only the one that waited.
+    const ticket = inferenceQueue.acquire(workspace.id)
+    if (ticket.waitingBehind !== null) {
+      const ahead = await withWorkspace(ticket.waitingBehind, (other) => other.app.name).catch(
+        () => ticket.waitingBehind
+      )
+      onStream({
+        type: 'status',
+        status: {
+          kind: 'queued',
+          detail: `Waiting for ${ahead}’s turn — one local model, one turn at a time.`
+        }
+      })
+    }
+
+    // Flagged on the runtime the host belongs to, so `agent:compact` refuses while
+    // *this* workspace is mid-turn rather than while any of them is.
+    //
+    // Set here rather than around `sendPrompt`, which is where it used to be, and
+    // the difference is a window minutes long on a cold model: queueing behind
+    // another app and loading a 32GB model both happen before the first token,
+    // with Stop showing the whole time. During that window `runActive` was false,
+    // so a rollback was accepted and the turn then started against a working tree
+    // that had moved. It means "a turn is in flight", and it is in flight from
+    // the moment the user pressed Send.
+    const { runtime } = workspace
+    runtime.runActive = true
 
     try {
+      await ticket.wait()
+      onStream({ type: 'status', status: { kind: 'settled' } })
+
       const host = await ensureAgentHost(mainWindow, workspace)
       const { text, elements } = splitPrompt(prompt)
 
@@ -1387,19 +1532,24 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
         throw new Error('Prompt too long')
       }
 
-      // Flagged on the runtime the host belongs to, so `agent:compact` refuses
-      // while *this* workspace is mid-turn rather than while any of them is.
-      const { runtime } = workspace
-      runtime.runActive = true
-      try {
-        await host.sendPrompt({ text: await withSkillDirectives(text, workspace), elements })
-      } finally {
-        runtime.runActive = false
-      }
+      await host.sendPrompt({ text: await withSkillDirectives(text, workspace), elements })
     } catch (error) {
-      const err = error as Error
-      onStream({ type: 'error', error: err.message })
+      // Stop pressed while the turn was still queued. Nothing ran and nothing
+      // failed, so the turn ends quietly — reporting an error here would put a
+      // failure in the transcript for something the user did on purpose.
+      if (!(error instanceof InferenceCancelled)) {
+        const err = error as Error
+        onStream({ type: 'error', error: err.message })
+      }
       onStream({ type: 'complete' })
+    } finally {
+      runtime.runActive = false
+      touchRuntime(runtime)
+      ticket.release()
+      // A settings, skills or sources save while this turn ran left the host
+      // built against configuration that no longer exists. Cleared after
+      // `runActive`, or the deferral this honours would re-arm on the way out.
+      if (runtime.hostStale) await disposeAgentHost(runtime)
     }
   })
 
@@ -1412,6 +1562,11 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     // answer a write prompt another app is still waiting on — a denial the user
     // never made, on a prompt deliberately given no timeout for exactly that reason.
     const runtime = await withWorkspace(appId, (workspace) => workspace.runtime)
+    // A turn that is still queued has no host to abort and no approvals to deny —
+    // it has not touched the daemon at all. Without this, Stop on a queued turn
+    // does nothing visible and the turn starts anyway the moment the app ahead
+    // finishes, which reads as a Stop button that was ignored.
+    inferenceQueue.cancel(runtime.appId)
     denyPendingApprovals(runtime.appId)
     await runtime.host?.abort()
   })
@@ -1489,7 +1644,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   ipcMain.handle('agent:compact', async (_, appId: unknown): Promise<void> => {
     const runtime = await withWorkspace(appId, (workspace) => workspace.runtime)
     if (!runtime.host) throw new Error('No conversation to compact yet.')
-    if (runtime.runActive) throw new Error('Wait for the current turn to finish.')
+    refuseWhileRunning(runtime, 'summarizing')
     await runtime.host.compact()
   })
 
@@ -1537,7 +1692,10 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (typeof name !== 'string' || name.length === 0) {
       throw new Error('Invalid branch name')
     }
-    return withWorkspace(appId, ({ root }) => new VersionManager(root).switchBranch(name))
+    return withWorkspace(appId, ({ root, runtime }) => {
+      refuseWhileRunning(runtime, 'switching branch')
+      return new VersionManager(root).switchBranch(name)
+    })
   })
 
   ipcMain.handle('version:create-branch', async (_, name: unknown, appId: unknown) => {
@@ -1551,7 +1709,10 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (typeof oid !== 'string' || oid.length === 0) {
       throw new Error('Invalid commit OID')
     }
-    return withWorkspace(appId, ({ root }) => new VersionManager(root).rollback(oid))
+    return withWorkspace(appId, ({ root, runtime }) => {
+      refuseWhileRunning(runtime, 'rolling back')
+      return new VersionManager(root).rollback(oid)
+    })
   })
 
   ipcMain.handle('version:diff', async (_, from: unknown, to: unknown, appId: unknown) => {
@@ -1664,6 +1825,10 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     // its telemetry describe a directory that is about to stop existing. Disposing
     // before dropping, so a live Pi session is not orphaned holding open files under
     // a tree the recursive `rm` is about to take.
+    // Including a turn still waiting its place in the queue: it would otherwise
+    // start against a directory that no longer exists the moment the app ahead
+    // of it finished.
+    inferenceQueue.cancel(id)
     const runtime = existingRuntime(id)
     if (runtime) {
       await disposeAgentHost(runtime)
@@ -2260,6 +2425,12 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       throw new Error(`App "${id}" not found`)
     }
 
+    const running = existingRuntime(id)
+    // `bun install` rewrites `node_modules` and can rewrite `package.json`, both
+    // of which a mid-turn agent may be reading — and it runs the project's own
+    // install scripts, which is why `install_deps` is never auto-approved either.
+    if (running) refuseWhileRunning(running, 'installing dependencies')
+
     // `installDependencies` spawns with a filtered environment, so the user's
     // API keys never reach the install process.
     const result = await installDependencies({
@@ -2422,8 +2593,15 @@ export function cleanupIpcHandlers(): void {
   ipcMain.removeHandler('inspector:capture-element')
   ipcMain.removeHandler('chat:add-element-context')
 
-  // Tear down every agent session
-  void disposeAllAgentHosts()
+  // Tear down every agent session.
+  //
+  // Queued turns first: `disposeAllAgentHosts` now *spares* a workspace mid-turn
+  // rather than disposing it, so on teardown a queued turn would be handed the
+  // daemon by the very turn that is ending, into a window that has gone.
+  for (const runtime of allRuntimes()) {
+    inferenceQueue.cancel(runtime.appId)
+  }
+  void disposeAllAgentHosts({ force: true })
 
   // Drop every workspace: focus, session pointers, reports and telemetry all go
   // with the window they described.
