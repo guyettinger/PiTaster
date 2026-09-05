@@ -19,11 +19,17 @@ export interface WorkspacePanelKind {
   /**
    * Whether exactly one may exist.
    *
-   * Every panel but Code is a singleton, and not only for tidiness: each `off*`
-   * in the preload bridge is `removeAllListeners(channel)`, so two panels
-   * subscribed to one channel would tear down each other's stream on unmount.
-   * Code is safe to duplicate because it subscribes to nothing — it fetches.
-   * Making any other panel duplicable means fixing the bridge first.
+   * This used to be forced by the preload bridge: each `off*` was
+   * `removeAllListeners(channel)`, so two panels on one channel tore down each
+   * other's stream on unmount, and Code was duplicable only because it
+   * subscribes to nothing — it fetches. The bridge now returns a teardown that
+   * removes the exact handler, so that constraint is gone.
+   *
+   * What remains is a product decision rather than a technical one. Two Chats in
+   * one workspace would be two views of the same conversation, both scrolling
+   * and both accepting input, which is a worse thing to hand someone than a tab
+   * they can drag. Panels that would genuinely benefit from duplication can now
+   * simply be marked non-singleton.
    */
   singleton: boolean
 }

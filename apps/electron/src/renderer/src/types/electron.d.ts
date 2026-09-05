@@ -363,17 +363,13 @@ interface ElectronAPI {
   /** Send a message to the agent (string or content blocks). */
   sendMessage: (message: string | SerializedContentBlock[]) => Promise<void>
   /** Listen for streamed agent responses. */
-  onAgentStream: (callback: (chunk: StreamChunk) => void) => void
-  /** Remove agent stream listener. */
-  offAgentStream: () => void
+  onAgentStream: (callback: (chunk: StreamChunk) => void) => () => void
   /** Get the current permission mode. */
   getPermissionMode: () => Promise<PermissionMode>
   /** Set the permission mode. */
   setPermissionMode: (mode: PermissionMode) => Promise<PermissionMode>
   /** Listen for tool approval requests. */
-  onToolApproval: (callback: (request: ToolApprovalRequest) => void) => void
-  /** Remove tool approval listener. */
-  offToolApproval: () => void
+  onToolApproval: (callback: (request: ToolApprovalRequest) => void) => () => void
   /** Respond to a tool approval request. */
   respondToolApproval: (response: ToolApprovalResponse) => void
   /** Clear the conversation history. */
@@ -445,9 +441,7 @@ interface ElectronAPI {
   /** Turn a skill on or off for the open app. */
   setSkillEnabled: (request: { name: string; enabled: boolean }) => Promise<SkillLibrary>
   /** Listen for the skill libraries changing on disk. */
-  onSkillsChanged: (callback: () => void) => void
-  /** Remove the skills-changed listener. */
-  offSkillsChanged: () => void
+  onSkillsChanged: (callback: () => void) => () => void
 
   // Workspace layout methods
   /** Read a sub-app's saved dock layout, or null when there is nothing usable. */
@@ -481,9 +475,7 @@ interface ElectronAPI {
   /** Clear chat history for the active app. */
   clearChatHistory: () => Promise<void>
   /** Listen for chat history loaded events. */
-  onChatHistoryLoaded: (callback: (payload: ChatHistoryPayload) => void) => void
-  /** Remove chat history loaded listener. */
-  offChatHistoryLoaded: () => void
+  onChatHistoryLoaded: (callback: (payload: ChatHistoryPayload) => void) => () => void
 
   // Chat session methods
   /** List all chat sessions for the active app. */
@@ -499,13 +491,9 @@ interface ElectronAPI {
   /** Get the active chat session ID. */
   getActiveChatSession: () => Promise<string | null>
   /** Listen for session change events. */
-  onChatSessionChanged: (callback: (sessionId: string | null) => void) => void
-  /** Remove session change listener. */
-  offChatSessionChanged: () => void
+  onChatSessionChanged: (callback: (sessionId: string | null) => void) => () => void
   /** Listen for sessions list updates. */
-  onSessionsListUpdated: (callback: (sessions: ChatSession[]) => void) => void
-  /** Remove sessions list update listener. */
-  offSessionsListUpdated: () => void
+  onSessionsListUpdated: (callback: (sessions: ChatSession[]) => void) => () => void
 
   // Apps methods
   /** List all sub-apps. */
@@ -543,13 +531,9 @@ interface ElectronAPI {
   /** Install dependencies for an app. */
   installDeps: (id: string) => Promise<void>
   /** Listen for app log events. */
-  onAppLog: (callback: (entry: AppLogEntry) => void) => void
-  /** Remove app log listener. */
-  offAppLog: () => void
+  onAppLog: (callback: (entry: AppLogEntry) => void) => () => void
   /** Listen for app status changes. */
-  onAppStatusChange: (callback: (change: AppStatusChange) => void) => void
-  /** Remove app status change listener. */
-  offAppStatusChange: () => void
+  onAppStatusChange: (callback: (change: AppStatusChange) => void) => () => void
 
   // Inspector methods
   /** Get the inspector overlay script. */

@@ -55,10 +55,7 @@ export function ChatSessionList({
   useEffect(() => {
     window.electronAPI.listChatSessions().then(setSessions).catch(() => {})
 
-    window.electronAPI.onSessionsListUpdated(setSessions)
-    return () => {
-      window.electronAPI.offSessionsListUpdated()
-    }
+    return window.electronAPI.onSessionsListUpdated(setSessions)
   }, [])
 
   const handleDelete = useCallback(

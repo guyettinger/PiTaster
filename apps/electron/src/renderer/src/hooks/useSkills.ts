@@ -64,10 +64,9 @@ export function useSkills(): UseSkillsResult {
     void reload()
 
     // The agent can write a skill mid-turn, and loading one changes its count.
-    window.electronAPI.onSkillsChanged(() => {
+    return window.electronAPI.onSkillsChanged(() => {
       void reload()
     })
-    return () => window.electronAPI.offSkillsChanged()
   }, [reload])
 
   /**

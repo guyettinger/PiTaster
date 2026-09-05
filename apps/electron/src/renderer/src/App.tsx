@@ -99,12 +99,9 @@ export function App() {
 
   // Listen for session change events from main process
   useEffect(() => {
-    window.electronAPI.onChatSessionChanged((sessionId) => {
+    return window.electronAPI.onChatSessionChanged((sessionId) => {
       setActiveSessionId(sessionId)
     })
-    return () => {
-      window.electronAPI.offChatSessionChanged()
-    }
   }, [])
 
   const handleModeChange = useCallback(async (mode: PermissionMode) => {

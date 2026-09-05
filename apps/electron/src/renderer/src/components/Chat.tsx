@@ -233,9 +233,10 @@ export function Chat({
 
   // What the agent is doing, in the one place the instrument panels can read it too.
   //
-  // This used to be five `useState` calls here. The panels cannot subscribe to
-  // `agent:stream` themselves — `offAgentStream` is `removeAllListeners`, so a second
-  // subscriber tears this one down on unmount — and they must not read it off
+  // This used to be five `useState` calls here. The panels could not subscribe to
+  // `agent:stream` themselves — the bridge's `off` was `removeAllListeners`, so a
+  // second subscriber tore this one down on unmount; the bridge removes the exact
+  // handler now, but the reason to keep one consumer stands — they must not read it off
   // `WorkspaceContext`, whose value is memoized precisely so a per-turn change does not
   // re-render every panel including this transcript. So the stream is still consumed
   // here, exactly once, and published into a store the panels subscribe to.
@@ -367,17 +368,13 @@ export function Chat({
       setMessages(toUIMessages(payload.messages))
     }
 
-    window.electronAPI.onChatHistoryLoaded(handleHistoryLoaded)
-
-    return () => {
-      window.electronAPI.offChatHistoryLoaded()
-    }
+    return window.electronAPI.onChatHistoryLoaded(handleHistoryLoaded)
   }, [])
 
   // Setup IPC listeners
   useEffect(() => {
     // Listen for agent stream
-    window.electronAPI.onAgentStream((chunk: StreamChunk) => {
+    const unsubscribeStream = window.electronAPI.onAgentStream((chunk: StreamChunk) => {
       if (chunk.type === 'text' && chunk.text) {
         // Add text to current or create new text block
         setMessages(prev => {
@@ -516,9 +513,11 @@ export function Chat({
     })
 
     // Listen for tool approval requests
-    window.electronAPI.onToolApproval((request: ToolApprovalRequest) => {
-      setPendingApproval(request)
-    })
+    const unsubscribeApproval = window.electronAPI.onToolApproval(
+      (request: ToolApprovalRequest) => {
+        setPendingApproval(request)
+      }
+    )
 
     // Listen for element context events
     const unsubscribeElementContext = window.electronAPI.onElementContextAdded(
@@ -546,8 +545,8 @@ export function Chat({
 
     // Cleanup listeners
     return () => {
-      window.electronAPI.offAgentStream()
-      window.electronAPI.offToolApproval()
+      unsubscribeStream()
+      unsubscribeApproval()
       unsubscribeElementContext()
     }
   }, [])

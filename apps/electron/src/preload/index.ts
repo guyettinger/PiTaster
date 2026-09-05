@@ -582,17 +582,19 @@ const electronAPI = {
 
   /**
    * Listen for streamed agent responses.
+   *
+   * Returns its own unsubscribe rather than pairing with an `off` that called
+   * `removeAllListeners`. That pairing is why every dock panel but Code had to be
+   * a singleton: two panels on one channel tore down each other's stream when
+   * either unmounted. Removing the exact handler makes the channel shareable.
+   *
    * @param callback - Function called with each streamed chunk
+   * @returns Unsubscribe
    */
-  onAgentStream: (callback: (chunk: StreamChunk) => void): void => {
-    ipcRenderer.on('agent:stream', (_event, chunk) => callback(chunk))
-  },
-
-  /**
-   * Remove agent stream listener.
-   */
-  offAgentStream: (): void => {
-    ipcRenderer.removeAllListeners('agent:stream')
+  onAgentStream: (callback: (chunk: StreamChunk) => void): (() => void) => {
+    const handler = (_event: unknown, chunk: StreamChunk): void => callback(chunk)
+    ipcRenderer.on('agent:stream', handler)
+    return () => ipcRenderer.removeListener('agent:stream', handler)
   },
 
   /**
@@ -613,16 +615,12 @@ const electronAPI = {
   /**
    * Listen for tool approval requests.
    * @param callback - Function called when approval is needed
+   * @returns Unsubscribe
    */
-  onToolApproval: (callback: (request: ToolApprovalRequest) => void): void => {
-    ipcRenderer.on('agent:tool-approval', (_event, request) => callback(request))
-  },
-
-  /**
-   * Remove tool approval listener.
-   */
-  offToolApproval: (): void => {
-    ipcRenderer.removeAllListeners('agent:tool-approval')
+  onToolApproval: (callback: (request: ToolApprovalRequest) => void): (() => void) => {
+    const handler = (_event: unknown, request: ToolApprovalRequest): void => callback(request)
+    ipcRenderer.on('agent:tool-approval', handler)
+    return () => ipcRenderer.removeListener('agent:tool-approval', handler)
   },
 
   /**
@@ -874,16 +872,12 @@ const electronAPI = {
   /**
    * Listen for the skill libraries changing on disk.
    * @param callback - Function called when a skill may have been added or changed
+   * @returns Unsubscribe
    */
-  onSkillsChanged: (callback: () => void): void => {
-    ipcRenderer.on('skills:changed', () => callback())
-  },
-
-  /**
-   * Remove the skills-changed listener.
-   */
-  offSkillsChanged: (): void => {
-    ipcRenderer.removeAllListeners('skills:changed')
+  onSkillsChanged: (callback: () => void): (() => void) => {
+    const handler = (_event: unknown): void => callback()
+    ipcRenderer.on('skills:changed', handler)
+    return () => ipcRenderer.removeListener('skills:changed', handler)
   },
 
   // Workspace layout methods
@@ -987,16 +981,12 @@ const electronAPI = {
   /**
    * Listen for chat history loaded events.
    * @param callback - Function called with the transcript and the session it is for
+   * @returns Unsubscribe
    */
-  onChatHistoryLoaded: (callback: (payload: ChatHistoryPayload) => void): void => {
-    ipcRenderer.on('chat:history-loaded', (_event, payload) => callback(payload))
-  },
-
-  /**
-   * Remove chat history loaded listener.
-   */
-  offChatHistoryLoaded: (): void => {
-    ipcRenderer.removeAllListeners('chat:history-loaded')
+  onChatHistoryLoaded: (callback: (payload: ChatHistoryPayload) => void): (() => void) => {
+    const handler = (_event: unknown, payload: ChatHistoryPayload): void => callback(payload)
+    ipcRenderer.on('chat:history-loaded', handler)
+    return () => ipcRenderer.removeListener('chat:history-loaded', handler)
   },
 
   // Chat session methods
@@ -1051,31 +1041,23 @@ const electronAPI = {
   /**
    * Listen for session change events.
    * @param callback - Function called when the active session changes
+   * @returns Unsubscribe
    */
-  onChatSessionChanged: (callback: (sessionId: string | null) => void): void => {
-    ipcRenderer.on('chat:session-changed', (_event, sessionId) => callback(sessionId))
-  },
-
-  /**
-   * Remove session change listener.
-   */
-  offChatSessionChanged: (): void => {
-    ipcRenderer.removeAllListeners('chat:session-changed')
+  onChatSessionChanged: (callback: (sessionId: string | null) => void): (() => void) => {
+    const handler = (_event: unknown, sessionId: string | null): void => callback(sessionId)
+    ipcRenderer.on('chat:session-changed', handler)
+    return () => ipcRenderer.removeListener('chat:session-changed', handler)
   },
 
   /**
    * Listen for sessions list updates.
    * @param callback - Function called when the sessions list changes
+   * @returns Unsubscribe
    */
-  onSessionsListUpdated: (callback: (sessions: ChatSession[]) => void): void => {
-    ipcRenderer.on('sessions:list-updated', (_event, sessions) => callback(sessions))
-  },
-
-  /**
-   * Remove sessions list update listener.
-   */
-  offSessionsListUpdated: (): void => {
-    ipcRenderer.removeAllListeners('sessions:list-updated')
+  onSessionsListUpdated: (callback: (sessions: ChatSession[]) => void): (() => void) => {
+    const handler = (_event: unknown, sessions: ChatSession[]): void => callback(sessions)
+    ipcRenderer.on('sessions:list-updated', handler)
+    return () => ipcRenderer.removeListener('sessions:list-updated', handler)
   },
 
   // App management methods
@@ -1213,31 +1195,23 @@ const electronAPI = {
   /**
    * Listen for app log events.
    * @param callback - Function called with each log entry
+   * @returns Unsubscribe
    */
-  onAppLog: (callback: (entry: AppLogEntry) => void): void => {
-    ipcRenderer.on('apps:log', (_event, entry) => callback(entry))
-  },
-
-  /**
-   * Remove app log listener.
-   */
-  offAppLog: (): void => {
-    ipcRenderer.removeAllListeners('apps:log')
+  onAppLog: (callback: (entry: AppLogEntry) => void): (() => void) => {
+    const handler = (_event: unknown, entry: AppLogEntry): void => callback(entry)
+    ipcRenderer.on('apps:log', handler)
+    return () => ipcRenderer.removeListener('apps:log', handler)
   },
 
   /**
    * Listen for app status changes.
    * @param callback - Function called with status changes
+   * @returns Unsubscribe
    */
-  onAppStatusChange: (callback: (change: AppStatusChange) => void): void => {
-    ipcRenderer.on('apps:status-change', (_event, change) => callback(change))
-  },
-
-  /**
-   * Remove app status change listener.
-   */
-  offAppStatusChange: (): void => {
-    ipcRenderer.removeAllListeners('apps:status-change')
+  onAppStatusChange: (callback: (change: AppStatusChange) => void): (() => void) => {
+    const handler = (_event: unknown, change: AppStatusChange): void => callback(change)
+    ipcRenderer.on('apps:status-change', handler)
+    return () => ipcRenderer.removeListener('apps:status-change', handler)
   },
 
   // Inspector methods
