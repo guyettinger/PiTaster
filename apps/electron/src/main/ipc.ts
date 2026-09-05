@@ -1993,6 +1993,32 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     if (!activeAppId) throw new Error('No active app')
     assertSessionId(sessionId)
 
+    // `assertSessionId` bounds the shape; it says nothing about whose session this is.
+    // That is the same distinction `apps:set-active` draws — not "is it a non-empty
+    // string" but "is it a thing that exists" — and the gap here was load-bearing:
+    // the id lands in the *active* app's `.chat-sessions.json`, so a click on a session
+    // row that arrives while the active app is changing files one app's session under
+    // another. A real install was found holding exactly that, and because `loadManifest`
+    // masks a pointer it cannot resolve by falling back to the newest real session, the
+    // bad pointer survives on disk indefinitely with no symptom to notice.
+    //
+    // Ignored rather than thrown, because the losing race is not the user's mistake and
+    // nothing is wrong that a fresh list does not fix. Re-broadcasting is the repair:
+    // the stale list that produced the click is what gets replaced.
+    if (!(await chatHistoryManager.getSessionPath(activeAppId, sessionId))) {
+      console.warn(
+        `Ignoring a request to activate session ${sessionId}, which does not belong to app ${activeAppId}`
+      )
+      await broadcastSessions(mainWindow, activeAppId)
+      sendSessionChanged(
+        mainWindow,
+        activeAppId,
+        activeSessionId,
+        activeSessionId ? await chatHistoryManager.loadHistory(activeAppId, activeSessionId) : []
+      )
+      return
+    }
+
     const changed = sessionId !== activeSessionId
     await chatHistoryManager.setActiveSession(activeAppId, sessionId)
     activeSessionId = sessionId

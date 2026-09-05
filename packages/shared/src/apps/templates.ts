@@ -10,6 +10,13 @@ import type { AppTemplate, AppTemplateConfig } from '@pitaster/core'
  * the request that carries it cannot succeed. Ignored *and untracked* files are
  * skipped by `statusMatrix`, which is what keeps the result small.
  *
+ * `.chat-history/` is the pre-Pi transcript store. Nothing writes it any more, but an
+ * app scaffolded before Pi Taster adopted Pi's own sessions still has one on disk, and
+ * an entry that only ever matches a legacy directory is far cheaper than the alternative
+ * — the backfill in `migrate-workspace.ts` writes *this* file into apps that were
+ * scaffolded before there was a default at all, so anything it must cover belongs here
+ * rather than in a second, divergent copy of the list.
+ *
  * A template may still ship its own `.gitignore`; this is only the default.
  */
 export const DEFAULT_GITIGNORE = `# Dependencies
@@ -34,6 +41,7 @@ yarn-debug.log*
 
 # Pi Taster runtime state
 .chat-sessions.json
+.chat-history/
 
 # Editor and OS
 .DS_Store
