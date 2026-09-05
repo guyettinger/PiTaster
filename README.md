@@ -2,7 +2,7 @@
 
 # Pi Taster
 
-**A desktop app for tasting [Pi](https://pi.dev/) — a real coding agent, running
+**Delicious [Pi](https://pi.dev/), served locally — a real coding agent, running
 on models served by your own [Ollama](https://ollama.com).**
 
 No API key, no account, and no inference request that leaves your machine. Pi

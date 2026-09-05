@@ -707,10 +707,10 @@ export function Settings({ permissionMode, onModeChange }: SettingsProps) {
               <div>
                 <h2 className="text-[14px] font-semibold text-bone">Pi Taster 0.1.0</h2>
                 <p className="mt-1 text-[13px] text-ash">
-                  A desktop app for tasting Pi, the coding agent, on models served by
-                  your own Ollama. It writes its own source and the source of the apps
-                  it creates. No API key, and no inference request that leaves this
-                  machine.
+                  Delicious Pi, served locally — the coding agent, running on models
+                  served by your own Ollama. It writes its own source and the source
+                  of the apps it creates. No API key, and no inference request that
+                  leaves this machine.
                 </p>
               </div>
               <div>
