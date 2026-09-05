@@ -33,11 +33,11 @@ const TICK_MS = 1000
  * It reads only from hooks that already exist. There is no new main-side work here.
  */
 export function DaemonPanel() {
-  const { activeSessionId } = useWorkspace()
+  const { app, activeSessionId } = useWorkspace()
   const { turnRevision } = useAgentActivity()
   const health = useDaemonHealth()
-  const { snapshot: telemetry } = useTelemetry()
-  const { report } = useContextReport(activeSessionId, turnRevision)
+  const { snapshot: telemetry } = useTelemetry(app.id)
+  const { report } = useContextReport(app.id, activeSessionId, turnRevision)
   const [model, setModel] = useState('')
   const [, setTick] = useState(0)
 

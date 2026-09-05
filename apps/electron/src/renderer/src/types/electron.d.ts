@@ -361,13 +361,13 @@ interface ElementInfo {
 /** Electron API interface exposed to the renderer. */
 interface ElectronAPI {
   /** Send a message to the agent (string or content blocks). */
-  sendMessage: (message: string | SerializedContentBlock[]) => Promise<void>
+  sendMessage: (message: string | SerializedContentBlock[], appId: string) => Promise<void>
   /** Listen for streamed agent responses. */
   onAgentStream: (appId: string, callback: (chunk: StreamChunk) => void) => () => void
   /** Get the current permission mode. */
-  getPermissionMode: () => Promise<PermissionMode>
+  getPermissionMode: (appId: string | null) => Promise<PermissionMode>
   /** Set the permission mode. */
-  setPermissionMode: (mode: PermissionMode) => Promise<PermissionMode>
+  setPermissionMode: (mode: PermissionMode, appId: string | null) => Promise<PermissionMode>
   /** Listen for tool approval requests. */
   onToolApproval: (
     appId: string,
@@ -376,18 +376,18 @@ interface ElectronAPI {
   /** Respond to a tool approval request. */
   respondToolApproval: (response: ToolApprovalResponse) => void
   /** Clear the conversation history. */
-  clearHistory: () => Promise<void>
+  clearHistory: (appId: string) => Promise<void>
 
   /** Cancel the in-flight agent run. */
-  abortAgent: () => Promise<void>
+  abortAgent: (appId: string) => Promise<void>
 
   /** Read what the context window holds, broken down into attributable blocks. */
-  getContextReport: () => Promise<ContextReport | null>
+  getContextReport: (appId: string) => Promise<ContextReport | null>
   /** Read what the session's provider requests actually cost. */
-  getTelemetry: () => Promise<TelemetrySnapshot>
+  getTelemetry: (appId: string) => Promise<TelemetrySnapshot>
 
   /** Summarize the conversation now rather than waiting for the threshold. */
-  compactContext: () => Promise<void>
+  compactContext: (appId: string) => Promise<void>
   
   // Version control methods
   /** Get current version control state. */
@@ -436,13 +436,22 @@ interface ElectronAPI {
 
   // Skills methods
   /** Get both skill libraries for the open app. */
-  getSkills: () => Promise<SkillLibrary>
+  getSkills: (appId: string | null) => Promise<SkillLibrary>
   /** Create or overwrite a skill. */
-  saveSkill: (request: { scope: SkillScope; draft: SkillDraft }) => Promise<SkillLibraryUpdate>
+  saveSkill: (
+    request: { scope: SkillScope; draft: SkillDraft },
+    appId: string | null
+  ) => Promise<SkillLibraryUpdate>
   /** Delete a skill and its directory. */
-  deleteSkill: (request: { scope: SkillScope; name: string }) => Promise<SkillLibraryUpdate>
+  deleteSkill: (
+    request: { scope: SkillScope; name: string },
+    appId: string | null
+  ) => Promise<SkillLibraryUpdate>
   /** Turn a skill on or off for the open app. */
-  setSkillEnabled: (request: { name: string; enabled: boolean }) => Promise<SkillLibrary>
+  setSkillEnabled: (
+    request: { name: string; enabled: boolean },
+    appId: string
+  ) => Promise<SkillLibrary>
   /** Listen for the skill libraries changing on disk. */
   onSkillsChanged: (appId: string | null, callback: () => void) => () => void
 
@@ -474,9 +483,9 @@ interface ElectronAPI {
 
   // Chat history methods
   /** Load chat history for the active app, tagged with the session it belongs to. */
-  loadChatHistory: () => Promise<ChatHistoryPayload>
+  loadChatHistory: (appId: string) => Promise<ChatHistoryPayload>
   /** Clear chat history for the active app. */
-  clearChatHistory: () => Promise<void>
+  clearChatHistory: (appId: string) => Promise<void>
   /** Listen for chat history loaded events. */
   onChatHistoryLoaded: (
     appId: string,
@@ -485,17 +494,20 @@ interface ElectronAPI {
 
   // Chat session methods
   /** List all chat sessions for the active app. */
-  listChatSessions: () => Promise<ChatSession[]>
+  listChatSessions: (appId: string) => Promise<ChatSession[]>
   /** Create a new chat session. */
-  createChatSession: (params?: CreateChatSessionParams) => Promise<ChatSession>
+  createChatSession: (
+    params: CreateChatSessionParams | undefined,
+    appId: string
+  ) => Promise<ChatSession>
   /** Delete a chat session. */
-  deleteChatSession: (sessionId: string) => Promise<void>
+  deleteChatSession: (sessionId: string, appId: string) => Promise<void>
   /** Rename a chat session. */
-  renameChatSession: (sessionId: string, title: string) => Promise<ChatSession>
+  renameChatSession: (sessionId: string, title: string, appId: string) => Promise<ChatSession>
   /** Set the active chat session. */
-  setActiveChatSession: (sessionId: string) => Promise<void>
+  setActiveChatSession: (sessionId: string, appId: string) => Promise<void>
   /** Get the active chat session ID. */
-  getActiveChatSession: () => Promise<string | null>
+  getActiveChatSession: (appId: string) => Promise<string | null>
   /** Listen for session change events. */
   onChatSessionChanged: (
     appId: string,

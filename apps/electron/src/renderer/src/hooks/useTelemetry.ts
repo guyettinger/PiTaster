@@ -42,9 +42,10 @@ export interface UseTelemetryResult {
  * identically, which is the one thing a diagnostic panel must not do. The last good
  * snapshot is still kept, so a single dropped read does not blank a working panel.
  *
+ * @param appId - The workspace whose requests these are
  * @returns The snapshot and the last read failure
  */
-export function useTelemetry(): UseTelemetryResult {
+export function useTelemetry(appId: string): UseTelemetryResult {
   const [snapshot, setSnapshot] = useState<TelemetrySnapshot | null>(null)
   const [error, setError] = useState<string | null>(null)
   const { turnRevision, isStreaming } = useAgentActivity()
@@ -56,7 +57,7 @@ export function useTelemetry(): UseTelemetryResult {
   const refresh = useCallback(async () => {
     const ticket = ++latest.current
     try {
-      const next = await window.electronAPI.getTelemetry()
+      const next = await window.electronAPI.getTelemetry(appId)
       if (latest.current !== ticket) return
       setSnapshot(next)
       setError(null)
@@ -64,7 +65,7 @@ export function useTelemetry(): UseTelemetryResult {
       if (latest.current !== ticket) return
       setError(readableError(caught))
     }
-  }, [])
+  }, [appId])
 
   useEffect(() => {
     void refresh()

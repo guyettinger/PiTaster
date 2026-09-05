@@ -229,10 +229,32 @@ const COMMANDS = {
     await new Promise((r) => setTimeout(r, 2500))
   },
 
-  /** Switch the main destination: Apps | Workspace | Skills | Help | Settings. */
+  /** Switch the main destination: Apps | Help | Settings. */
   async nav(dest) {
     need()
     await COMMANDS['click-text'](dest)
+    await new Promise((r) => setTimeout(r, 1500))
+  },
+
+  /**
+   * Focus an open app's workspace from its nav-rail tile.
+   *
+   * The tiles are monograms, so there is no visible text to match on — the name
+   * is the `title` and an `sr-only` span. Matching the title is what makes this
+   * addressable by the name the user typed rather than by rail position.
+   */
+  async focus(name) {
+    need()
+    const r = await page.evaluate((n) => {
+      const tiles = [...document.querySelectorAll('nav button[title]')].filter(
+        (e) => !e.getAttribute('aria-label')?.startsWith('Close ')
+      )
+      const el = n ? tiles.find((e) => e.getAttribute('title') === n) : tiles[0]
+      if (!el) return 'NOT_FOUND: ' + tiles.map((e) => e.getAttribute('title')).join(', ')
+      el.click()
+      return 'OK'
+    }, name)
+    console.log('focus', JSON.stringify(name || '(first)'), '->', r)
     await new Promise((r) => setTimeout(r, 1500))
   },
 
@@ -245,9 +267,12 @@ const COMMANDS = {
   async tab(name) {
     need()
     const r = await page.evaluate((label) => {
-      const tab = [...document.querySelectorAll('.dv-tab')].find((t) =>
-        t.textContent.trim().startsWith(label)
-      )
+      // Exact first. `startsWith` alone makes `tab Chat` activate *Chats* and
+      // report OK, which reads as a Chat panel that renders nothing.
+      const tabs = [...document.querySelectorAll('.dv-tab')]
+      const tab =
+        tabs.find((t) => t.textContent.trim() === label) ??
+        tabs.find((t) => t.textContent.trim().startsWith(label))
       if (!tab) return 'NOT_FOUND'
       const box = tab.getBoundingClientRect()
       const init = {

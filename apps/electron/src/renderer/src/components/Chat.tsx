@@ -247,7 +247,7 @@ export function Chat({
   const { isStreaming, turnRevision } = activity
 
   const daemonHealth = useDaemonHealth()
-  const { snapshot: telemetry } = useTelemetry()
+  const { snapshot: telemetry } = useTelemetry(app.id)
 
   // The model's name, for the daemon gauge's resting label. Read once: changing it
   // goes through Settings, which disposes the agent host and remounts this panel.
@@ -276,7 +276,7 @@ export function Chat({
     compact: compactContext,
     isCompacting,
     error: compactError
-  } = useContextReport(activeSessionId, turnRevision)
+  } = useContextReport(app.id, activeSessionId, turnRevision)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   
@@ -339,7 +339,7 @@ export function Chat({
     let cancelled = false
 
     window.electronAPI
-      .loadChatHistory()
+      .loadChatHistory(app.id)
       .then((payload) => {
         // A transcript for a session we have since switched away from is not ours.
         if (cancelled || payload.sessionId !== activeSessionId) return
@@ -352,7 +352,7 @@ export function Chat({
     return () => {
       cancelled = true
     }
-  }, [activeSessionId])
+  }, [app.id, activeSessionId])
 
 
   // Listen for transcripts pushed from main — on app switch, session switch, and
@@ -590,19 +590,19 @@ export function Chat({
     // leave the composer disabled behind a turn that never started. This is also the
     // only handler for the rejection: `sendMessage` is passed straight to `onClick`.
     try {
-      await window.electronAPI.sendMessage(serializedBlocks)
+      await window.electronAPI.sendMessage(serializedBlocks, app.id)
     } catch (caught) {
       endTurn(null)
       setMessages((prev) => withFailure(prev, readableError(caught)))
     }
-  }, [input, isStreaming, setInput, activeSessionId])
+  }, [app.id, input, isStreaming, setInput, activeSessionId])
 
   /**
    * Cancel the in-flight agent run.
    */
   const stopStreaming = useCallback(async () => {
     try {
-      await window.electronAPI.abortAgent()
+      await window.electronAPI.abortAgent(app.id)
     } catch (err) {
       console.error('Failed to abort agent:', err)
     } finally {
@@ -639,15 +639,15 @@ export function Chat({
   }, [pendingApproval])
 
   const clearHistory = useCallback(async () => {
-    await window.electronAPI.clearHistory()
+    await window.electronAPI.clearHistory(app.id)
     // Also clear persisted chat history
     try {
-      await window.electronAPI.clearChatHistory()
+      await window.electronAPI.clearChatHistory(app.id)
     } catch {
       // Ignore errors (e.g., no active app)
     }
     setMessages([])
-  }, [])
+  }, [app.id])
 
   const mode = describePermissionMode(permissionMode)
 

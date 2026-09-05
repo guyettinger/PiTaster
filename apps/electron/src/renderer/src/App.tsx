@@ -36,25 +36,17 @@ export function App() {
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('default')
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
 
-  // Load initial permission mode
-  useEffect(() => {
-    window.electronAPI.getPermissionMode().then(setPermissionMode)
-  }, [])
-
   // Tell main which app is focused, and wait for it to agree.
   //
-  // Main still tracks exactly one active app — it is the confinement root every
-  // path check is measured against — so focus is what selects it. Note this does
-  // *not* fire when a destination covers the workspace: the workspace stays
-  // mounted underneath, so the app it belongs to is still the open one.
+  // Focus no longer decides what any channel *acts on* — every one of them names
+  // its app now — so this is not the confinement input it once was. What it still
+  // does is bootstrap the workspace: `apps:set-active` loads the chat manifest,
+  // picks the session to resume and pushes it, and answers `apps:get-active` on
+  // the next launch.
   //
-  // `syncedAppId` is what the workspace is gated on, and it is not ceremony. The
-  // panels fetch app-scoped data the moment they mount — `skills:list` resolves
-  // its scope from main's *active app*, not from an id the renderer sends — so
-  // mounting them before this round trip lands makes those requests answer for
-  // whichever app main still thought was open. That showed up as an app's own
-  // skills being absent until something forced a reload, which reads as data
-  // loss rather than as a race.
+  // The workspace is gated on the round trip finishing so that the mount and that
+  // bootstrap cannot interleave. It also re-reads the permission mode, which is
+  // per workspace and would otherwise keep showing the app you just left.
   const focusedAppId = focusedApp?.id ?? null
   const [syncedAppId, setSyncedAppId] = useState<string | null>(null)
   useEffect(() => {
@@ -67,7 +59,7 @@ export function App() {
       // read at every tool call, so one shared value meant a mode set for one app
       // widened what another app's turn could do. Re-read it here, or the composer
       // would keep showing the mode of the app you just left.
-      .then(() => window.electronAPI.getPermissionMode())
+      .then(() => window.electronAPI.getPermissionMode(focusedAppId))
       .then((mode) => {
         if (cancelled) return
         setPermissionMode(mode)
@@ -109,10 +101,13 @@ export function App() {
     })
   }, [focusedAppId])
 
-  const handleModeChange = useCallback(async (mode: PermissionMode) => {
-    const newMode = await window.electronAPI.setPermissionMode(mode)
-    setPermissionMode(newMode)
-  }, [])
+  const handleModeChange = useCallback(
+    async (mode: PermissionMode) => {
+      const newMode = await window.electronAPI.setPermissionMode(mode, focusedAppId)
+      setPermissionMode(newMode)
+    },
+    [focusedAppId]
+  )
 
   const handleAppSelect = useCallback(
     (app: SubApp) => {
@@ -169,16 +164,21 @@ export function App() {
     [focusedApp, refreshActiveApp]
   )
 
-  const handleSessionSelect = useCallback(async (sessionId: string) => {
-    setDestination(null)
-    await window.electronAPI.setActiveChatSession(sessionId)
-  }, [])
+  const handleSessionSelect = useCallback(
+    async (sessionId: string) => {
+      if (!focusedAppId) return
+      setDestination(null)
+      await window.electronAPI.setActiveChatSession(sessionId, focusedAppId)
+    },
+    [focusedAppId]
+  )
 
   const handleSessionCreate = useCallback(async () => {
+    if (!focusedAppId) return
     setDestination(null)
-    await window.electronAPI.createChatSession()
+    await window.electronAPI.createChatSession(undefined, focusedAppId)
     // Session list and active session updated via IPC events
-  }, [])
+  }, [focusedAppId])
 
   const handleGoToApps = useCallback(() => setDestination('apps'), [])
 

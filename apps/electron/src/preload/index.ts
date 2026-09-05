@@ -576,8 +576,8 @@ const electronAPI = {
    * Send a message to the agent.
    * @param message - The message content (string or content blocks)
    */
-  sendMessage: (message: string | SerializedContentBlock[]): Promise<void> => {
-    return ipcRenderer.invoke('agent:message', message)
+  sendMessage: (message: string | SerializedContentBlock[], appId: string): Promise<void> => {
+    return ipcRenderer.invoke('agent:message', message, appId)
   },
 
   /**
@@ -606,16 +606,16 @@ const electronAPI = {
   /**
    * Get the current permission mode.
    */
-  getPermissionMode: (): Promise<PermissionMode> => {
-    return ipcRenderer.invoke('permissions:get-mode')
+  getPermissionMode: (appId: string | null): Promise<PermissionMode> => {
+    return ipcRenderer.invoke('permissions:get-mode', appId)
   },
 
   /**
    * Set the permission mode.
    * @param mode - The permission mode to set
    */
-  setPermissionMode: (mode: PermissionMode): Promise<PermissionMode> => {
-    return ipcRenderer.invoke('permissions:set-mode', mode)
+  setPermissionMode: (mode: PermissionMode, appId: string | null): Promise<PermissionMode> => {
+    return ipcRenderer.invoke('permissions:set-mode', mode, appId)
   },
 
   /**
@@ -649,15 +649,15 @@ const electronAPI = {
   /**
    * Clear the conversation history.
    */
-  clearHistory: (): Promise<void> => {
-    return ipcRenderer.invoke('agent:clear-history')
+  clearHistory: (appId: string): Promise<void> => {
+    return ipcRenderer.invoke('agent:clear-history', appId)
   },
 
   /**
    * Cancel the in-flight agent run.
    */
-  abortAgent: (): Promise<void> => {
-    return ipcRenderer.invoke('agent:abort')
+  abortAgent: (appId: string): Promise<void> => {
+    return ipcRenderer.invoke('agent:abort', appId)
   },
 
   /**
@@ -667,8 +667,8 @@ const electronAPI = {
    * function of the app and its configuration — so the meter has something honest to
    * show before the first prompt of a session and after every teardown.
    */
-  getContextReport: (): Promise<ContextReport | null> => {
-    return ipcRenderer.invoke('agent:get-context-report')
+  getContextReport: (appId: string): Promise<ContextReport | null> => {
+    return ipcRenderer.invoke('agent:get-context-report', appId)
   },
 
   /**
@@ -678,15 +678,15 @@ const electronAPI = {
    * reason: the recorder measures the conversation and outlives the agent host, so a
    * panel can show real numbers the moment it mounts without warming a model.
    */
-  getTelemetry: (): Promise<TelemetrySnapshot> => {
-    return ipcRenderer.invoke('agent:get-telemetry')
+  getTelemetry: (appId: string): Promise<TelemetrySnapshot> => {
+    return ipcRenderer.invoke('agent:get-telemetry', appId)
   },
 
   /**
    * Summarize the conversation now rather than waiting for the threshold.
    */
-  compactContext: (): Promise<void> => {
-    return ipcRenderer.invoke('agent:compact')
+  compactContext: (appId: string): Promise<void> => {
+    return ipcRenderer.invoke('agent:compact', appId)
   },
 
   // Version control methods
@@ -853,8 +853,8 @@ const electronAPI = {
   /**
    * Get both skill libraries for the open app.
    */
-  getSkills: (): Promise<SkillLibrary> => {
-    return ipcRenderer.invoke('skills:list')
+  getSkills: (appId: string | null): Promise<SkillLibrary> => {
+    return ipcRenderer.invoke('skills:list', appId)
   },
 
   /**
@@ -862,8 +862,11 @@ const electronAPI = {
    * @param request - Which library to write to, and the skill's editable fields
    * @returns Both libraries, reloaded, and any warning about the change
    */
-  saveSkill: (request: { scope: SkillScope; draft: SkillDraft }): Promise<SkillLibraryUpdate> => {
-    return ipcRenderer.invoke('skills:save', request)
+  saveSkill: (
+    request: { scope: SkillScope; draft: SkillDraft },
+    appId: string | null
+  ): Promise<SkillLibraryUpdate> => {
+    return ipcRenderer.invoke('skills:save', request, appId)
   },
 
   /**
@@ -871,8 +874,11 @@ const electronAPI = {
    * @param request - Which library it is in, and its name
    * @returns Both libraries, reloaded, and any warning about the change
    */
-  deleteSkill: (request: { scope: SkillScope; name: string }): Promise<SkillLibraryUpdate> => {
-    return ipcRenderer.invoke('skills:delete', request)
+  deleteSkill: (
+    request: { scope: SkillScope; name: string },
+    appId: string | null
+  ): Promise<SkillLibraryUpdate> => {
+    return ipcRenderer.invoke('skills:delete', request, appId)
   },
 
   /**
@@ -880,8 +886,11 @@ const electronAPI = {
    * @param request - The skill's name and whether the app should offer it
    * @returns Both libraries, reloaded
    */
-  setSkillEnabled: (request: { name: string; enabled: boolean }): Promise<SkillLibrary> => {
-    return ipcRenderer.invoke('skills:set-enabled', request)
+  setSkillEnabled: (
+    request: { name: string; enabled: boolean },
+    appId: string
+  ): Promise<SkillLibrary> => {
+    return ipcRenderer.invoke('skills:set-enabled', request, appId)
   },
 
   /**
@@ -987,15 +996,15 @@ const electronAPI = {
   /**
    * Load chat history for the active app, tagged with the session it belongs to.
    */
-  loadChatHistory: (): Promise<ChatHistoryPayload> => {
-    return ipcRenderer.invoke('chat:load-history')
+  loadChatHistory: (appId: string): Promise<ChatHistoryPayload> => {
+    return ipcRenderer.invoke('chat:load-history', appId)
   },
 
   /**
    * Clear chat history for the active app.
    */
-  clearChatHistory: (): Promise<void> => {
-    return ipcRenderer.invoke('chat:clear-history')
+  clearChatHistory: (appId: string): Promise<void> => {
+    return ipcRenderer.invoke('chat:clear-history', appId)
   },
 
   /**
@@ -1023,24 +1032,24 @@ const electronAPI = {
   /**
    * List all chat sessions for the active app.
    */
-  listChatSessions: (): Promise<ChatSession[]> => {
-    return ipcRenderer.invoke('sessions:list')
+  listChatSessions: (appId: string): Promise<ChatSession[]> => {
+    return ipcRenderer.invoke('sessions:list', appId)
   },
 
   /**
    * Create a new chat session.
    * @param params - Optional creation parameters
    */
-  createChatSession: (params?: CreateChatSessionParams): Promise<ChatSession> => {
-    return ipcRenderer.invoke('sessions:create', params)
+  createChatSession: (params: CreateChatSessionParams | undefined, appId: string): Promise<ChatSession> => {
+    return ipcRenderer.invoke('sessions:create', params, appId)
   },
 
   /**
    * Delete a chat session.
    * @param sessionId - The session ID to delete
    */
-  deleteChatSession: (sessionId: string): Promise<void> => {
-    return ipcRenderer.invoke('sessions:delete', sessionId)
+  deleteChatSession: (sessionId: string, appId: string): Promise<void> => {
+    return ipcRenderer.invoke('sessions:delete', sessionId, appId)
   },
 
   /**
@@ -1048,23 +1057,23 @@ const electronAPI = {
    * @param sessionId - The session ID to rename
    * @param title - The new title
    */
-  renameChatSession: (sessionId: string, title: string): Promise<ChatSession> => {
-    return ipcRenderer.invoke('sessions:rename', sessionId, title)
+  renameChatSession: (sessionId: string, title: string, appId: string): Promise<ChatSession> => {
+    return ipcRenderer.invoke('sessions:rename', sessionId, title, appId)
   },
 
   /**
    * Set the active chat session.
    * @param sessionId - The session ID to activate
    */
-  setActiveChatSession: (sessionId: string): Promise<void> => {
-    return ipcRenderer.invoke('sessions:set-active', sessionId)
+  setActiveChatSession: (sessionId: string, appId: string): Promise<void> => {
+    return ipcRenderer.invoke('sessions:set-active', sessionId, appId)
   },
 
   /**
    * Get the active chat session ID.
    */
-  getActiveChatSession: (): Promise<string | null> => {
-    return ipcRenderer.invoke('sessions:get-active')
+  getActiveChatSession: (appId: string): Promise<string | null> => {
+    return ipcRenderer.invoke('sessions:get-active', appId)
   },
 
   /**

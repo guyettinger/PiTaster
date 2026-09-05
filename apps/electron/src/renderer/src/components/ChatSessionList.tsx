@@ -56,7 +56,7 @@ export function ChatSessionList({
 
   // Load sessions on mount and listen for updates
   useEffect(() => {
-    window.electronAPI.listChatSessions().then(setSessions).catch(() => {})
+    window.electronAPI.listChatSessions(appId).then(setSessions).catch(() => {})
 
     return window.electronAPI.onSessionsListUpdated(appId, setSessions)
   }, [appId])
@@ -68,9 +68,9 @@ export function ChatSessionList({
         return
       }
       setConfirmingDeleteId(null)
-      await window.electronAPI.deleteChatSession(sessionId)
+      await window.electronAPI.deleteChatSession(sessionId, appId)
     },
-    [confirmingDeleteId]
+    [appId, confirmingDeleteId]
   )
 
   const handleRenameStart = useCallback((session: ChatSession) => {
@@ -86,10 +86,10 @@ export function ChatSessionList({
       const title = editTitle.trim()
       setEditingId(null)
       if (title) {
-        await window.electronAPI.renameChatSession(sessionId, title)
+        await window.electronAPI.renameChatSession(sessionId, title, appId)
       }
     },
-    [editTitle]
+    [appId, editTitle]
   )
 
   // Sorted by recency, then split into the day headings that make that order
