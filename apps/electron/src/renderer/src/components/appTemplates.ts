@@ -5,10 +5,14 @@ import type { AppTemplate } from '@keylimepi/core'
  *
  * The glyphs are content, not chrome — `.claude/rules/react.md` reserves emoji
  * for exactly this, and everything structural is drawn from `components/icons`.
- * They live here rather than inline in `AppListing` because the create form and
- * the app cards both read them, and two copies would drift. The nav rail draws a
- * *name* monogram rather than a glyph: every app from one template shares its
- * glyph, so a rail of three React apps would be three identical tiles.
+ *
+ * Only the create form draws them now. They are how you *choose* a template,
+ * which is the one moment the template is the thing being named; after that an
+ * app is identified by `AppIcon`'s name monogram in both the nav rail and the
+ * Apps list. The card in that list used to draw the glyph and nothing else,
+ * which made a library of three React apps three identical icons — a glyph
+ * shared by every app from one template cannot distinguish the apps it is drawn
+ * beside, and that is the whole job of an icon in a list.
  */
 export const TEMPLATES: { id: AppTemplate; name: string; icon: string }[] = [
   { id: 'react-vite', name: 'React + Vite', icon: '⚛️' },
