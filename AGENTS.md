@@ -703,6 +703,29 @@ rail of three React apps was three identical tiles distinguishable only by posit
 a tooltip rather than a caption: captioning it would put an arbitrary-length string back under
 the tile with no upper bound, since app names are the user's to choose.
 
+**The tile is `AppIcon`, and the Apps list draws the same one.** The library used to draw the
+template emoji instead — the exact icon the rail had already rejected, in the one place where
+telling apps apart is the whole task — so an app you had learned to find in the rail had to be
+found by reading in the list. `lib/appAccent.ts` hashes the app id to one of eight hues, which
+means the rail and the list agree with no stored state to disagree with, and nothing lands in
+`.keylimepi-meta.json`, where being tracked and auto-committed would have a rollback of the
+*code* also roll back the app's color.
+
+The hue is **identity and never state**, which is what keeps it clear of the palette thesis in
+`globals.css`. Its ramp sits under keylime's chroma and skips keylime's hue band outright, so no
+tile can read as a dim version of the accent that means the agent is acting. Focus was the
+casualty: the tile's focused look used to be `bg-keylime/10`, which a tile carrying its own color
+cannot also carry, so the keylime bar at the tile's left is now the sole saturated mark on the
+rail. `emphasis` is the same identity at two volumes, not a second meaning — the rail rests every
+tile but the focused one, and the Apps list draws all of them full because a library has no focus
+for the hue to defer to.
+
+**`APP_ACCENTS` spells every class out, and a test greps the source to keep it that way.** Built
+from a helper it produced `bg-app-${name}/10`, which Tailwind — scanning source text — compiles
+to nothing: eight transparent tiles, with types checking, build succeeding, and an assertion over
+the *exported values* passing, because interpolation is resolved long before a test can read it.
+That is the shape of the bug, and it was shipped once here before the CSS bundle was grepped.
+
 **`renderer: 'always'` is not a preference, it is the reason this library was chosen.** Every
 panel is added with it, and dockview then keeps that panel's element attached to its own
 `.dv-render-overlay` — absolutely positioned, `contain: layout paint` — and *repositions* the

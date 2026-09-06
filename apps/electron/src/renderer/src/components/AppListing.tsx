@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { PlayIcon, StopIcon, TrashIcon, BranchIcon, PlusIcon, AppsIcon, CloseIcon } from './icons'
+import { AppIcon } from './AppIcon'
 import type { SubApp, AppTemplate } from '@keylimepi/core'
 import { useRunningApps } from '../context/RunningAppsContext'
 import { formatRelativeTime } from '../lib/relativeTime'
@@ -266,7 +267,6 @@ function AppCard({ app, isActive, isOpen, onSelect, onDelete }: AppCardProps) {
   const status = getStatus(app.id)
   const url = getUrl(app.id)
 
-  const template = TEMPLATES.find((t) => t.id === app.template)
   const isRunnable = RUNNABLE_TEMPLATES.includes(app.template)
 
   return (
@@ -278,10 +278,19 @@ function AppCard({ app, isActive, isOpen, onSelect, onDelete }: AppCardProps) {
       }`}
     >
       <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2">
-          <span role="img" aria-label={template?.name ?? app.template} className="text-lg">
-            {template?.icon ?? '📁'}
-          </span>
+        <div className="flex items-center gap-3">
+          {/*
+            The same mark the nav rail draws, one register brighter. Every card
+            is `full` because the library is where you tell apps apart and there
+            is no focus here for the hue to defer to — the card's own keylime
+            border already says which app is active.
+
+            It replaced the template emoji, which was the only icon here and the
+            weaker of the two: a glyph shared by every app from one template
+            cannot distinguish the apps it is drawn beside, which is the one job
+            an icon in a list has.
+          */}
+          <AppIcon app={app} size="list" emphasis="full" />
           <div>
             <div className="flex items-center gap-2">
               <h4 className="font-medium">

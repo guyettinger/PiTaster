@@ -114,7 +114,9 @@ tool bubbles, approval records and the approval gate alike; vertical padding
 still tracks each one's density.
 
 Chrome is drawn from `components/icons`, never from an emoji. The only emoji in
-the UI are the app-listing template glyphs, which are content.
+the UI are the template glyphs in the new-app form, which are content — they are
+how a template is chosen. An existing app is identified by `AppIcon` instead, in
+the nav rail and the Apps list alike.
 
 The title bar's left padding is `pl-titlebar`, a measured token that clears the
 macOS traffic lights. Don't hardcode it — the arithmetic depends on

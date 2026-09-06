@@ -69,6 +69,41 @@
   --color-cream: #f4ecdc;
   --color-cream-shade: #cfc0a2;
 
+  /*
+   * The app identity ramp. Eight hues a sub-app's tile is assigned by a hash of
+   * its id, in the nav rail and the Apps list alike.
+   *
+   * This is the one part of the palette that is deliberately arbitrary, and that
+   * is what makes it safe. Every other color here means something — keylime is
+   * the agent acting, patina is history and reversibility, rust is loss — so the
+   * thesis above holds that nothing else may be saturated. A tile color means
+   * only "this app, not that one": it is identity, never state. Two apps that
+   * collide on a hue are still told apart by their monogram, which is why a
+   * collision is a non-event and the ramp does not need to grow with the app
+   * count.
+   *
+   * Two constraints keep it from spending the thesis, and both are on the hues
+   * rather than on how they are used:
+   *
+   *   - Chroma 0.10, under keylime's 0.13, so no tile can out-shout the accent
+   *     that means the agent is working. On the tile they are washed to 10-18%
+   *     alpha over `raised` besides.
+   *   - No hue in 108-148, the keylime band. A tile sitting there would read as
+   *     a dim keylime and appear to claim a meaning it does not have.
+   *
+   * Which leaves h = 18, 50, 82, 162, 200, 248, 288, 328 at oklch(0.78 0.10 h) —
+   * even around the wheel but for the gap the exclusion cuts. The names are the
+   * hues and nothing more; do not read a meaning into one.
+   */
+  --color-app-rose: #f19d9f;
+  --color-app-amber: #eca57d;
+  --color-app-olive: #d7b16a;
+  --color-app-jade: #79cca4;
+  --color-app-cyan: #5dcbd1;
+  --color-app-blue: #83bdf5;
+  --color-app-indigo: #b4adf4;
+  --color-app-magenta: #dba1d8;
+
   --font-sans: "Archivo Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
