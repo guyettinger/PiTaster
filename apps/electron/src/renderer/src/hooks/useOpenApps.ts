@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { SubApp, OpenAppsState } from '@pitaster/core'
+import type { SubApp, OpenAppsState } from '@keylimepi/core'
 
 /**
  * The set of apps with a tile in the nav rail, and which one has focus.

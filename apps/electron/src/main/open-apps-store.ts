@@ -4,8 +4,8 @@
  * This is the shell's own state, not an app's: it says what the *window* was
  * showing, and it must survive a restart the way an editor's open tabs do.
  *
- * It lives beside `config.json` under `~/.pitaster` for the same reason layouts
- * do, and the reason is sharper here. `.pitaster-meta.json` is tracked and
+ * It lives beside `config.json` under `~/.keylimepi` for the same reason layouts
+ * do, and the reason is sharper here. `.keylimepi-meta.json` is tracked and
  * `AppManager.initGitRepo` adds every file, so a set kept there would be
  * committed on every focus change — and a rollback of an app's *code* would roll
  * back which apps were open, which is not a fact about a commit.
@@ -15,7 +15,7 @@
 
 import { promises as fs } from 'fs'
 import { join } from 'path'
-import type { OpenAppsState } from '@pitaster/core'
+import type { OpenAppsState } from '@keylimepi/core'
 
 /**
  * The most apps that may be open at once.

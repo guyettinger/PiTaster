@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react'
 import { Workspace } from './Workspace'
 import type { PermissionMode } from '../../types/electron'
-import type { SubApp } from '@pitaster/core'
+import type { SubApp } from '@keylimepi/core'
 
 /**
  * Props for the MountedWorkspace component.

@@ -43,7 +43,7 @@ flowchart TB
     end
     
     subgraph Storage
-        AppDir["~/.pitaster/apps/{app-id}/"]
+        AppDir["~/.keylimepi/apps/{app-id}/"]
         SessionsFile[".chat-sessions.json"]
         Session1Dir[".chat-history/{session-id-1}/"]
         Session2Dir[".chat-history/{session-id-2}/"]
@@ -73,8 +73,8 @@ flowchart TB
 ### Before (current)
 
 ```
-~/.pitaster/apps/{app-id}/
-├── .pitaster-meta.json
+~/.keylimepi/apps/{app-id}/
+├── .keylimepi-meta.json
 ├── .chat-history/
 │   ├── 2024-01-15T10-30-00-000Z_abc123.json
 │   └── 2024-01-15T10-30-05-500Z_def456.json
@@ -84,8 +84,8 @@ flowchart TB
 ### After (new)
 
 ```
-~/.pitaster/apps/{app-id}/
-├── .pitaster-meta.json
+~/.keylimepi/apps/{app-id}/
+├── .keylimepi-meta.json
 ├── .chat-sessions.json              ← Session metadata manifest
 ├── .chat-history/
 │   ├── {session-id-1}/              ← One directory per session
@@ -195,13 +195,13 @@ import type {
   ChatSession, 
   ChatSessionManifest, 
   CreateChatSessionParams 
-} from '@pitaster/core'
+} from '@keylimepi/core'
 
 export class ChatHistoryManager {
   private appsDir: string
 
   constructor() {
-    this.appsDir = join(homedir(), '.Pi Taster', 'apps')
+    this.appsDir = join(homedir(), '.Key Lime Pi', 'apps')
   }
 
   // --- Session Manifest ---
@@ -780,7 +780,7 @@ Add imports and type definitions for session operations:
 import type { 
   SubApp, CreateAppParams, AppTemplate, PersistedMessage, 
   ChatSession, CreateChatSessionParams 
-} from '@pitaster/core'
+} from '@keylimepi/core'
 
 interface ElectronAPI {
   // ... existing methods ...
@@ -826,7 +826,7 @@ A sidebar/panel component showing all sessions for the active app with create/de
 
 ```typescript
 import { useState, useEffect, useCallback } from 'react'
-import type { ChatSession } from '@pitaster/core'
+import type { ChatSession } from '@keylimepi/core'
 
 /**
  * Props for the ChatSessionList component.
@@ -1208,7 +1208,7 @@ This ensures users never see an empty state requiring manual session creation �
 ```bash
 git add -A && git commit -m "feat: add multiple chat sessions per app
 
-- Add ChatSession, ChatSessionManifest types to @pitaster/core
+- Add ChatSession, ChatSessionManifest types to @keylimepi/core
 - Refactor ChatHistoryManager for session-aware storage
 - Add migration from flat .chat-history/ to session directories
 - Add session CRUD IPC handlers (create, delete, rename, list, set-active)

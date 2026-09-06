@@ -1,5 +1,5 @@
 /**
- * The operations Pi Taster asks the TypeScript language service for.
+ * The operations Key Lime Pi asks the TypeScript language service for.
  *
  * Two rules shape every function here.
  *
@@ -234,7 +234,7 @@ function applyTextChanges(text: string, changes: readonly ts.TextChange[]): stri
 function toFileEdits(project: TsProject, fileChanges: readonly ts.FileTextChanges[]): FileEdit[] {
   const edits: FileEdit[] = []
   for (const file of fileChanges) {
-    // An `isNewFile` change set describes a file to create. Nothing Pi Taster asks for
+    // An `isNewFile` change set describes a file to create. Nothing Key Lime Pi asks for
     // produces one, and honouring it would be a write to a path no gate has seen.
     if (file.isNewFile) continue
     // The compiler names these paths, not the model, so `checkConfinement` never saw
@@ -290,7 +290,7 @@ function rawDiagnostics(project: TsProject, absolutePath: string): readonly ts.D
 }
 
 /**
- * Compiler errors for one file, in Pi Taster's shape.
+ * Compiler errors for one file, in Key Lime Pi's shape.
  *
  * @param project - The project handle
  * @param absolutePath - Absolute path to the file
@@ -639,7 +639,7 @@ export function organizeImports(project: TsProject, absolutePath: string): Servi
 /**
  * Apply the compiler's own fix for the error on a line.
  *
- * The line number is the one Pi Taster printed in the diagnostics attached to the model's
+ * The line number is the one Key Lime Pi printed in the diagnostics attached to the model's
  * last write — the same pairing that makes `replace_lines` usable, where the numbers
  * arrive attached to the failure that needs them.
  *

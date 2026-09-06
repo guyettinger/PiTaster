@@ -1,5 +1,5 @@
 /**
- * Skill types for Pi Taster.
+ * Skill types for Key Lime Pi.
  *
  * A skill is a folder holding a `SKILL.md`: YAML frontmatter carrying a `name` and a
  * `description`, then a markdown body. The two halves are paid for very differently,
@@ -19,7 +19,7 @@
  * `app` skills live in `<app-root>/skills/`. They are inside the agent's confinement
  * boundary and are committed with the app, so they roll back with it.
  *
- * `workspace` skills live in `~/.pitaster/skills/` and are offered to every app.
+ * `workspace` skills live in `~/.keylimepi/skills/` and are offered to every app.
  */
 export type SkillScope = 'app' | 'workspace'
 
@@ -52,7 +52,7 @@ export interface Skill extends SkillDraft {
   manifestTokens: number
   /** Estimated tokens the body costs when the model loads it. */
   bodyTokens: number
-  /** True when the body still matches a seed Pi Taster has since corrected. */
+  /** True when the body still matches a seed Key Lime Pi has since corrected. */
   outdated: boolean
   /** True when a same-named app skill hides this workspace one from the model. */
   shadowed: boolean
@@ -73,7 +73,7 @@ export interface Skill extends SkillDraft {
 export interface SkillLibrary {
   /** Skills from the open app's own `skills/` directory. */
   app: Skill[]
-  /** Skills from `~/.pitaster/skills/`, shared by every app. */
+  /** Skills from `~/.keylimepi/skills/`, shared by every app. */
   workspace: Skill[]
 }
 

@@ -2,11 +2,11 @@
 
 ## Overview
 
-Retire Pi Taster's own chat persistence in favour of Pi's session tree, then clean up the
+Retire Key Lime Pi's own chat persistence in favour of Pi's session tree, then clean up the
 documentation that still describes the Anthropic agent.
 
 `packages/shared/src/chat/manager.ts` (373 lines) writes one JSON file per message under
-`~/.pitaster/apps/<appId>/.chat-history/<sessionId>/`. Pi's `SessionManager` writes a
+`~/.keylimepi/apps/<appId>/.chat-history/<sessionId>/`. Pi's `SessionManager` writes a
 tree-structured JSONL transcript with `id`/`parentId` links, supporting branch and fork.
 
 **Estimated scope**: Medium (~2 hours)
@@ -33,16 +33,16 @@ sessions no longer discards the model's context.
 | `renameSession(appId, id, title)` | `sm.appendLabelChange(entryId, title)` |
 | `loadHistory(appId, sessionId)` | `SessionManager.open(path).getPath()` → `PersistedMessage[]` |
 | `saveMessage(...)` | **deleted** — Pi persists on its own |
-| `getActiveSessionId` / `setActiveSession` | keep in `~/.pitaster/apps/<appId>/.chat-sessions.json` |
+| `getActiveSessionId` / `setActiveSession` | keep in `~/.keylimepi/apps/<appId>/.chat-sessions.json` |
 
 Pi has no notion of an "active" session, so the manifest survives — reduced to just the
 active-session pointer.
 
 `ChatSession.messageCount` comes from `sm.getEntries().length`.
 
-`agentDir` stays global at `~/.pitaster/pi` so `models.json` and `settings.json` are
+`agentDir` stays global at `~/.keylimepi/pi` so `models.json` and `settings.json` are
 shared; `cwd` (the sub-app path) does the per-app partitioning, so sessions land under
-`~/.pitaster/pi/sessions/<slug-of-app-path>/`.
+`~/.keylimepi/pi/sessions/<slug-of-app-path>/`.
 
 `Chat.tsx` currently calls `saveChatMessage` on send and on `complete`. Those calls, and
 the `chat:save-message` channel (`ipc.ts:552`), go away.
@@ -110,7 +110,7 @@ are still there and where they are.
 - [ ] The session list shows correct titles and message counts
 - [ ] Switching apps switches session sets
 - [ ] Deleting and renaming sessions work
-- [ ] Sessions appear under `~/.pitaster/pi/sessions/`
+- [ ] Sessions appear under `~/.keylimepi/pi/sessions/`
 - [ ] A failed tool renders as an error, not as a completed call
 - [ ] **Fidelity check** — send a message that uses a tool, restart the app, reopen the
       session, and ask a follow-up that depends on the earlier tool result. This is

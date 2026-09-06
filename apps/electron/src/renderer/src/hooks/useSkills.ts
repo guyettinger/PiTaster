@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Skill, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope } from '@pitaster/core'
+import type { Skill, SkillDraft, SkillLibrary, SkillLibraryUpdate, SkillScope } from '@keylimepi/core'
 
 /** An empty library, used before the first load and after a failure. */
 const EMPTY_LIBRARY: SkillLibrary = { app: [], workspace: [] }

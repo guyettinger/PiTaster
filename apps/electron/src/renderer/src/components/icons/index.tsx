@@ -1,5 +1,5 @@
 /**
- * The Pi Taster icon set.
+ * The Key Lime Pi icon set.
  *
  * One hand-drawn 24x24 stroke system, replacing the mix of literal emoji and
  * ad-hoc heroicons paths that chrome used to be built from. Every glyph draws

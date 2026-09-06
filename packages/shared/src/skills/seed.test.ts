@@ -12,12 +12,13 @@ import { join } from 'node:path'
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { SEED_SKILLS } from './seed-content.js'
 import { seedSkills } from './seed.js'
-import { SUPERSEDED_SEEDS } from './superseded-seeds.js'
+import { SUPERSEDED_SEEDS, isSupersededSeed } from './superseded-seeds.js'
+import { parseSkillBody } from './loader.js'
 
 let skillsDir: string
 
 beforeEach(async () => {
-  skillsDir = await mkdtemp(join(tmpdir(), 'pitaster-skills-'))
+  skillsDir = await mkdtemp(join(tmpdir(), 'keylimepi-skills-'))
 })
 
 describe('SEED_SKILLS', () => {
@@ -88,7 +89,30 @@ describe('seed content stays in step with docs/skills', () => {
 })
 
 describe('superseded seeds', () => {
-  test('replaces a body Pi Taster shipped and has since corrected', async () => {
+  test('no shipped seed is also listed as superseded', () => {
+    // Listing a *current* body would have every launch rewrite the file it just wrote,
+    // and flag it Outdated forever. This is the check that makes appending to the list
+    // safe to do routinely.
+    for (const skill of SEED_SKILLS) {
+      expect(isSupersededSeed(skill.name, parseSkillBody(skill.content))).toBe(false)
+    }
+  })
+
+  test('every body a rename left behind is superseded, not stranded', () => {
+    // `create-skill` names the workspace skills directory, so its body changed with each
+    // rebrand. Both times the seed was edited; the first time no entry was appended here,
+    // so the correction reached no existing install and every one of them kept telling
+    // the agent about `~/.anyapp/skills`. These two entries are that repair, and this
+    // test is what stops the next rename from repeating it a third time.
+    const bodies = SUPERSEDED_SEEDS.filter((seed) => seed.name === 'create-skill').map(
+      (seed) => seed.body
+    )
+
+    expect(bodies.some((body) => body.includes('~/.anyapp/skills'))).toBe(true)
+    expect(bodies.some((body) => body.includes('~/.pitaster/skills'))).toBe(true)
+  })
+
+  test('replaces a body Key Lime Pi shipped and has since corrected', async () => {
     const stale = SUPERSEDED_SEEDS.find((seed) => !seed.removed)!
     await mkdir(join(skillsDir, stale.name), { recursive: true })
     await writeFile(

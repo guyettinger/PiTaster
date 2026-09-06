@@ -23,7 +23,7 @@ This sub-session adds run/stop controls and status indicators to AppCard and App
 ```typescript
 import { useCallback, useState } from 'react'
 import { useRunningApps } from '../context/RunningAppsContext'
-import type { AppTemplate } from '@pitaster/core'
+import type { AppTemplate } from '@keylimepi/core'
 
 /** Templates that can be run. */
 const RUNNABLE_TEMPLATES: AppTemplate[] = ['react-vite', 'node-server', 'node-cli', 'static-site']
@@ -339,7 +339,7 @@ Update the component to include run controls:
 
 ```typescript
 import { useCallback } from 'react'
-import type { SubApp } from '@pitaster/core'
+import type { SubApp } from '@keylimepi/core'
 import { useRunningApps } from '../context/RunningAppsContext'
 
 /**

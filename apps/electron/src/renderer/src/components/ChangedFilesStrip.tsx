@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { DiffView } from './DiffView'
 import { GaugeCard, GaugePopover } from './GaugePopover'
 import { ChevronDownIcon } from './icons'
-import type { FilePatch } from '@pitaster/core'
+import type { FilePatch } from '@keylimepi/core'
 
 /** Width of a row's diffstat bar at full scale, in pixels. */
 const STAT_BAR_WIDTH = 64

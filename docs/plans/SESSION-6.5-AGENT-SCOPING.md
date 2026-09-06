@@ -30,10 +30,10 @@ import * as git from 'isomorphic-git'
 import fs from 'node:fs'
 import { z } from 'zod'
 import { tool } from '@anthropic-ai/claude-agent-sdk'
-import { VersionManager } from '@pitaster/shared'
+import { VersionManager } from '@keylimepi/shared'
 import { getActiveApp } from './ipc'
 
-const AUTHOR = { name: 'Pi Taster Agent', email: 'agent@Pi Taster.local' }
+const AUTHOR = { name: 'Key Lime Pi Agent', email: 'agent@keylimepi.local' }
 
 /**
  * Normalize and validate a path to prevent directory traversal.
@@ -175,7 +175,7 @@ export async function createScopedTools() {
         try {
           const entries = await readdir(fullPath, { withFileTypes: true })
           const files = entries
-            .filter(e => e.name !== '.git' && e.name !== 'node_modules' && !e.name.startsWith('.Pi Taster'))
+            .filter(e => e.name !== '.git' && e.name !== 'node_modules' && !e.name.startsWith('.Key Lime Pi'))
             .map(e => `${e.isDirectory() ? '📁' : '📄'} ${e.name}`)
             .join('\n')
           
@@ -401,7 +401,7 @@ export async function createScopedTools() {
 ### Add to apps/electron/src/main/agent.ts
 
 ```typescript
-import type { SubApp, AppTemplate } from '@pitaster/core'
+import type { SubApp, AppTemplate } from '@keylimepi/core'
 
 const TEMPLATE_HINTS: Record<AppTemplate, string> = {
   'react-vite': `
@@ -453,7 +453,7 @@ This is a blank project. Create files as needed.`
  */
 export function getSystemPrompt(app: SubApp | null): string {
   if (!app) {
-    return `You are Pi Taster, an AI assistant that helps users create and manage applications.
+    return `You are Key Lime Pi, an AI assistant that helps users create and manage applications.
 
 Currently, no app is selected. You should guide the user to:
 1. Select an existing app from the Apps panel (📱 icon)
@@ -462,7 +462,7 @@ Currently, no app is selected. You should guide the user to:
 Once an app is selected, you'll be able to help modify its code, manage versions, and run commands.`
   }
 
-  return `You are Pi Taster, an AI assistant helping develop "${app.name}".
+  return `You are Key Lime Pi, an AI assistant helping develop "${app.name}".
 
 ## Current App Context
 - **Name**: ${app.name}
@@ -502,7 +502,7 @@ ${TEMPLATE_HINTS[app.template]}
 
 ```typescript
 import { query } from '@anthropic-ai/claude-agent-sdk'
-import type { PermissionMode } from '@pitaster/core'
+import type { PermissionMode } from '@keylimepi/core'
 
 export async function runAgentQuery(
   prompt: string,

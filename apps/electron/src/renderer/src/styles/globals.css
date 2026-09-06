@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
- * Pi Taster design tokens.
+ * Key Lime Pi design tokens.
  *
  * The thesis is an instrument case in warm graphite, with key lime controls and
  * verdigris where it has been handled. Key lime is the color of the agent
@@ -275,7 +275,7 @@
  * the color of intent — the sash you are dragging, the target you are dropping
  * onto — and appears nowhere at rest, so the dock is quiet until you touch it.
  */
-.dockview-theme-pitaster {
+.dockview-theme-keylimepi {
   /* Density. 32px sits just under the 36px workspace bar above it. */
   --dv-tabs-and-actions-container-height: 32px;
   --dv-tabs-and-actions-container-font-size: 12px;

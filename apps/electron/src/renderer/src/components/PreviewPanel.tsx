@@ -101,12 +101,12 @@ export function PreviewPanel({ appId, isVisible }: PreviewPanelProps) {
     try {
       if (isInspecting) {
         // Deactivate
-        await webviewRef.current.executeJavaScript('window.__piTasterInspector?.deactivate()')
+        await webviewRef.current.executeJavaScript('window.__keyLimePiInspector?.deactivate()')
         setIsInspecting(false)
       } else {
         // Load inspector script if not already loaded
         const hasInspector = await webviewRef.current.executeJavaScript(
-          'typeof window.__piTasterInspector !== "undefined"'
+          'typeof window.__keyLimePiInspector !== "undefined"'
         )
 
         if (!hasInspector) {
@@ -116,7 +116,7 @@ export function PreviewPanel({ appId, isVisible }: PreviewPanelProps) {
         }
 
         // Activate
-        await webviewRef.current.executeJavaScript('window.__piTasterInspector?.activate()')
+        await webviewRef.current.executeJavaScript('window.__keyLimePiInspector?.activate()')
         setIsInspecting(true)
       }
     } catch (err) {
@@ -150,7 +150,7 @@ export function PreviewPanel({ appId, isVisible }: PreviewPanelProps) {
    */
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
-      if (event.data?.type === 'pitaster:element-selected') {
+      if (event.data?.type === 'keylimepi:element-selected') {
         const elementInfo = event.data.data
 
         try {
@@ -163,7 +163,7 @@ export function PreviewPanel({ appId, isVisible }: PreviewPanelProps) {
           // Exit inspect mode
           setIsInspecting(false)
           if (webviewRef.current) {
-            await webviewRef.current.executeJavaScript('window.__piTasterInspector?.deactivate()')
+            await webviewRef.current.executeJavaScript('window.__keyLimePiInspector?.deactivate()')
           }
         } catch (err) {
           console.error('Failed to capture element:', err)

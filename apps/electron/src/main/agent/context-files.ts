@@ -3,8 +3,8 @@
  *
  * Pi finds context files by walking *up* the directory tree from `cwd` and also reading
  * `agentDir` (`dist/core/resource-loader.js:32-51`), then wraps everything it finds in a
- * `<project_context>` block on the system prompt. Sub-apps live under `~/.pitaster/apps/`,
- * so without a filter a file at `~/.pitaster/AGENTS.md` — or `~/AGENTS.md`, or Pi Taster's own
+ * `<project_context>` block on the system prompt. Sub-apps live under `~/.keylimepi/apps/`,
+ * so without a filter a file at `~/.keylimepi/AGENTS.md` — or `~/AGENTS.md`, or Key Lime Pi's own
  * if a sub-app were ever created inside the repository — entered every session's prompt:
  * unbounded text against a window as small as 32k, invisible in the UI, and describing a
  * different project.

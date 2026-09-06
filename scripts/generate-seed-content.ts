@@ -50,7 +50,7 @@ const skills = names.map((name) => ({
 const header = `/**
  * The runtime skills a fresh install starts with.
  *
- * \`SkillsLoader\` reads \`~/.pitaster/skills\`, and for a long time nothing ever wrote it.
+ * \`SkillsLoader\` reads \`~/.keylimepi/skills\`, and for a long time nothing ever wrote it.
  * The copies under \`docs/skills/\` were exactly that — copies, with no install step — so
  * on any machine where they had not been placed by hand the agent ran with **no skills
  * at all**. That is worse than it sounds: \`working-notes\` is the \`NOTES.md\` convention

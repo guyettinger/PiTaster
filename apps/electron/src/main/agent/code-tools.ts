@@ -15,7 +15,7 @@
  * local model asked for an exact offset gets it wrong for the same reason it gets an
  * `edit`'s leading indentation wrong, and unlike a failed `edit` a wrong offset does not
  * fail — it answers confidently about whatever token happened to be there. The one
- * exception is `apply_fix`, whose `line` is the number Pi Taster printed in the diagnostics
+ * exception is `apply_fix`, whose `line` is the number Key Lime Pi printed in the diagnostics
  * attached to the model's last write. That is the same pairing that makes `replace_lines`
  * usable: the number arrives attached to the failure that needs it.
  *
@@ -30,7 +30,7 @@
  * write. The last is the one that has to be right.
  *
  * Neither tool carries `promptSnippet` or `promptGuidelines`, though Pi's own tools do
- * and Pi's docs recommend them. They would be dead metadata here: Pi Taster supplies
+ * and Pi's docs recommend them. They would be dead metadata here: Key Lime Pi supplies
  * `systemPromptOverride`, which puts `buildSystemPrompt` on its `customPrompt` early
  * return and drops every tool's contributions — `tool-guidance.ts` exists precisely to
  * put Pi's back, and it reads from Pi's built-in factories, not from these. So the
@@ -44,7 +44,7 @@ import { join } from 'node:path'
 import { Type } from 'typebox'
 import { StringEnum } from '@earendil-works/pi-ai'
 import { defineTool, withFileMutationQueue, type ToolDefinition } from '@earendil-works/pi-coding-agent'
-import type { FilePatch } from '@pitaster/core'
+import type { FilePatch } from '@keylimepi/core'
 import { autoCommitRefactor } from './auto-commit'
 import { buildPatch } from './patch'
 import { isWithinRoot, resolveLikePi } from './permission-gate'

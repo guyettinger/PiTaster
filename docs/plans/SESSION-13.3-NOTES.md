@@ -294,7 +294,7 @@ sendMessage: (message: string | SerializedContentBlock[]): Promise<void> => {
 Added `SerializedContentBlock` import and updated interface:
 
 ```typescript
-import type { ..., SerializedContentBlock } from '@pitaster/core'
+import type { ..., SerializedContentBlock } from '@keylimepi/core'
 
 interface ElectronAPI {
   sendMessage: (message: string | SerializedContentBlock[]) => Promise<void>

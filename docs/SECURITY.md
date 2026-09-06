@@ -1,6 +1,6 @@
 # Security
 
-Pi Taster runs a coding agent with your permissions, on your filesystem. This page
+Key Lime Pi runs a coding agent with your permissions, on your filesystem. This page
 is the honest account of what stops it, what doesn't, and what's left open on
 purpose.
 
@@ -11,7 +11,7 @@ itself is held to.
 ## Where confinement lives
 
 Pi ships no sandbox. Its built-in tools resolve `~` and absolute paths and run
-with the process's permissions. So confinement is Pi Taster's job, and it happens in
+with the process's permissions. So confinement is Key Lime Pi's job, and it happens in
 one place: the `tool_call` handler in
 [`apps/electron/src/main/agent/permission-gate.ts`](../apps/electron/src/main/agent/permission-gate.ts).
 
@@ -25,7 +25,7 @@ never auto-approved outside **Auto — all**.
 
 **The root itself is validated too.** Every check above asks whether a path is
 inside the app's root, which makes that value the one input the whole boundary
-rests on. It's built by joining an app id onto `~/.pitaster/apps`, and `join`
+rests on. It's built by joining an app id onto `~/.keylimepi/apps`, and `join`
 resolves `../../../tmp` without complaint. So an app id must be a single path
 segment, and the resolved path must be a direct child of the apps root — checked
 wherever an id becomes a path, not at whichever handler happened to receive it.

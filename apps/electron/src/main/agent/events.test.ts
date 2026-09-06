@@ -32,7 +32,7 @@ describe('toStreamChunk', () => {
   })
 
   test('carries a thinking delta rather than dropping it', () => {
-    // Ollama's models reason on every request whatever Pi Taster asks for, so dropping
+    // Ollama's models reason on every request whatever Key Lime Pi asks for, so dropping
     // this left the user watching a pulsing ellipsis through the longest part of a
     // turn.
     expect(toStreamChunk(update({ type: 'thinking_delta', delta: 'weighing it' }))).toEqual({

@@ -1,6 +1,6 @@
 import { Logo } from '../Logo'
 import { describePermissionMode } from '../PermissionModeControl'
-import type { SubApp } from '@pitaster/core'
+import type { SubApp } from '@keylimepi/core'
 import type { PermissionMode } from '../../types/electron'
 
 /**
@@ -46,7 +46,7 @@ export function AppShellHeader({ app, permissionMode }: AppShellHeaderProps) {
       <header className="drag flex h-11 items-center gap-3 bg-panel pl-titlebar pr-3">
         <div className="flex items-center gap-2">
           <Logo size={19} />
-          <span className="text-[14px] font-semibold tracking-[-0.01em] text-bone">Pi Taster</span>
+          <span className="text-[14px] font-semibold tracking-[-0.01em] text-bone">Key Lime Pi</span>
         </div>
 
         {app && (

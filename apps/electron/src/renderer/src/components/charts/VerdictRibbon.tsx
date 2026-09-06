@@ -7,9 +7,9 @@ import type { CacheVerdict } from '../../types/electron'
 /**
  * How each verdict draws.
  *
- * `reused` is the state Pi Taster works to keep and is deliberately the quietest — a
+ * `reused` is the state Key Lime Pi works to keep and is deliberately the quietest — a
  * healthy session should not decorate itself. `invalidated` is the one worth a colour,
- * because it is Pi Taster having re-sent a prompt the daemon already held.
+ * because it is Key Lime Pi having re-sent a prompt the daemon already held.
  *
  * Static class names, never constructed: Tailwind's scanner never sees a built one.
  */

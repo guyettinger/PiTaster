@@ -1,5 +1,5 @@
 /**
- * Version control types for Pi Taster.
+ * Version control types for Key Lime Pi.
  *
  * These types wrap isomorphic-git operations for managing
  * source code versions, branches, and history.

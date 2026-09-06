@@ -5,7 +5,7 @@ the unexamined hole it was already reaching through.
 
 ## Why
 
-Pi Taster runs on local Ollama models. Their knowledge of library APIs is smaller
+Key Lime Pi runs on local Ollama models. Their knowledge of library APIs is smaller
 and staler than a frontier model's, so the most common failure is not a logic
 error — it is confidently calling a function that does not exist. The agent had
 no sanctioned way to check.

@@ -176,8 +176,8 @@ Update `apps/electron/package.json`:
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "latest",
     "zod": "^3.25.0",
-    "@pitaster/core": "workspace:*",
-    "@pitaster/shared": "workspace:*"
+    "@keylimepi/core": "workspace:*",
+    "@keylimepi/shared": "workspace:*"
   }
 }
 ```
@@ -192,7 +192,7 @@ import { promises as fs } from "node:fs"
 import { resolve } from "node:path"
 import { exec } from "node:child_process"
 import { promisify } from "node:util"
-import type { PermissionMode, PermissionResult, StreamChunk } from "@pitaster/core"
+import type { PermissionMode, PermissionResult, StreamChunk } from "@keylimepi/core"
 
 const execAsync = promisify(exec)
 
@@ -371,7 +371,7 @@ export async function runAgentQuery(
 ```typescript
 import { ipcMain, BrowserWindow } from 'electron'
 import { runAgentQuery } from './agent'
-import type { PermissionMode, ToolApprovalRequest, ToolApprovalResponse } from '@pitaster/core'
+import type { PermissionMode, ToolApprovalRequest, ToolApprovalResponse } from '@keylimepi/core'
 import { nanoid } from 'nanoid'
 
 // Store for pending approval requests
@@ -485,7 +485,7 @@ app.on('activate', () => {
 
 ```typescript
 import { contextBridge, ipcRenderer } from 'electron'
-import type { PermissionMode, StreamChunk, ToolApprovalRequest, ToolApprovalResponse } from '@pitaster/core'
+import type { PermissionMode, StreamChunk, ToolApprovalRequest, ToolApprovalResponse } from '@keylimepi/core'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Agent communication
@@ -518,7 +518,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
 ```tsx
 import { useState, useEffect, useCallback } from 'react'
-import type { StreamChunk, PermissionMode } from '@pitaster/core'
+import type { StreamChunk, PermissionMode } from '@keylimepi/core'
 
 interface Message {
   id: string
@@ -586,7 +586,7 @@ export function App() {
     <div className="flex flex-col h-screen bg-neutral-50">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 border-b">
-        <h1 className="text-lg font-semibold">Pi Taster</h1>
+        <h1 className="text-lg font-semibold">Key Lime Pi</h1>
         <select 
           value={permissionMode}
           onChange={(e) => handleModeChange(e.target.value as PermissionMode)}

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This session adds the ability to create, edit, and delete MCP source configurations directly from the Sources panel in the UI. Currently, sources can only be added by manually creating JSON files in `~/.pitaster/sources/`. The backend APIs (`saveSource`, `deleteSource`) already exist in the preload and IPC layers but are unused by the renderer. This session builds the missing UI components and wires them to the existing infrastructure.
+This session adds the ability to create, edit, and delete MCP source configurations directly from the Sources panel in the UI. Currently, sources can only be added by manually creating JSON files in `~/.keylimepi/sources/`. The backend APIs (`saveSource`, `deleteSource`) already exist in the preload and IPC layers but are unused by the renderer. This session builds the missing UI components and wires them to the existing infrastructure.
 
 **Estimated scope**: Small–Medium  
 **Prerequisites**: Session 4 (Sources + Skills) complete  
@@ -56,7 +56,7 @@ flowchart TD
     subgraph Main["Main Process"]
         IPC[ipc.ts]
         SM[SourceManager]
-        Disk["~/.pitaster/sources/*.json"]
+        Disk["~/.keylimepi/sources/*.json"]
     end
 
     SP --> ASF
@@ -484,7 +484,7 @@ Update the empty state in `SourcesPanel` to feature a prominent "Add Source" cal
 ```tsx
 <p className="text-sm text-neutral-500">No sources configured</p>
 <p className="mt-1 text-xs text-neutral-600">
-  Add MCP servers in ~/.pitaster/sources/
+  Add MCP servers in ~/.keylimepi/sources/
 </p>
 ```
 
@@ -543,7 +543,7 @@ const handleAddSource = useCallback(async (formData: McpSourceFormData) => {
 
 1. **Add a source** — Click "+", fill in name/command/args, submit. Verify:
    - Source appears in the list
-   - JSON file is created at `~/.pitaster/sources/{id}.json`
+   - JSON file is created at `~/.keylimepi/sources/{id}.json`
    - Source auto-connects (green dot)
    - Tools are listed if connection succeeds
    - Error is shown if connection fails (e.g., bad command)

@@ -1,4 +1,4 @@
-# Pi Taster Implementation Plan
+# Key Lime Pi Implementation Plan
 
 ## Overview
 
@@ -50,6 +50,7 @@ The implementation is split into **6 independent sessions**, each resulting in a
 | [25. Ollama Interaction](SESSION-25-OLLAMA-INTERACTION.md) | Prefill, prefix cache, thinking | Sealed prefix so the prompt is append-only, request telemetry, reasoning surfaced and controllable, model-aware sampling | Complete | [Notes](SESSION-25-NOTES.md) · [Audit](SESSION-25-AUDIT.md) |
 | [26. The Instrument Row](SESSION-26-INSTRUMENT-ROW.md) | Composer chrome | Four strips become one fixed-height gauge row; Activity, Daemon and Changes panels; telemetry over IPC | Complete | [Notes](SESSION-26-NOTES.md) |
 | 28. Multiple Workspaces | Concurrency + shell | Open-app rail at 64px, Skills into the dock and Settings, five Settings tabs; per-app workspace runtimes in main, one visible turn queue, every workspace mounted at once | Complete | [Notes](SESSION-28-NOTES.md) |
+| 29. Key Lime Pi | Rename | `Pi Taster` → `Key Lime Pi`, `pitaster` → `keylimepi`; workspace migration becomes a chain across both renames; two carry-over defects from the last rename fixed | Complete | [Notes](SESSION-29-NOTES.md) |
 
 ## Session 6 Sub-Sessions
 
@@ -135,7 +136,7 @@ Launch subagents with specific, scoped tasks. They work best for:
 ## Architecture
 
 ```
-PiTaster/
+KeyLimePi/
 ├── apps/
 │   └── electron/           # Electron desktop app (IMMUTABLE)
 │       └── src/
@@ -152,7 +153,7 @@ PiTaster/
 │           └── skills/    # Skills loader
 ├── docs/
 │   └── plans/             # These session documents
-└── ~/.pitaster/
+└── ~/.keylimepi/
     └── apps/              # Sub-apps directory (SANDBOXED)
         └── {app-id}/      # Each app has isolated git versioning
 ```
@@ -217,7 +218,7 @@ bun run typecheck:all
 
 ### Configuration
 
-User data stored at `~/.pitaster/`:
+User data stored at `~/.keylimepi/`:
 - `config.json` - App settings
 - `skills/` - User skills
 - `workspaces/` - Workspace data

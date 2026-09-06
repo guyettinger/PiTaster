@@ -1,11 +1,11 @@
 ---
 name: run-app
-description: Use when asked to run, start, launch, or screenshot the Pi Taster desktop app, to click through its UI, or to confirm a change works in the real app rather than only in typecheck.
+description: Use when asked to run, start, launch, or screenshot the Key Lime Pi desktop app, to click through its UI, or to confirm a change works in the real app rather than only in typecheck.
 ---
 
-# Running Pi Taster
+# Running Key Lime Pi
 
-Pi Taster is an Electron GUI. An agent cannot see a window, so drive it through the
+Key Lime Pi is an Electron GUI. An agent cannot see a window, so drive it through the
 Playwright REPL at `.claude/skills/run-app/driver.mjs`, wrapped by
 `drive.sh`. Launch takes ~15s, so keep one REPL alive and send it commands
 rather than relaunching per interaction.
@@ -44,7 +44,7 @@ cd .claude/skills/run-app
 ```
 
 Each argument is one REPL line; quote anything with spaces. Screenshots land in
-`/tmp/pitaster-shots` (override with `SCREENSHOT_DIR`).
+`/tmp/keylimepi-shots` (override with `SCREENSHOT_DIR`).
 
 **Then actually open the PNG and look at it.** A blank or half-painted frame is
 a failed launch, not a screenshot.
@@ -64,7 +64,7 @@ a failed launch, not a screenshot.
 | `bounds` | Print the window's current bounds |
 | `quit` | Close the app and exit |
 
-Pi Taster-specific:
+Key Lime Pi-specific:
 
 | Command | What it does |
 |---|---|
@@ -120,7 +120,7 @@ every mode except `Auto — all` — that is the permission gate working, not a 
 - **Most chrome is icon-only.** Nav rail items, panel toggles, and header buttons
   carry `aria-label`/`title` and no text. Run `controls` and match on the label.
 - **The workspace is a dockview dock.** Panels are dragged into splits and tabs,
-  and the arrangement is saved per app in `~/.pitaster/layouts.json`. Delete that
+  and the arrangement is saved per app in `~/.keylimepi/layouts.json`. Delete that
   file to get a clean default layout back, or run `reset-layout`.
 - **Dock tabs need `mousedown`, not `click`.** `element.click()` resolves and
   changes nothing, which looks identical to a tab that isn't there. Use `tab`,
@@ -133,7 +133,7 @@ every mode except `Auto — all` — that is the permission gate working, not a 
   the panel's overlay sits between the pointer and the group. A synthesised drag
   that changes nothing looks exactly like one that worked, so don't verify
   layout changes that way. To get a specific arrangement, either do it by hand,
-  or seed `~/.pitaster/layouts.json` before launching and check the result with
+  or seed `~/.keylimepi/layouts.json` before launching and check the result with
   `panels`.
 - **A background workspace's text needs `textContent`, not `innerText`.** Every
   open app is mounted; the ones not focused are hidden with `clip-path` and
@@ -149,7 +149,7 @@ every mode except `Auto — all` — that is the permission gate working, not a 
   exactly this reason. Don't "simplify" it back to `process.stdin`.
 - **The sub-app dev server outlives the app.** If you press Run/`Run`, kill the
   port afterwards: `lsof -ti:5200 | xargs kill`.
-- **Driving the app writes to `~/.pitaster/`.** New chat sessions, approval
+- **Driving the app writes to `~/.keylimepi/`.** New chat sessions, approval
   records, and any file the agent edits are real and persist. Say so when you
   report back.
 - **No tmux on this machine.** That is why `drive.sh` uses a FIFO instead of the

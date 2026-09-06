@@ -43,8 +43,8 @@ Add imports at the top:
 
 ```typescript
 import { shell } from 'electron'
-import { AppRunner } from '@pitaster/shared'
-import type { AppLogEntry, AppStatusChange, RunningApp } from '@pitaster/core'
+import { AppRunner } from '@keylimepi/shared'
+import type { AppLogEntry, AppStatusChange, RunningApp } from '@keylimepi/core'
 ```
 
 Add the AppRunner instance after the other manager instances:

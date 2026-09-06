@@ -35,7 +35,7 @@ import type {
   TelemetrySnapshot,
   TelemetryTotals,
   TurnCost
-} from '@pitaster/core'
+} from '@keylimepi/core'
 import type { MessageEndEvent } from '@earendil-works/pi-coding-agent'
 
 /**
@@ -93,8 +93,8 @@ const CACHE_REUSE_MIN_SLACK = 64
 /**
  * Re-exported so this module's own consumers need one import.
  *
- * They live in `@pitaster/core` because the UI renders them. `CacheVerdict` is the
- * sharpest case — `invalidated` is Pi Taster paying a full re-prefill because something
+ * They live in `@keylimepi/core` because the UI renders them. `CacheVerdict` is the
+ * sharpest case — `invalidated` is Key Lime Pi paying a full re-prefill because something
  * it had already sent changed, and a verdict the user cannot see is the state F1
  * stayed in for six sessions — but the whole record now crosses IPC for the Activity
  * panel, and a shape drawn in the renderer cannot be defined in the main process.
@@ -110,7 +110,7 @@ export type {
 /**
  * What one turn cost, for the line the UI shows when it is over.
  *
- * Defined in `@pitaster/core` because it now travels to the renderer on the `complete`
+ * Defined in `@keylimepi/core` because it now travels to the renderer on the `complete`
  * chunk. Aliased rather than renamed at every call site: within this module the thing
  * being summarized is a turn's requests, and `TurnSummary` is what that reads as.
  */
@@ -175,7 +175,7 @@ export interface ProviderResult {
  * `message_end` also fires for user and tool-result messages, and on the failure path
  * it carries an assistant message whose `stopReason` is the only thing distinguishing
  * it from a success — the usage is populated either way. Narrowing rather than
- * asserting is what keeps Pi Taster's own post-compaction custom message from being
+ * asserting is what keeps Key Lime Pi's own post-compaction custom message from being
  * recorded as a request, and reading `stopReason` is what keeps a failed request from
  * being recorded as a successful one.
  *
@@ -199,7 +199,7 @@ export function readProviderResult(message: AgentMessage): ProviderResult | null
  * The question is not how much of *this* prompt was reused — a turn that appends a
  * large tool result legitimately reuses a smaller fraction than one that appends a
  * sentence, and reading the fraction alone would report the healthy case as a
- * degradation. The question is whether everything Pi Taster had *already sent* came back,
+ * degradation. The question is whether everything Key Lime Pi had *already sent* came back,
  * so the comparison is against the previous request's prompt.
  *
  * @param params - This request's reuse and the previous request's prompt size

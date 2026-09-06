@@ -15,7 +15,7 @@ different guesses at an invocation syntax, none of which did anything.
 **Workspace skills were advertised and unreachable.** Pi's `formatSkillsForPrompt`
 emits `<available_skills>` carrying each skill's absolute `<location>` and the line
 *"Use the read tool to load a skill's file."* Every one of those paths is under
-`~/.pitaster/skills`; `read` is in `PATH_TOOLS`; `checkConfinement` refuses any path
+`~/.keylimepi/skills`; `read` is in `PATH_TOOLS`; `checkConfinement` refuses any path
 outside the app root. So the model was shown a menu and refused every item on it. No
 skill body had ever reached a model — 14.6 KB of instructions that had never once been
 read.
@@ -25,7 +25,7 @@ had worked this out for itself and built a parallel system. `pony-pony-pony/NOTE
 written by the agent:
 
 > *"Agent can only write inside the app root, so project skills live in `skills/` (not
-> `~/.pitaster/skills/`). AGENTS.md tells the agent to read them."*
+> `~/.keylimepi/skills/`). AGENTS.md tells the agent to read them."*
 
 Four skills — `plan-feature`, `implement-plan`, `add-game-system`, `add-rendering` —
 git-tracked, specific to the app, inside the boundary so `read` succeeds, and registered
@@ -45,11 +45,11 @@ The load is also visible in the transcript, which pointing at a path never was.
 
 Pi's manifest is now suppressed rather than extended (`skillsOverride` returns no
 skills), because its wording is wrong the moment `read` is not the way in.
-`renderSkillManifest` in `@pitaster/shared` renders Pi Taster's, and the same function
+`renderSkillManifest` in `@keylimepi/shared` renders Key Lime Pi's, and the same function
 measures what each entry costs — so the number the UI shows is measured on the text
 actually sent rather than guessed.
 
-### `<app>/skills/` is now Pi Taster's convention
+### `<app>/skills/` is now Key Lime Pi's convention
 
 `loadSessionSkills` scans both roots. App skills are listed first, win a name collision,
 and the workspace copy is kept and marked **shadowed** rather than hidden — a user
@@ -68,7 +68,7 @@ import from shadcn/ui, which this repo has never contained. `self-modify` and
 
 Rewriting them was not enough, because `seedSkills` never overwrites: every existing
 install would have kept the bad copies forever. `SUPERSEDED_SEEDS` carries the exact
-bodies Pi Taster shipped, and a file is corrected — or deleted, where the honest correction
+bodies Key Lime Pi shipped, and a file is corrected — or deleted, where the honest correction
 is that the skill should not exist — only when it still matches one byte for byte. A body
 that differs by a character is left alone and flagged **Outdated** in the panel. That
 migration ran on first launch here: six corrected or removed, and the two that were
@@ -186,13 +186,13 @@ is now documented as an accepted residual risk in `AGENTS.md` and in a new secti
   time.
 - The row took the brass trace and `LOADED 1× THIS CHAT`.
 - Toggling `create-skill` off: header went 10 → 9 active and 620 → 553 tokens, exactly
-  its 67-token entry; `disabledSkills` persisted to `.pitaster-meta.json`; the manifest
+  its 67-token entry; `disabledSkills` persisted to `.keylimepi-meta.json`; the manifest
   dropped it.
 - Wrote, edited and deleted an app skill from the panel; each produced a commit
   (`write:`/`delete: skills/verify-build/SKILL.md`) and the working tree came back clean.
 - The editor refused a malformed name.
 - The seed migration ran on launch and left `lookup-docs` and `working-notes` alone.
 
-**This session wrote to `~/.pitaster/`**: the seed migration corrected four skills and
+**This session wrote to `~/.keylimepi/`**: the seed migration corrected four skills and
 removed two, a `Weather System Planning` chat session was created in `pony-pony-pony`,
 and that app gained two commits from the create/delete round trip.

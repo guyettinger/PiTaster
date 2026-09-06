@@ -1,7 +1,7 @@
 /**
- * @pitaster/core - Shared TypeScript types for Pi Taster
+ * @keylimepi/core - Shared TypeScript types for Key Lime Pi
  *
- * This package contains type definitions shared across all Pi Taster packages.
+ * This package contains type definitions shared across all Key Lime Pi packages.
  */
 
 export * from './agent.js'

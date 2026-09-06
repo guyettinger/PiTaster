@@ -112,7 +112,7 @@ import type {
   AppLogEntry, 
   AppStatusChange,
   AppRunConfig 
-} from '@pitaster/core'
+} from '@keylimepi/core'
 
 /** Environment variables to filter out when spawning processes. */
 const BLOCKED_ENV_VARS = [

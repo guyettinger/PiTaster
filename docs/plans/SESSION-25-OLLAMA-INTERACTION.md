@@ -4,7 +4,7 @@
 
 ## Goal
 
-Make Pi Taster's use of the Ollama daemon fast, honest and legible.
+Make Key Lime Pi's use of the Ollama daemon fast, honest and legible.
 
 Sessions 19–24 built the machinery for fitting an agent into a small local
 window — a discovered window, scaled compaction, a trimmer, an edit-repair hook,
@@ -28,7 +28,7 @@ a byte-identical prompt costs **0.24 s**, because the daemon reuses its KV cache
 Changing one message *early* in the list costs **124 s**, a full re-prefill.
 
 So the prompt prefix is not just a token budget, it is a **wall clock**, and the
-single most valuable property Pi Taster can give it is *stability*.
+single most valuable property Key Lime Pi can give it is *stability*.
 
 `tool-guidance.ts:92-95` already states the principle, for the tool guidance
 ordering: *"a prompt that reorders between requests defeats prefix caching for no
@@ -40,7 +40,7 @@ benefit."* The trimmer violates it three times over.
 |---|---|
 | **F1** | `context-trim.ts` invalidates the prefix cache at every turn boundary |
 | **F2** | Compaction fires on the *untrimmed* size, so trimming can never relieve it |
-| **F3** | Thinking is on for every request; Pi Taster believes it is off |
+| **F3** | Thinking is on for every request; Key Lime Pi believes it is off |
 | **F4** | Nothing in the agent directory is instrumented |
 | **F5** | The interaction is largely invisible in the UI |
 | **F6** | Sampling defaults to greedy, which the model is documented to dislike |
@@ -148,7 +148,7 @@ A *seal* replaces the per-request transform. `createContextSealer` in
 The seal advances only when `sealAdvanceTokens` of new history has accumulated —
 a quarter of the window, bounded above by what compaction keeps, since history
 about to be summarized away is not worth a cache invalidation to seal. A session
-pays one invalidation at a moment Pi Taster chose, several turns apart, instead of one
+pays one invalidation at a moment Key Lime Pi chose, several turns apart, instead of one
 per turn at a moment it did not.
 
 The seal stops at the current turn rather than at a screenshot cutoff, which is
@@ -162,7 +162,7 @@ and does it itself (`agent-session.js:453-460`). Verified against 0.84.4: sessio
 entries hold the *same* message objects and `sessionEntryToContextMessages` returns
 them unchanged, so a mutation survives the rebuild that compaction and branching do;
 `estimateContextTokens` reads content live, measured dropping from 10001 to 106
-tokens across an in-place edit — which is F2 fixed; and Pi Taster's chat UI reads the
+tokens across an in-place edit — which is F2 fixed; and Key Lime Pi's chat UI reads the
 transcript from disk, so the conversation a person sees keeps everything.
 
 **But the `context` hook cannot be where it happens.** Pi hands that hook
@@ -267,11 +267,11 @@ appears only for a model advertising `thinking`, saves, and persists.
 6. **Persistent daemon health** outside Settings; fix `reachable` initialising to
    `true`.
 7. **Model-unload warning.** `/api/ps` reports `expires_at`. A model loaded outside
-   Pi Taster carries the daemon's 5-minute default rather than the warm call's 30
+   Key Lime Pi carries the daemon's 5-minute default rather than the warm call's 30
    minutes, and the turn after an unload pays a full reload of a 32 GB model.
 
 All seven landed. `TurnCost`, `CacheVerdict` and `DaemonHealth` live in
-`@pitaster/core` rather than being mirrored by hand, because the UI renders them and
+`@keylimepi/core` rather than being mirrored by hand, because the UI renders them and
 `agent/telemetry.ts` produces them — two definitions of the same thing would drift,
 and the whole point is that the number the user reads is the number that was measured.
 The turn cost and the cache verdict ride the `complete` chunk beside `contextUsage`,
@@ -308,16 +308,16 @@ tool-call validity rather than on the release notes.
 
 `agent/sampling.ts` is a module of its own because the decision is testable and
 `session.ts` is long enough. A setting has **three** states — a pinned number, `null`
-for "send nothing", and `'auto'` for Pi Taster's recommendation — because two were not
+for "send nothing", and `'auto'` for Key Lime Pi's recommendation — because two were not
 enough: a number input's empty state already meant "the model's own default", leaving
 nowhere to say "choose for me", which is how one baked-in number came to be sent to
 every model regardless of whether it reasons. `RECOMMENDED_SAMPLING` lives in
-`@pitaster/core` so the sentence Settings shows and the number the request carries come
+`@keylimepi/core` so the sentence Settings shows and the number the request carries come
 from the same constant.
 
 Two things fell out of building it that the plan did not anticipate. `'auto'` `top_p`
 sends nothing whenever the temperature in effect is 0 — a nucleus cutoff modifying a
-greedy temperature has nothing to do, and without this an install carrying Pi Taster's old
+greedy temperature has nothing to do, and without this an install carrying Key Lime Pi's old
 pinned 0 would have started sending exactly that pair the moment the field appeared. And
 that old pinned 0 is **flagged rather than migrated**: it is indistinguishable on disk
 from a 0 someone chose, so Settings shows *Recommended for this model: 0.6* instead of
@@ -360,7 +360,7 @@ reasoning-effort control depended on it. The rest:
   a provider added by hand survives the re-sync that runs on every config save and every
   session start. Its *own* provider is replaced rather than merged — a stale model list
   merged with a fresh one would offer models that are no longer pulled. A file that does
-  not parse is replaced, because one Pi cannot read is worse than one Pi Taster overwrote.
+  not parse is replaced, because one Pi cannot read is worse than one Key Lime Pi overwrote.
 - **`ollamaBaseUrl` is parsed.** A length check is not a URL check; this value is joined
   with `/api/…` paths and fetched, and anything that is not `http(s)` is now refused
   rather than becoming a request whose failure looks like an unreachable daemon.
@@ -407,7 +407,7 @@ unfalsifiable. W6 is independent and can be taken in any gap.
 - Characterising the MLX engine's partial-reuse behaviour beyond what W2 needs.
   Audit row 3 is unexplained — append-only growth cost more than the cold rate
   predicts — and it bounds what W1 can recover, but it is the daemon's behaviour
-  to explain, not Pi Taster's to fix.
+  to explain, not Key Lime Pi's to fix.
 - A host allowlist for `web_fetch`. Still the right idea, still unrelated to this.
 
 ## Verification

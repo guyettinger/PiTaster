@@ -6,7 +6,7 @@ description: TanStack Query patterns for data fetching, mutations, and cache man
 # TanStack Query Patterns
 
 > **Not currently used.** `@tanstack/react-query` is not a dependency of
-> `@pitaster/electron` and appears nowhere in the source. The renderer gets its
+> `@keylimepi/electron` and appears nowhere in the source. The renderer gets its
 > data by calling `window.electronAPI` and subscribing to streamed IPC events.
 > This document is the pattern to follow **if** the library is adopted — it is
 > not a description of existing code, and nothing should be written as if these
@@ -144,7 +144,7 @@ queryKey: ["skills", "list", workspaceId]
 
 ## Caveat for This Codebase
 
-Much of Pi Taster's renderer data is **pushed** over IPC (streaming agent output,
+Much of Key Lime Pi's renderer data is **pushed** over IPC (streaming agent output,
 terminal output, dev-server status), not pulled. Streams do not map onto
 `useQuery`. If the library is adopted, use it for the request/response calls
 (sessions, sources, skills, version history) and keep the subscription-based

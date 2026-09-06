@@ -7,10 +7,10 @@
 
 import * as git from 'isomorphic-git'
 import fs from 'node:fs'
-import type { Commit, Branch, VersionState, FileDiff, MergeResult } from '@pitaster/core'
+import type { Commit, Branch, VersionState, FileDiff, MergeResult } from '@keylimepi/core'
 
 /** Default author for commits. Also used by the workspace migration. */
-export const COMMIT_AUTHOR = { name: 'Pi Taster Agent', email: 'agent@pitaster.local' }
+export const COMMIT_AUTHOR = { name: 'Key Lime Pi Agent', email: 'agent@keylimepi.local' }
 
 /**
  * The largest blob whose contents a diff carries, in bytes.

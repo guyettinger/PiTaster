@@ -19,7 +19,7 @@
  * the middle of building a prompt, on a turn the user has already started.
  */
 
-import type { ElementContext } from '@pitaster/core'
+import type { ElementContext } from '@keylimepi/core'
 
 /**
  * The longest accepted value for a short element field — the tag, the id, the CSS

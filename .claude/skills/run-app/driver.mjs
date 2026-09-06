@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * REPL driver for the Pi Taster Electron desktop app.
+ * REPL driver for the Key Lime Pi Electron desktop app.
  *
  * Launches the BUILT app (out/main/index.mjs) under Playwright and exposes a
  * line-oriented command REPL, so an agent can drive the UI and capture
@@ -16,7 +16,7 @@ import { execFileSync } from 'node:child_process'
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../../..')
 const APP_DIR = path.join(REPO_ROOT, 'apps/electron')
-const SHOT_DIR = process.env.SCREENSHOT_DIR || '/tmp/pitaster-shots'
+const SHOT_DIR = process.env.SCREENSHOT_DIR || '/tmp/keylimepi-shots'
 
 /** Electron's binary differs per platform; the mac path is a .app bundle. */
 const ELECTRON_BIN =
@@ -140,7 +140,7 @@ const COMMANDS = {
     )
   },
 
-  /** Most Pi Taster controls are icon-only; aria-label/title is the way in. */
+  /** Most Key Lime Pi controls are icon-only; aria-label/title is the way in. */
   async 'click-aria'(label) {
     need()
     console.log(
@@ -211,7 +211,7 @@ const COMMANDS = {
     )
   },
 
-  // ---- Pi Taster-specific ----------------------------------------------------
+  // ---- Key Lime Pi-specific ----------------------------------------------------
 
   /** Open a sub-app from the Apps list by name. */
   async 'open-app'(name) {
@@ -414,5 +414,5 @@ rl.on('close', async () => {
   process.exit(0)
 })
 
-console.log('Pi Taster driver - "help" for commands, "launch" to start')
+console.log('Key Lime Pi driver - "help" for commands, "launch" to start')
 rl.prompt()

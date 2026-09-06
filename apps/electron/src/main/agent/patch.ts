@@ -1,7 +1,7 @@
 /**
  * What a write actually changed, as a diff for the user.
  *
- * Pi Taster's safety story is that every write is auto-committed so any change can be
+ * Key Lime Pi's safety story is that every write is auto-committed so any change can be
  * rolled back. Until now the UI showed a write as its path and `JSON.stringify(input)`,
  * which means you could roll a change back without ever having seen it. This is what
  * puts the change itself in front of the person approving or reviewing it.
@@ -17,7 +17,7 @@
 
 import { readFile } from 'node:fs/promises'
 import { createTwoFilesPatch } from 'diff'
-import type { FilePatch } from '@pitaster/core'
+import type { FilePatch } from '@keylimepi/core'
 import { resolveLikePi } from './permission-gate'
 
 /**
@@ -147,14 +147,14 @@ export function createPatchRecorder(params: {
  * What a write *would* change, computed before it runs.
  *
  * This is for the approval prompt. In `default` mode the user is asked to approve a
- * write knowing only its path, which is the one place in Pi Taster where a person is asked
+ * write knowing only its path, which is the one place in Key Lime Pi where a person is asked
  * to take responsibility for something they cannot see.
  *
  * A preview must be **accurate or absent** — a wrong one is worse than none, because it
  * would be approved on. So each tool is previewed only where the result is deducible:
  *
  * - `write` carries the whole new file, so the diff is exact.
- * - `replace_lines` is Pi Taster's own and purely positional, so the diff is exact.
+ * - `replace_lines` is Key Lime Pi's own and purely positional, so the diff is exact.
  * - `edit` is Pi's, and its matcher falls back to a fuzzy comparison that tolerates
  *   line endings, BOM, smart quotes and exotic spaces. Reimplementing that here to draw
  *   a picture would mean two matchers that must agree forever. So the preview applies

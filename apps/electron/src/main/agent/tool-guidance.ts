@@ -1,5 +1,5 @@
 /**
- * The per-tool prompt guidance Pi writes but Pi Taster was throwing away.
+ * The per-tool prompt guidance Pi writes but Key Lime Pi was throwing away.
  *
  * Pi builds its own system prompt from contributions attached to each tool
  * definition: a one-line `promptSnippet` and a `promptGuidelines` array. The `edit`
@@ -7,11 +7,11 @@
  * replacements resolved against the original file, and that each `oldText` has to be
  * unique. Without them the only thing describing the tool is its JSON schema.
  *
- * Pi Taster supplies `systemPromptOverride`, which puts Pi's `buildSystemPrompt` on its
+ * Key Lime Pi supplies `systemPromptOverride`, which puts Pi's `buildSystemPrompt` on its
  * `customPrompt` early return (`dist/core/system-prompt.js:13-34`). That branch
  * appends context files, skills and the cwd — and drops `toolSnippets` and
  * `promptGuidelines` for every tool. The guidance was silently absent from every
- * request Pi Taster has ever made, which is the largest single cause of the repeated
+ * request Key Lime Pi has ever made, which is the largest single cause of the repeated
  * `The old text must match exactly` failures.
  *
  * The text is read back off Pi's live definitions rather than copied here, so it
@@ -54,11 +54,11 @@ interface GuidanceSource {
  * here executes a tool, so the value only has to be the same root the session runs
  * against for the descriptions to be accurate.
  *
- * `powershell` is deliberately absent: Pi Taster never enables it.
+ * `powershell` is deliberately absent: Key Lime Pi never enables it.
  *
  * Exported for `context-report.ts`, which sizes the same definitions' schemas. Building
  * them is the only way to know what a tool costs without a live session, and reading
- * them back off Pi is the same reason this module exists: a number Pi Taster maintained by
+ * them back off Pi is the same reason this module exists: a number Key Lime Pi maintained by
  * hand would drift the first time Pi revised a description.
  *
  * @param rootPath - The sub-app root the session operates on

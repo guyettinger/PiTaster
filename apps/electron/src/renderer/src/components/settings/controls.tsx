@@ -94,7 +94,7 @@ interface SamplingControlProps {
  * A sampling setting in its three states.
  *
  * A number input alone cannot express them: empty has to mean *something*, and when it
- * meant "the model's own default" there was nowhere left to say "let Pi Taster choose".
+ * meant "the model's own default" there was nowhere left to say "let Key Lime Pi choose".
  * That is how one baked-in number came to be sent to every model regardless of whether
  * it reasons. The mode is chosen explicitly and the number appears only when it is
  * being pinned.
@@ -160,7 +160,7 @@ export function describeSampling(
     return "Sending nothing. Ollama takes the value from the model's Modelfile — usually 0.7 or higher."
   }
   // A pinned value that disagrees with the recommendation is said out loud rather than
-  // corrected. Pi Taster's old default was a pinned 0, which is indistinguishable on disk
+  // corrected. Key Lime Pi's old default was a pinned 0, which is indistinguishable on disk
   // from a 0 someone chose — so an install that predates this control keeps decoding
   // greedily, including on a reasoning model, and nothing would otherwise say so.
   if (recommended !== null && value !== recommended) {
@@ -170,7 +170,7 @@ export function describeSampling(
 }
 
 /**
- * Explain where the context window Pi Taster will use came from.
+ * Explain where the context window Key Lime Pi will use came from.
  *
  * Ollama advertises a model's architectural maximum, not what the daemon serves —
  * 262144 against a served 65536 is normal — and believing the advertised number means

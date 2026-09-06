@@ -18,7 +18,7 @@ import { MAX_OPEN_APPS, readOpenApps, writeOpenApps } from './open-apps-store'
 let storePath: string
 
 beforeEach(async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'pitaster-open-apps-'))
+  const dir = await mkdtemp(join(tmpdir(), 'keylimepi-open-apps-'))
   storePath = join(dir, 'open-apps.json')
 })
 

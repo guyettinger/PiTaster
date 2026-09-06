@@ -1,5 +1,5 @@
 /**
- * @pitaster/shared - Business logic for Pi Taster
+ * @keylimepi/shared - Business logic for Key Lime Pi
  *
  * This package contains shared business logic including:
  * - Chat session storage over Pi transcripts

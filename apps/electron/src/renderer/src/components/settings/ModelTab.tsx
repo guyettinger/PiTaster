@@ -1,4 +1,4 @@
-import { RECOMMENDED_SAMPLING } from '@pitaster/core'
+import { RECOMMENDED_SAMPLING } from '@keylimepi/core'
 import { WarningIcon } from '../icons'
 import { useDaemonHealth } from '../../hooks/useDaemonHealth'
 import {
@@ -61,7 +61,7 @@ export function ModelTab({
 
       <Field
         label="Ollama server"
-        hint="Pi Taster runs entirely on local models. No API key is needed."
+        hint="Key Lime Pi runs entirely on local models. No API key is needed."
       >
         <div className="flex gap-2">
           <input

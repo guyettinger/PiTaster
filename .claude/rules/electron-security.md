@@ -89,7 +89,7 @@ const filteredEnv = Object.fromEntries(
 
 ## Credential Storage
 
-Pi Taster currently stores no secrets: inference runs on a local Ollama daemon, so
+Key Lime Pi currently stores no secrets: inference runs on a local Ollama daemon, so
 there is no API key. Nothing in the app calls `safeStorage` today.
 
 If you add a remote provider, or anything else with a credential, use Electron's

@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { PlayIcon, StopIcon, GlobeIcon, WarningIcon } from '../icons'
 import { useRunningApps } from '../../context/RunningAppsContext'
-import type { AppTemplate } from '@pitaster/core'
+import type { AppTemplate } from '@keylimepi/core'
 
 /** Templates that can be started as a dev server. */
 const RUNNABLE_TEMPLATES: AppTemplate[] = ['react-vite', 'node-server', 'node-cli', 'static-site']

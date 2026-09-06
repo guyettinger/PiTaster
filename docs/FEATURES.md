@@ -1,11 +1,11 @@
-# What Pi Taster Does
+# What Key Lime Pi Does
 
 A tour of the app, panel by panel. If you just want to get it running, start with
 [Getting Started](GETTING_STARTED.md).
 
 ## It builds sandboxed sub-apps
 
-Every app you create is a real project on disk at `~/.pitaster/apps/<name>`, with
+Every app you create is a real project on disk at `~/.keylimepi/apps/<name>`, with
 its own git repository. Pick a starting point — React + Vite, Node CLI, Node
 server, static site, or blank — and the agent takes it from there.
 
@@ -51,7 +51,7 @@ Every `write` and `edit` auto-commits. The History panel is the app's own git
 log: browse it, roll back to any commit, branch off to try something risky, and
 merge what works.
 
-![The History panel, docked beside Chats and Files, showing one commit per agent edit](images/history.png)
+![The History panel, docked beside Chats and Files, showing the branch picker and one commit per agent edit](images/history.png)
 
 ## The agent can check its own work
 
@@ -68,7 +68,7 @@ the agent sees come from one program. There are two navigation tools built on it
 ## Skills are reusable instructions
 
 A skill is a `SKILL.md` file the agent can load on demand. Drop one in
-`~/.pitaster/skills/` to offer it to every app, or in `<app-root>/skills/` to keep
+`~/.keylimepi/skills/` to offer it to every app, or in `<app-root>/skills/` to keep
 it with one app (where it's committed and rolls back alongside the code).
 
 Six ship by default: keeping working notes, debugging, UI work, looking up
@@ -80,7 +80,7 @@ The six defaults are editable source in [`docs/skills/`](skills/) — run
 `bun run sync:skills` after changing one. (Those are the *running app's* skills.
 Claude Code's own live in `.claude/skills/` and have nothing to do with them.)
 
-![The Skills panel](images/skills.png)
+![The Skills panel, showing how many skills are active and what they cost in every request](images/skills.png)
 
 ## It connects to MCP servers
 
@@ -91,7 +91,7 @@ approval is the only boundary there is.
 
 ## The context window is visible
 
-Local models have small windows, and Pi Taster spends yours deliberately — trimming
+Local models have small windows, and Key Lime Pi spends yours deliberately — trimming
 stale tool results, compacting when it must, and pruning the tool list when the
 window is tight. The meter in the composer shows where you stand before you send
 a word, and hovering it breaks the total down by what's taking up the room. There's
@@ -99,5 +99,5 @@ a **Summarize now** button when you want to reclaim space on your own terms.
 
 ## And it modifies itself
 
-The same agent that builds sub-apps can be pointed at Pi Taster's own source. That
+The same agent that builds sub-apps can be pointed at Key Lime Pi's own source. That
 is the whole point of the name.

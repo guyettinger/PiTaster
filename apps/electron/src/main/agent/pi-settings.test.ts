@@ -1,5 +1,5 @@
 /**
- * Tests that Pi Taster's Pi settings actually reach the session.
+ * Tests that Key Lime Pi's Pi settings actually reach the session.
  *
  * Nothing asserted this, and that is exactly how the bug shipped: `buildPiSettings`
  * was correct, `applyOverrides` was called, and every value was discarded before the
@@ -11,7 +11,7 @@
  * reaches the OpenAI SDK as that request's timeout, so a prefill over five minutes
  * failed as `Request timed out.` Measured across the author's sessions: 50 replies
  * failed that way, every one between 300.004s and 308.028s, and none anywhere near
- * the ceiling Pi Taster had configured.
+ * the ceiling Key Lime Pi had configured.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
@@ -21,14 +21,14 @@ import { join } from 'node:path'
 import { SettingsManager } from '@earendil-works/pi-coding-agent'
 import { deriveContextBudget } from './context-budget'
 import { HTTP_IDLE_TIMEOUT_MS } from './http-dispatcher'
-import { PiTasterResourceLoader, buildPiSettings } from './pi-settings'
+import { KeyLimePiResourceLoader, buildPiSettings } from './pi-settings'
 
 let root: string
 let appDir: string
 let agentDir: string
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 'pitaster-pi-settings-'))
+  root = await mkdtemp(join(tmpdir(), 'keylimepi-pi-settings-'))
   appDir = join(root, 'app')
   agentDir = join(root, 'agent')
 })
@@ -38,43 +38,43 @@ afterEach(async () => {
 })
 
 /**
- * Build a settings manager carrying Pi Taster's overrides.
+ * Build a settings manager carrying Key Lime Pi's overrides.
  * @returns The manager, the budget it was built from, and the re-apply function
  */
 function withOverrides(): {
   settingsManager: SettingsManager
   budget: ReturnType<typeof deriveContextBudget>
-  applyPiTasterSettings: () => void
+  applyKeyLimePiSettings: () => void
 } {
   const budget = deriveContextBudget()
   const settingsManager = SettingsManager.create(appDir, agentDir)
-  const applyPiTasterSettings = (): void => {
+  const applyKeyLimePiSettings = (): void => {
     settingsManager.applyOverrides(buildPiSettings(budget))
   }
-  applyPiTasterSettings()
-  return { settingsManager, budget, applyPiTasterSettings }
+  applyKeyLimePiSettings()
+  return { settingsManager, budget, applyKeyLimePiSettings }
 }
 
-describe('Pi Taster settings reaching Pi', () => {
+describe('Key Lime Pi settings reaching Pi', () => {
   test('a plain reload discards them, which is why the loader exists', async () => {
     // Pinning Pi's behaviour, not endorsing it. If a future Pi makes `applyOverrides`
-    // durable this fails, and the failure is the notice that `PiTasterResourceLoader`
+    // durable this fails, and the failure is the notice that `KeyLimePiResourceLoader`
     // has become unnecessary.
-    const { settingsManager, applyPiTasterSettings } = withOverrides()
+    const { settingsManager, applyKeyLimePiSettings } = withOverrides()
     expect(settingsManager.getHttpIdleTimeoutMs()).toBe(HTTP_IDLE_TIMEOUT_MS)
 
     await settingsManager.reload()
 
     expect(settingsManager.getHttpIdleTimeoutMs()).not.toBe(HTTP_IDLE_TIMEOUT_MS)
-    applyPiTasterSettings()
+    applyKeyLimePiSettings()
     expect(settingsManager.getHttpIdleTimeoutMs()).toBe(HTTP_IDLE_TIMEOUT_MS)
   })
 
-  test('PiTasterResourceLoader keeps the prefill ceiling across a reload', async () => {
-    const { settingsManager, applyPiTasterSettings } = withOverrides()
-    const loader = new PiTasterResourceLoader(
+  test('KeyLimePiResourceLoader keeps the prefill ceiling across a reload', async () => {
+    const { settingsManager, applyKeyLimePiSettings } = withOverrides()
+    const loader = new KeyLimePiResourceLoader(
       { cwd: appDir, agentDir, settingsManager },
-      applyPiTasterSettings
+      applyKeyLimePiSettings
     )
 
     await loader.reload()
@@ -87,10 +87,10 @@ describe('Pi Taster settings reaching Pi', () => {
     // `createAgentHost` reloads once today, but `reload` itself can reload settings
     // more than once internally, and the repair has to be a property of the loader
     // rather than of that one call site.
-    const { settingsManager, applyPiTasterSettings } = withOverrides()
-    const loader = new PiTasterResourceLoader(
+    const { settingsManager, applyKeyLimePiSettings } = withOverrides()
+    const loader = new KeyLimePiResourceLoader(
       { cwd: appDir, agentDir, settingsManager },
-      applyPiTasterSettings
+      applyKeyLimePiSettings
     )
 
     await loader.reload()
@@ -103,10 +103,10 @@ describe('Pi Taster settings reaching Pi', () => {
   test('the retry policy survives too, including the disabled provider retries', async () => {
     // Provider-level retries are invisible: they happen underneath Pi's own policy,
     // so a recoverable failure becomes a longer unexplained wait with no event.
-    const { settingsManager, applyPiTasterSettings } = withOverrides()
-    const loader = new PiTasterResourceLoader(
+    const { settingsManager, applyKeyLimePiSettings } = withOverrides()
+    const loader = new KeyLimePiResourceLoader(
       { cwd: appDir, agentDir, settingsManager },
-      applyPiTasterSettings
+      applyKeyLimePiSettings
     )
 
     await loader.reload()
@@ -118,12 +118,12 @@ describe('Pi Taster settings reaching Pi', () => {
 
   test('the compaction thresholds survive, and they are the budget-derived ones', async () => {
     // Pi's defaults reserve 16384 and retain 20000 — 36k, more than half the window
-    // Pi Taster's models serve, which makes a session compact far more often than it
+    // Key Lime Pi's models serve, which makes a session compact far more often than it
     // should. Every compaction then forces the slow re-prefill this all turns on.
-    const { settingsManager, budget, applyPiTasterSettings } = withOverrides()
-    const loader = new PiTasterResourceLoader(
+    const { settingsManager, budget, applyKeyLimePiSettings } = withOverrides()
+    const loader = new KeyLimePiResourceLoader(
       { cwd: appDir, agentDir, settingsManager },
-      applyPiTasterSettings
+      applyKeyLimePiSettings
     )
 
     await loader.reload()

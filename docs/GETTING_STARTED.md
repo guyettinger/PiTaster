@@ -18,12 +18,12 @@ it, so this only matters if you're building against your own Electron.
 ollama serve
 ollama pull qwen3-coder:30b     # or llama3.1, gpt-oss, mistral-nemo
 
-# 2. Install and run Pi Taster
+# 2. Install and run Key Lime Pi
 bun install
 bun run dev
 ```
 
-Then open **Settings → General** and pick your model. Pi Taster asks the daemon what
+Then open **Settings → General** and pick your model. Key Lime Pi asks the daemon what
 it's serving, so whatever you've pulled shows up in the list.
 
 ![Settings, showing the Ollama server and model picker](images/settings.png)
@@ -37,20 +37,20 @@ it's serving, so whatever you've pulled shows up in the list.
 | `bun run build` | Build all packages |
 | `bun run typecheck:all` | Type check the entire monorepo |
 | `bun run sync:skills` | Regenerate the seeded skills from `docs/skills/` |
-| `bun run --filter @pitaster/electron dev` | Run a single workspace |
+| `bun run --filter @keylimepi/electron dev` | Run a single workspace |
 
 Run `bun run typecheck:all` after changing any source file. It's the gate the
 self-modification flow relies on.
 
 ## Where your data lives
 
-Everything is under `~/.pitaster/`:
+Everything is under `~/.keylimepi/`:
 
 | Path | What's in it |
 |------|--------------|
-| `~/.pitaster/apps/` | Your sub-apps — each one a real project with its own git repo |
-| `~/.pitaster/skills/` | Workspace skills, offered to every app |
-| `~/.pitaster/pi/` | Model configuration and Pi's chat transcripts |
+| `~/.keylimepi/apps/` | Your sub-apps — each one a real project with its own git repo |
+| `~/.keylimepi/skills/` | Workspace skills, offered to every app |
+| `~/.keylimepi/pi/` | Model configuration and Pi's chat transcripts |
 
 Nothing is written outside that directory, and no request leaves your machine
 except the ones you can see: the agent's `web_fetch` tool, and anything you let
@@ -63,7 +63,7 @@ Try `qwen3-coder:30b`, `llama3.1`, `gpt-oss`, or `mistral-nemo`.
 
 **Long turns time out or the agent seems to forget things.** The context window
 Ollama *advertises* is the model's architectural maximum, not the one the daemon
-actually served. Pi Taster discovers the real number by warming the model and
+actually served. Key Lime Pi discovers the real number by warming the model and
 reading it back, but when both the daemon and the default are wrong you can set
 an override in Settings. There's a fuller account of why in
 [AGENTS.md](../AGENTS.md#the-context-window-is-not-what-ollama-advertises).

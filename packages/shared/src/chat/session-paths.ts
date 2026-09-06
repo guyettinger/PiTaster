@@ -7,15 +7,15 @@ import { join, resolve } from 'node:path'
 import { isValidAppId } from '../apps/manager.js'
 
 /**
- * The Pi agent directory Pi Taster uses.
+ * The Pi agent directory Key Lime Pi uses.
  *
- * Pi defaults to `~/.pi/agent`, which would scatter Pi Taster's data outside
- * `~/.pitaster/`. Everything the agent persists lives here instead.
+ * Pi defaults to `~/.pi/agent`, which would scatter Key Lime Pi's data outside
+ * `~/.keylimepi/`. Everything the agent persists lives here instead.
  *
- * @returns Absolute path to `~/.pitaster/pi`
+ * @returns Absolute path to `~/.keylimepi/pi`
  */
 export function getPiAgentDir(): string {
-  return join(homedir(), '.pitaster', 'pi')
+  return join(homedir(), '.keylimepi', 'pi')
 }
 
 /**
@@ -28,7 +28,7 @@ export function getPiAgentDir(): string {
  * @returns Absolute path to the session directory for that app
  */
 export function getAppSessionDir(params: {
-  /** The Pi agent directory, for example `~/.pitaster/pi`. */
+  /** The Pi agent directory, for example `~/.keylimepi/pi`. */
   agentDir: string
   /** Absolute path to the sub-app root. */
   appPath: string
@@ -52,12 +52,12 @@ export function getAppSessionDir(params: {
  * already runs inside a try/catch that treats a failure as "no sessions to forget".
  *
  * @param appId - The sub-app identifier
- * @returns Absolute path to `~/.pitaster/apps/<appId>`
+ * @returns Absolute path to `~/.keylimepi/apps/<appId>`
  * @throws {Error} If the id does not name a single directory inside the apps root
  */
 export function getAppPath(appId: string): string {
   if (!isValidAppId(appId)) {
     throw new Error(`Invalid app ID: ${JSON.stringify(appId)}`)
   }
-  return join(homedir(), '.pitaster', 'apps', appId)
+  return join(homedir(), '.keylimepi', 'apps', appId)
 }

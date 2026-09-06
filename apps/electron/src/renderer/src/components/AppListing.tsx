@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { PlayIcon, StopIcon, TrashIcon, BranchIcon, PlusIcon, AppsIcon, CloseIcon } from './icons'
-import type { SubApp, AppTemplate } from '@pitaster/core'
+import type { SubApp, AppTemplate } from '@keylimepi/core'
 import { useRunningApps } from '../context/RunningAppsContext'
 import { formatRelativeTime } from '../lib/relativeTime'
 import { TEMPLATES, RUNNABLE_TEMPLATES } from './appTemplates'
@@ -87,7 +87,7 @@ export function AppListing({ onAppSelect, activeAppId, openAppIds }: AppListingP
             <h1 className="text-[15px] font-semibold text-bone">Apps</h1>
             <p className="text-[12px] text-ash">
               Sandboxed projects the agent builds and modifies, in{' '}
-              <code className="font-mono">~/.pitaster/apps</code>
+              <code className="font-mono">~/.keylimepi/apps</code>
             </p>
           </div>
           <button

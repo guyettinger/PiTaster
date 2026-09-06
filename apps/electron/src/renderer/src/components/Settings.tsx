@@ -56,7 +56,7 @@ interface SettingsProps {
  * every visit a scroll past the half that was not the question.
  *
  * Skills and Sources live here rather than in the nav rail because both are
- * workspace-wide data under `~/.pitaster`, not scoped to the app you have open.
+ * workspace-wide data under `~/.keylimepi`, not scoped to the app you have open.
  * The per-app half of skills — which ones are on, which is `SubApp.disabledSkills`
  * — is in each app's own Skills panel, where there is an app to scope it to.
  */

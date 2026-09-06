@@ -16,7 +16,7 @@ Implemented the client-side element inspector overlay that injects into the prev
    - DOM info extraction (tag, classes, id, attributes, styles, bounds)
    - CSS selector generation (prefers ID, builds class-based path)
    - XPath generation for precise element location
-   - Global API exposed as `window.__piTasterInspector`
+   - Global API exposed as `window.__keyLimePiInspector`
 
 2. **IPC Integration** (`apps/electron/src/main/ipc.ts`)
    - `inspector:get-script` handler reads compiled overlay script
@@ -31,14 +31,14 @@ Implemented the client-side element inspector overlay that injects into the prev
 5. **Preview Panel Integration** (`apps/electron/src/renderer/src/components/PreviewPanel.tsx`)
    - "🔍 Inspect" / "✓ Inspecting" toggle button with visual state
    - Script injection via `webview.executeJavaScript()`
-   - Message handler for `pitaster:element-selected` events
+   - Message handler for `keylimepi:element-selected` events
    - ESC key handler to exit inspect mode
    - Auto-exit after element selection
 
 ## Key Decisions
 
 ### Inspector Script as Standalone File
-- Compiled as part of `@pitaster/shared` package build
+- Compiled as part of `@keylimepi/shared` package build
 - Read from disk and injected via `executeJavaScript()`
 - Allows hot reload during development
 - Single source of truth for inspector behavior
@@ -53,7 +53,7 @@ Implemented the client-side element inspector overlay that injects into the prev
 ### Message Passing Architecture
 - Inspector uses `window.parent.postMessage()` to communicate from webview
 - Renderer listens on `window.addEventListener('message')`
-- Event type: `pitaster:element-selected`
+- Event type: `keylimepi:element-selected`
 - Data payload: ElementInfo object with all extracted data
 
 ### Auto-Exit Behavior
@@ -90,7 +90,7 @@ interface ElementInfo {
 ```typescript
 // Check if already loaded
 const hasInspector = await webview.executeJavaScript(
-  'typeof window.__piTasterInspector !== "undefined"'
+  'typeof window.__keyLimePiInspector !== "undefined"'
 )
 
 // Inject if needed
@@ -100,7 +100,7 @@ if (!hasInspector) {
 }
 
 // Activate
-await webview.executeJavaScript('window.__piTasterInspector?.activate()')
+await webview.executeJavaScript('window.__keyLimePiInspector?.activate()')
 ```
 
 ### Visual Feedback States

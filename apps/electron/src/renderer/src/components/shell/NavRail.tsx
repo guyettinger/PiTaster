@@ -2,7 +2,7 @@ import { NavItem } from './NavItem'
 import { AppTile } from './AppTile'
 import { AppsIcon, HelpIcon, SettingsIcon } from '../icons'
 import type { Destination } from '../../types/navigation'
-import type { SubApp } from '@pitaster/core'
+import type { SubApp } from '@keylimepi/core'
 
 /**
  * Props for the NavRail component.

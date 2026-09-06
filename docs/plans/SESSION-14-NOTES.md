@@ -68,11 +68,11 @@ and `@/components/ui` — none of which exist. Conflicting instructions measurab
 degrade adherence, so these were corrected to match reality rather than ported.
 
 **`@` in markdown is an import.** In `CLAUDE.md` and anything it imports, a bare
-`@pitaster/core` outside backticks is parsed as a file import. Every package name
+`@keylimepi/core` outside backticks is parsed as a file import. Every package name
 in `AGENTS.md` is wrapped in backticks for this reason.
 
-**Naming collision.** `docs/skills/*/SKILL.md` are Pi Taster's *runtime* skills,
-loaded by `SkillsLoader` from `~/.pitaster/skills`. They look exactly like Claude
+**Naming collision.** `docs/skills/*/SKILL.md` are Key Lime Pi's *runtime* skills,
+loaded by `SkillsLoader` from `~/.keylimepi/skills`. They look exactly like Claude
 Code skills and are not. Both `AGENTS.md` and `CLAUDE.md` call this out.
 
 ## Left Undone

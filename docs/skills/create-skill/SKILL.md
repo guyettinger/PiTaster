@@ -18,7 +18,7 @@ In the app root — the same place as `package.json`. That is inside the directo
 can write to, and it is committed with the app, so the skill is versioned alongside the
 code it describes.
 
-Do not try to write to `~/.pitaster/skills`. That is the user's own library, shared by
+Do not try to write to `~/.keylimepi/skills`. That is the user's own library, shared by
 every app, and it is outside your reach.
 
 ## The File

@@ -71,7 +71,7 @@ export interface NumberLinesParams {
  * Render lines with their file line numbers.
  *
  * Pi's `read` returns no line numbers at all, which is why a model that has to recover
- * from a failed edit has nothing to anchor on. This is the only place Pi Taster gives it
+ * from a failed edit has nothing to anchor on. This is the only place Key Lime Pi gives it
  * numbers, so the format is deliberately unambiguous: right-aligned number, a space,
  * a pipe, a space, then the line verbatim — including its leading whitespace, which is
  * the thing the model got wrong.

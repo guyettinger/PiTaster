@@ -1,4 +1,4 @@
-import type { AppTemplate } from '@pitaster/core'
+import type { AppTemplate } from '@keylimepi/core'
 
 /**
  * The templates a new sub-app can be created from.

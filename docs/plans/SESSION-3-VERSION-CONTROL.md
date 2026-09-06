@@ -149,9 +149,9 @@ export * from './versions'
 ```typescript
 import * as git from 'isomorphic-git'
 import fs from 'node:fs'
-import type { Commit, Branch, VersionState, FileDiff, MergeResult } from '@pitaster/core'
+import type { Commit, Branch, VersionState, FileDiff, MergeResult } from '@keylimepi/core'
 
-const AUTHOR = { name: 'Pi Taster Agent', email: 'agent@Pi Taster.local' }
+const AUTHOR = { name: 'Key Lime Pi Agent', email: 'agent@keylimepi.local' }
 
 export class VersionManager {
   constructor(private dir: string) {}
@@ -374,7 +374,7 @@ export { VersionManager } from './versions/manager'
 Add version control tools and update write_source to auto-commit:
 
 ```typescript
-import { VersionManager } from '@pitaster/shared'
+import { VersionManager } from '@keylimepi/shared'
 
 // Initialize version manager
 const versionManager = new VersionManager(PROJECT_ROOT)
@@ -498,7 +498,7 @@ tool(
 
 ```tsx
 import { useState, useEffect } from 'react'
-import type { Branch, Commit, VersionState } from '@pitaster/core'
+import type { Branch, Commit, VersionState } from '@keylimepi/core'
 
 interface VersionControlProps {
   onRollback: (commitId: string) => void
@@ -693,7 +693,7 @@ export function DiffViewer({ oldContent, newContent, filename }: DiffViewerProps
 ### Add to apps/electron/src/main/ipc.ts
 
 ```typescript
-import { VersionManager } from '@pitaster/shared'
+import { VersionManager } from '@keylimepi/shared'
 
 const versionManager = new VersionManager(process.cwd())
 

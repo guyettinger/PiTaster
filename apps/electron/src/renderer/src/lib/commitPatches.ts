@@ -12,7 +12,7 @@
  */
 
 import { createTwoFilesPatch } from 'diff'
-import type { FileDiff, FilePatch } from '@pitaster/core'
+import type { FileDiff, FilePatch } from '@keylimepi/core'
 
 /** Longest diff kept, in lines, matching the cap the agent's patches use. */
 const MAX_PATCH_LINES = 400

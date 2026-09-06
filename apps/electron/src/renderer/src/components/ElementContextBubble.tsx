@@ -2,7 +2,7 @@
  * Display an element context block in chat.
  */
 
-import type { ElementContext } from '@pitaster/core'
+import type { ElementContext } from '@keylimepi/core'
 
 /**
  * Props for the ElementContextBubble component.

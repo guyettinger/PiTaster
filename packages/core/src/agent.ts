@@ -1,5 +1,5 @@
 /**
- * Agent-related type definitions for Pi Taster.
+ * Agent-related type definitions for Key Lime Pi.
  */
 
 import type { PermissionMode } from './permissions.js'
@@ -49,7 +49,7 @@ export type AgentStatusKind =
   /**
    * Waiting for another workspace's turn to finish.
    *
-   * Not one of Pi's — Pi Taster's own, and the reason it is worth a kind of its
+   * Not one of Pi's — Key Lime Pi's own, and the reason it is worth a kind of its
    * own is that it looks exactly like `waiting` and means something the user can
    * act on. There is one Ollama daemon and one loaded model, so turns generate
    * one at a time however many workspaces are open; a queue rendered as prefill
@@ -71,7 +71,7 @@ export type AgentStatusKind =
 export type CacheVerdict =
   /** Nothing was reused; the whole prompt was prefilled. */
   | 'cold'
-  /** Everything already sent came back. This is the state Pi Taster works to keep. */
+  /** Everything already sent came back. This is the state Key Lime Pi works to keep. */
   | 'reused'
   /** The prefix shrank because history had been summarized, which is expected. */
   | 'compacted'
@@ -111,7 +111,7 @@ export interface TurnCost {
 }
 
 /**
- * The sampling Pi Taster recommends, by whether the model reasons.
+ * The sampling Key Lime Pi recommends, by whether the model reasons.
  *
  * Defined here because two places need the same numbers: `agent/sampling.ts` sends
  * them, and Settings tells the user what `Recommended` resolved to. A field labelled
@@ -122,7 +122,7 @@ export interface TurnCost {
  * The split is not a preference. Qwen3 thinking models are documented to degrade and
  * loop under greedy decoding, and `agent/loop-guard.ts` exists to catch exactly that
  * symptom; a model reproducing an `oldText` byte for byte wants the opposite. One
- * number cannot serve both, and Pi Taster shipped one number.
+ * number cannot serve both, and Key Lime Pi shipped one number.
  */
 export const RECOMMENDED_SAMPLING = {
   /** Qwen3's documented values for thinking mode. */
@@ -146,7 +146,7 @@ export interface DaemonHealth {
   /**
    * When the daemon will unload it, epoch ms, or null when it is not resident.
    *
-   * A model Pi Taster warmed carries 30 minutes; one loaded by something else carries
+   * A model Key Lime Pi warmed carries 30 minutes; one loaded by something else carries
    * the daemon's 5-minute default.
    */
   expiresAt: number | null

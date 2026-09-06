@@ -1,9 +1,9 @@
 /**
- * Makes the HTTP idle timeout Pi Taster configures actually take effect.
+ * Makes the HTTP idle timeout Key Lime Pi configures actually take effect.
  *
  * Pi exposes `httpIdleTimeoutMs` as a setting, but the only thing that enforces it is
  * `configureHttpDispatcher()`, which Pi calls from its own CLI, RPC and interactive
- * entry points — never from `core/sdk.ts`, the path Pi Taster embeds. It is not in Pi's
+ * entry points — never from `core/sdk.ts`, the path Key Lime Pi embeds. It is not in Pi's
  * `exports` map either, so it cannot be reached from here. The setting therefore
  * reaches the OpenAI SDK's own `timeout` option and stops there.
  *
@@ -11,7 +11,7 @@
  * defaults `headersTimeout` and `bodyTimeout` to 300_000 ms. Ollama sends no response
  * headers until the first token, so a prefill longer than five minutes is aborted
  * mid-flight, the OpenAI SDK reports it as `APIConnectionTimeoutError: Request timed
- * out.`, and Pi Taster's retry policy repeats it — one initial attempt plus four
+ * out.`, and Key Lime Pi's retry policy repeats it — one initial attempt plus four
  * retries — for a twenty-five-minute failure. A large local model on a cold cache
  * passes five minutes routinely.
  *
@@ -22,7 +22,7 @@
  * fetch can pull a compressed response through the npm dispatcher and never
  * decompress it, breaking `response.json()` in `agent/ollama.ts`.
  *
- * This mirrors Pi's own `configureHttpDispatcher`, reproduced here because Pi Taster
+ * This mirrors Pi's own `configureHttpDispatcher`, reproduced here because Key Lime Pi
  * cannot call it.
  */
 
@@ -126,7 +126,7 @@ export function createOriginDispatcher(
 }
 
 /**
- * Install a global undici dispatcher whose idle timeout matches Pi Taster's.
+ * Install a global undici dispatcher whose idle timeout matches Key Lime Pi's.
  *
  * Call once, before any agent session is created. Safe to call again; later calls are
  * ignored so a dispatcher is never swapped out from under an in-flight request.

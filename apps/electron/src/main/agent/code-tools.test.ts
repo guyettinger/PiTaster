@@ -18,7 +18,7 @@ import { dirname, join } from 'node:path'
 import { beforeEach, describe, expect, test } from 'bun:test'
 import git from 'isomorphic-git'
 import fs from 'node:fs'
-import { VersionManager } from '@pitaster/shared'
+import { VersionManager } from '@keylimepi/shared'
 import { createCodeTools, CODE_TOOL_NAMES } from './code-tools'
 import { createTsProject } from './ts-service/host'
 import * as queries from './ts-service/queries'
@@ -27,7 +27,7 @@ import type { ServiceRequest, ServiceResponse } from './ts-service/protocol'
 let root: string
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 'pitaster-code-tools-'))
+  root = await mkdtemp(join(tmpdir(), 'keylimepi-code-tools-'))
   await git.init({ fs, dir: root, defaultBranch: 'main' })
 })
 

@@ -11,7 +11,7 @@ something to look at other than `JSON.stringify(input)`.
 ## The problem
 
 **The agent cannot check its own work.** `AGENTS.md` calls `typecheck:all` "the gate that
-the self-modification flow relies on" — but that gate is Pi Taster's, run by a human. A
+the self-modification flow relies on" — but that gate is Key Lime Pi's, run by a human. A
 confined agent working in a sub-app has none. `bash` is deliberately absent from
 `PLAN_READ_TOOLS` and from `FILE_TOOLS` (`permission-gate.ts`), so in `acceptEdits` — the
 mode this app is built to be run in — the model writes TypeScript and *cannot run `tsc`*
@@ -37,7 +37,7 @@ typed in `electron.d.ts` with no consumer.
 
 **Approvals are blind.** In `default` mode you approve a `write` knowing only its path.
 
-## Why Pi Taster's own, and not a package
+## Why Key Lime Pi's own, and not a package
 
 The published Pi LSP extensions solve this — `pi-lens` (38K/mo), `pi-lsp-extension`,
 `pi-hashline-edit-pro` — and none of them can be installed here.
@@ -47,7 +47,7 @@ and may register its own `tool_call` handler, which means it can mutate the argu
 `permission-gate.ts` just approved. `AGENTS.md` states that gate is "the *only* boundary
 between the model and the filesystem"; installing npm extensions makes that false. They
 are also TUI-shaped — `ctx.ui.*`, `renderCall` returning `pi-tui` components, none of
-which Pi Taster's React renderer can draw — and sized for cloud context windows.
+which Key Lime Pi's React renderer can draw — and sized for cloud context windows.
 
 What they taught us is in the design below. `pi-lsp-extension`'s noise discipline in
 particular: diagnostics scoped to the changed file, errors only, hard-capped.
@@ -71,7 +71,7 @@ write, and `plan` would lose navigation.
 offset gets it wrong for the same reason it gets an `edit`'s indentation wrong, and
 unlike a failed `edit` a wrong offset does not error — it answers confidently about the
 wrong token. Ambiguity returns candidates with their lines rather than a guess. The one
-exception is `apply_fix`'s `line`, which is the number Pi Taster printed in the diagnostics
+exception is `apply_fix`'s `line`, which is the number Key Lime Pi printed in the diagnostics
 attached to the model's last write: the same pairing that makes `replace_lines` usable.
 
 **The zero-cost channel is `details`.** It never reaches the model, so the unified patch
@@ -110,7 +110,7 @@ and quote none of their errors).
    keeps every updated call site.
 5. **Guidance in `system-prompt.ts`, not on the tool definitions.** `systemPromptOverride`
    drops every tool's `promptGuidelines` — the gap `tool-guidance.ts` exists to close for
-   Pi's built-ins — so guidance on Pi Taster's own tools would be dead metadata.
+   Pi's built-ins — so guidance on Key Lime Pi's own tools would be dead metadata.
 
 ## 22.2 — The editing surface
 

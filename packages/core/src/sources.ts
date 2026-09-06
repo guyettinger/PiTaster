@@ -1,5 +1,5 @@
 /**
- * Source configuration and connection types for Pi Taster.
+ * Source configuration and connection types for Key Lime Pi.
  */
 
 /**

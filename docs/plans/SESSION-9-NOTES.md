@@ -30,7 +30,7 @@ Session 9 adds persistent chat history for each sub-app, storing messages as ind
 Messages are stored as individual JSON files in each app's `.chat-history/` directory:
 
 ```
-~/.pitaster/apps/{app-id}/.chat-history/
+~/.keylimepi/apps/{app-id}/.chat-history/
 ├── 2024-01-15T10-30-00-000Z_abc123.json
 ├── 2024-01-15T10-30-05-500Z_def456.json
 └── 2024-01-15T10-31-00-000Z_ghi789.json

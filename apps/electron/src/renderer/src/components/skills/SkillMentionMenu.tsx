@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Skill } from '@pitaster/core'
+import type { Skill } from '@keylimepi/core'
 
 /** Most suggestions shown at once. */
 const MAX_SUGGESTIONS = 6

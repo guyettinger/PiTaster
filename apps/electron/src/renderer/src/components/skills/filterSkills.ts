@@ -1,4 +1,4 @@
-import type { Skill } from '@pitaster/core'
+import type { Skill } from '@keylimepi/core'
 
 /**
  * Filter a library by a search string, over name and description.

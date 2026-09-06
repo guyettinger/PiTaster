@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
 import type { WorkspacePanelName } from './catalog'
 import type { PermissionMode } from '../../types/electron'
-import type { SubApp } from '@pitaster/core'
+import type { SubApp } from '@keylimepi/core'
 
 /**
  * Everything a workspace panel needs that cannot travel in its `params`.

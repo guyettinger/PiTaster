@@ -124,7 +124,7 @@ describe('classifyCache', () => {
   })
 
   test('reports total loss of the prefix as cold, not as a rewrite', () => {
-    // The daemon evicted, or reloaded the model. Pi Taster did not rewrite anything, and
+    // The daemon evicted, or reloaded the model. Key Lime Pi did not rewrite anything, and
     // recording this as an invalidation would credit the trimmer with the daemon's
     // housekeeping.
     expect(
@@ -159,7 +159,7 @@ describe('readProviderResult', () => {
   })
 
   test('ignores a message that carries no provider usage', () => {
-    // Pi Taster sends a custom message after every compaction. Recording it as a request
+    // Key Lime Pi sends a custom message after every compaction. Recording it as a request
     // that generated nothing would drag every average toward zero.
     expect(readProviderResult({ role: 'user', content: 'hello', timestamp: 0 } as never)).toBeNull()
   })

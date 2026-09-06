@@ -11,7 +11,7 @@ a discovered context window, scaled compaction, a trimmer, an edit-repair hook, 
 context meter — and none of it had ever been measured against the daemon it
 manages. Session 25 measured it and fixed what the measurement found.
 
-The headline: **Pi Taster was destroying Ollama's KV prefix cache on essentially
+The headline: **Key Lime Pi was destroying Ollama's KV prefix cache on essentially
 every turn, at a cost of about 124 seconds each time, and had been since the
 trimmer was written.** The module that exists to *save* context was spending the
 most expensive resource in the system. Nothing in the app produced a number that
@@ -35,8 +35,8 @@ turn boundaries that previously cost a full re-prefill now cost 25–27 tokens.
 
 2. **`apps/electron/src/main/agent/sampling.ts`** — per-model sampling resolution
    - Three states per setting: a pinned number, `null` for "send nothing",
-     `'auto'` for Pi Taster's recommendation
-   - `RECOMMENDED_SAMPLING` lives in `@pitaster/core` so the request and the Settings
+     `'auto'` for Key Lime Pi's recommendation
+   - `RECOMMENDED_SAMPLING` lives in `@keylimepi/core` so the request and the Settings
      hint read the same constant
 
 3. **`apps/electron/src/renderer/src/components/ThinkingBubble.tsx`** — the model's
@@ -97,7 +97,7 @@ byte-identical to sending nothing and everything above `high` collapsing into it
 Offering levels the daemon cannot distinguish is a control that does nothing, which is
 the defect the workstream was about.
 
-**The old pinned `0` temperature is flagged, not migrated.** Pi Taster wrote it into
+**The old pinned `0` temperature is flagged, not migrated.** Key Lime Pi wrote it into
 `config.json` as a default, so on disk it is indistinguishable from a `0` someone chose.
 Settings says *Recommended for this model: 0.6* beside it instead.
 
@@ -120,7 +120,7 @@ without it the new setting would have done nothing until an unrelated action reb
 session, which is worse than not shipping it.
 
 **W5 gained a rule the plan did not anticipate.** `'auto'` `top_p` sends nothing whenever
-the temperature in effect is 0. Without it, an install carrying Pi Taster's old pinned 0
+the temperature in effect is 0. Without it, an install carrying Key Lime Pi's old pinned 0
 would have started sending a nucleus cutoff modifying a greedy temperature the moment the
 field appeared.
 
@@ -169,8 +169,8 @@ never reaching into the current turn is what keeps that from happening.
 
 **Ollama's server log reports the prefix cache directly.**
 `~/.ollama/logs/server.log` carries `msg="cache hit" total=7292 matched=7265` per
-request. It is a better instrument than Pi Taster's own telemetry for verifying W1, because
-it is the daemon's accounting rather than Pi Taster's.
+request. It is a better instrument than Key Lime Pi's own telemetry for verifying W1, because
+it is the daemon's accounting rather than Key Lime Pi's.
 
 **Ollama emits no `completion_tokens_details`**, so Pi's `Usage.reasoning` is `0` on every
 response — while `message.reasoning` is populated. A zero there means "not reported",

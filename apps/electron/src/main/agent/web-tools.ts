@@ -1,7 +1,7 @@
 /**
  * Network tools exposed to the agent.
  *
- * Pi Taster runs on local Ollama models, whose knowledge of library APIs is small
+ * Key Lime Pi runs on local Ollama models, whose knowledge of library APIs is small
  * and stale, so looking things up matters more here than it would with a frontier
  * model. Pi ships no web tool, and every web capability in its extension ecosystem
  * is a third-party npm package loaded in-process via `jiti` with full Node
@@ -30,7 +30,7 @@
 
 import { Type } from 'typebox'
 import { defineTool, type ToolDefinition } from '@earendil-works/pi-coding-agent'
-import { installDependencies } from '@pitaster/shared'
+import { installDependencies } from '@keylimepi/shared'
 import { autoCommitInstallArtifacts } from './auto-commit'
 
 /** How long a fetch may take before it is aborted. */
